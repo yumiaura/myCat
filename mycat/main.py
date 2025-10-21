@@ -2,18 +2,17 @@
 # -*- coding: utf-8 -*-
 """
 Pixel Cat (from 2-frame PNG sprite), GTK transparent overlay for XFCE
-- Loads a user PNG with TWO frames placed side-by-side (open eyes, closed eyes).
+- Loads a PNG sprite with TWO frames placed side-by-side (open eyes, closed eyes).
 - Shows a frameless, draggable, always-on-top transparent window.
 - Blink timing: 5 seconds open, 1 second closed, repeating.
 - Right click → Quit.
-- Optional: --image PATH (defaults to ./cat_sprite.png next to this script)
-           --size N (scale long side to N px, default from $CAT_SIZE or 160)
+- Optional: --image PATH (if omitted, uses packaged mycat/images/cat.png)
+           --size N (width of one frame; default from $CAT_SIZE or 160)
            --pos X Y (start position, else restored from config)
 
 Dependencies (Ubuntu/Debian):
 sudo apt update
 sudo apt install -y python3-gi gir1.2-gtk-3.0 gir1.2-gdkpixbuf-2.0 python3-gi-cairo
-
 """
 
 import argparse
@@ -23,6 +22,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from importlib.resources import files, as_file  # access to mycat/images/cat.png
 
 # Require versions before importing from gi.repository
 gi.require_version("Gtk", "3.0")
@@ -30,16 +30,11 @@ gi.require_version("Gdk", "3.0")
 gi.require_version("GdkPixbuf", "2.0")
 
 import cairo
-from gi.repository import Gdk
-from gi.repository import GdkPixbuf
-from gi.repository import GLib
-from gi.repository import Gtk
+from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
 
-# Paths
-SCRIPT_DIR = Path(__file__).resolve().parent
+# Config paths
 CFG_DIR = Path.home() / ".config" / "pixelcat"
 CFG_FILE = CFG_DIR / "config.json"
-DEFAULT_SPRITE = SCRIPT_DIR / "images/cat.png"
 
 
 def parse_args() -> argparse.Namespace:
@@ -47,22 +42,20 @@ def parse_args() -> argparse.Namespace:
         description="Blinking pixel cat overlay (two-frame PNG sprite)."
     )
     p.add_argument(
-        "--image",
-        "-i",
+        "--image", "-i",
         type=str,
-        default=str(DEFAULT_SPRITE),
-        help="Path to PNG sprite with two frames side-by-side (default: %(default)s)",
+        default=None,  # use packaged resource by default
+        help="Path to PNG sprite with two frames side-by-side "
+             "(default: packaged mycat/images/cat.png)",
     )
     env_size = os.environ.get("CAT_SIZE")
     default_size = int(env_size) if (env_size and env_size.isdigit()) else 160
     p.add_argument(
-        "--size",
-        "-s",
+        "--size", "-s",
         type=int,
         default=default_size,
-        help=(
-            "Target size (width of one frame) in pixels (default env CAT_SIZE or 160)"
-        ),
+        help="Target size (width of one frame) in pixels "
+             "(default from env CAT_SIZE or 160)",
     )
     p.add_argument(
         "--pos",
@@ -91,24 +84,20 @@ def parse_args() -> argparse.Namespace:
 def slice_sprite_to_pixbufs(
     sprite_path: str, target_width: int
 ) -> tuple[GdkPixbuf.Pixbuf, GdkPixbuf.Pixbuf]:
-    """Load sprite PNG, split into two equal halves, scale to target_width keeping aspect."""
+    """
+    Load sprite PNG, split into two halves, scale to target_width while keeping aspect.
+    The left half is the 'open eyes' frame, right half is the 'closed eyes' frame.
+    """
     if not os.path.exists(sprite_path):
         raise FileNotFoundError(f"Sprite not found: {sprite_path}")
-    # Load whole sprite
     sprite = GdkPixbuf.Pixbuf.new_from_file(sprite_path)
     sw, sh = sprite.get_width(), sprite.get_height()
-    if sw % 2 != 0:
-        # If uneven, we still try: second frame assumed same width as first
-        frame_w = sw // 2
-    else:
-        frame_w = sw // 2
+    frame_w = sw // 2  # tolerate odd widths — right half extends to the end
     frame_h = sh
 
     # Crop first (open), second (closed)
     open_pb = GdkPixbuf.Pixbuf.new_subpixbuf(sprite, 0, 0, frame_w, frame_h)
-    closed_pb = GdkPixbuf.Pixbuf.new_subpixbuf(
-        sprite, frame_w, 0, sw - frame_w, frame_h
-    )
+    closed_pb = GdkPixbuf.Pixbuf.new_subpixbuf(sprite, frame_w, 0, sw - frame_w, frame_h)
 
     # Scale
     if target_width <= 0:
@@ -119,6 +108,16 @@ def slice_sprite_to_pixbufs(
     open_scaled = open_pb.scale_simple(target_width, target_height, interp)
     closed_scaled = closed_pb.scale_simple(target_width, target_height, interp)
     return open_scaled, closed_scaled
+
+
+def load_packaged_pixbufs(target_width: int) -> tuple[GdkPixbuf.Pixbuf, GdkPixbuf.Pixbuf]:
+    """
+    Load the bundled sprite from mycat/images/cat.png inside the installed package.
+    Works regardless of wheel/zip installation thanks to importlib.resources.
+    """
+    res = files("mycat").joinpath("images/cat.png")
+    with as_file(res) as p:
+        return slice_sprite_to_pixbufs(str(p), target_width)
 
 
 class PixelCatWindow(Gtk.Window):
@@ -144,7 +143,7 @@ class PixelCatWindow(Gtk.Window):
             self.set_visual(visual)
         else:
             print(
-                "Hint: enable compositor in Xfce (Settings → Window Manager Tweaks → Compositor)."
+                "Hint: enable the compositor in Xfce (Settings → Window Manager Tweaks → Compositor)."
             )
 
         # Input
@@ -181,7 +180,7 @@ class PixelCatWindow(Gtk.Window):
         else:
             self.load_pos()
 
-        # Ticker (≈60 FPS)
+        # Ticker (~60 FPS)
         GLib.timeout_add(16, self.on_tick)
 
     def load_pos(self) -> None:
@@ -263,29 +262,27 @@ class PixelCatWindow(Gtk.Window):
         return False
 
 
-def ensure_sprite_exists(sprite_path: Path) -> None:
-    """Ensure sprite file exists; create parent directory if needed (no-op if present)."""
-    # Copy bundled demo file if user didn't provide one (placeholder; intentionally a no-op here)
-    try:
-        if not sprite_path.exists():
-            sprite_path.parent.mkdir(parents=True, exist_ok=True)
-            # If running from a sandbox, a sample could be copied here.
-            raise FileNotFoundError
-    except Exception:
-        pass
-
-
 def main() -> None:
     args = parse_args()
-    sprite_path = Path(args.image).expanduser()
-    if not sprite_path.exists():
-        print(f"File not found: {sprite_path}")
-        sys.exit(1)
-    try:
-        open_pb, closed_pb = slice_sprite_to_pixbufs(str(sprite_path), args.size)
-    except Exception as e:
-        print("Error loading sprite:", e)
-        sys.exit(2)
+
+    # Use user-provided sprite if given, otherwise load the bundled resource
+    if args.image:
+        sprite_path = Path(args.image).expanduser()
+        if not sprite_path.exists():
+            print(f"File not found: {sprite_path}")
+            sys.exit(1)
+        try:
+            open_pb, closed_pb = slice_sprite_to_pixbufs(str(sprite_path), args.size)
+        except Exception as e:
+            print("Error loading sprite:", e)
+            sys.exit(2)
+    else:
+        try:
+            open_pb, closed_pb = load_packaged_pixbufs(args.size)
+        except Exception as e:
+            print("Error loading packaged sprite:", e)
+            sys.exit(2)
+
     win = PixelCatWindow(open_pb, closed_pb, args)
     win.show_all()
     Gtk.main()
