@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mycat"
+version = "0.1.0"
+description = "Desktop Cat: GTK overlay"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [{ name = "yumiaura" }]
+keywords = ["gtk", "overlay", "desktop", "cat", "xfce4", "gdkpixbuf"]
+classifiers = [
+  "Environment :: X11 Applications :: GTK",
+  "Intended Audience :: End Users/Desktop",
+  "Programming Language :: Python :: 3",
+  "Operating System :: POSIX :: Linux",
+]
+dependencies = [
+  # PyGObject/GTK3
+  "PyGObject>=3.40; platform_system != 'Windows'"
+]
+
+[project.scripts]
+mycat = "main:main"
+
+[tool.setuptools]
+py-modules = ["main"]
+include-package-data = true
+
+[tool.setuptools.data-files]
+"share/mycat/images" = ["images/*"]
