@@ -7,25 +7,23 @@ It’s a lightweight Python + GTK app — no borders, and you can drag it around
 If you like it, maybe I’ll share an [AnimeGirl](https://github.com/yumiaura/mycat/discussions/1) version next time~ 😉<br>
 
 ### Install Dependencies
-
 ```bash
 sudo apt update
 sudo apt install -y python3 python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-gdkpixbuf-2.0
 ```
 
-### Run
-
+### Install and run from GitHub
 ```bash
-python3 main.py
+git clone https://github.com/yumiaura/mycat
+python3 mycat/main.py
 ```
-### Run with custom image
 
+### Run with custom image
 ```bash
 python3 main.py --image images/cat.png
 ```
 
 ### Create animated GIF from sprite sheet
-
 ```bash
 sudo apt install imagemagick
 convert images/cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 images/cat.gif
