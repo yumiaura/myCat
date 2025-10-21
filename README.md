@@ -4,7 +4,7 @@
 
 I made a cute little animated cat for your desktop.<br>
 It’s a lightweight Python + GTK app — no borders, and you can drag it around easily.<br>
-If you like it, maybe I’ll share an anime-girl version next time~ 😉<br>
+If you like it, maybe I’ll share an [AnimeGirl](https://github.com/yumiaura/mycat/discussions/1) version next time~ 😉<br>
 
 ### Install Dependencies
 
