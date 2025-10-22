@@ -6,8 +6,7 @@ I made a cute little animated cat for your desktop.<br>
 It’s a lightweight Python + GTK app — no borders, and you can drag it around easily.<br>
 If you like it, maybe I’ll share an [AnimeGirl](https://github.com/yumiaura/mycat/discussions/1) version next time~ 😉<br>
 
-<img width="1440" height="900" alt="image" src="https://github.com/user-attachments/assets/f1c6c2c3-ddc5-495f-b4ab-0988a9474232" />
-
+<img width="1440" height="900" alt="image" src="https://github.com/user-attachments/assets/5bc3c45b-83ef-4fcb-8977-781eaf7b045b" />
 
 ### 1. Install Dependencies
 ```bash
