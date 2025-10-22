@@ -58,3 +58,5 @@ sudo apt install imagemagick
 convert images/cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 images/cat.gif
 ```
 
+Thank you for reading to the end 😄
+
