@@ -1,6 +1,6 @@
 ## Desktop Cat: GTK Overlay (XFCE4)
 
-[<img src="https://raw.githubusercontent.com/yumiaura/yumiaura/refs/heads/main/images/cat.gif" width="164" alt="cat.gif"/>](https://pypi.org/project/mycat/)
+[<img src="https://raw.githubusercontent.com/yumiaura/yumiaura/refs/heads/main/images/cat.gif" width="164" alt="cat.gif"/>](https://github.com/yumiaura)
 
 I made a cute little animated cat for your desktop.<br>
 It’s a lightweight Python + GTK app — no borders, and you can drag it around easily.<br>
