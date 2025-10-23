@@ -1,9 +1,9 @@
-## Desktop Cat: GTK Overlay (XFCE4)
+## Desktop Cat: QT Overlay (XFCE4)
 
-[<img src="https://raw.githubusercontent.com/yumiaura/yumiaura/refs/heads/main/images/cat.gif" width="164" alt="cat.gif"/>](https://github.com/yumiaura)
+[<img src="https://raw.githubusercontent.com/yumiaura/yumiaura/refs/heads/main/images/cat.gif" width="164" alt="cat.gif"/>](https://pypi.org/project/mycat/)
 
 I made a cute little animated cat for your desktop.<br>
-It’s a lightweight Python + GTK app — no borders, and you can drag it around easily.<br>
+It’s a lightweight Python + QT app — no borders, and you can drag it around easily.<br>
 If you like it, maybe I’ll share an [AnimeGirl](https://github.com/yumiaura/mycat/discussions/1) version next time~ 😉<br>
 
 <img width="1440" height="900" alt="image" src="https://github.com/user-attachments/assets/5bc3c45b-83ef-4fcb-8977-781eaf7b045b" />
@@ -11,7 +11,8 @@ If you like it, maybe I’ll share an [AnimeGirl](https://github.com/yumiaura/my
 ### 1. Install Dependencies
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-gdkpixbuf-2.0
+sudo apt install -y python3 python3-pip
+pip install PySide6
 ```
 
 ### 2.1 Install from PyPI
@@ -57,4 +58,5 @@ python3 mycat/main.py  --image images/cat.png
 sudo apt install imagemagick
 convert images/cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 images/cat.gif
 ```
+
 
