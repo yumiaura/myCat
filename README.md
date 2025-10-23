@@ -1,4 +1,4 @@
-## Desktop Cat: QT Overlay (XFCE4)
+## Desktop Cat: QT Overlay
 
 [<img src="https://raw.githubusercontent.com/yumiaura/yumiaura/refs/heads/main/images/cat.gif" width="164" alt="cat.gif"/>](https://github.com/yumiaura)
 
