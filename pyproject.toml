@@ -4,19 +4,21 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mycat"
-version = "0.1.2"
-description = "Desctop Cat: GTK Overlay"
+version = "0.1.3"
+description = "Desktop Cat: Qt Overlay"
 readme = "README.md"
 requires-python = ">=3.8"
 authors = [{ name = "yumiaura" }]
 classifiers = [
-  "Environment :: X11 Applications :: GTK",
+  "Environment :: X11 Applications :: Qt",
   "Intended Audience :: End Users/Desktop",
   "Programming Language :: Python :: 3",
   "Operating System :: POSIX :: Linux",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: MacOS",
 ]
 dependencies = [
-  "PyGObject>=3.40; platform_system != 'Windows'"
+  "PySide6>=6.5.0"
 ]
 
 # Console script `mycat` → calls mycat.main:main
