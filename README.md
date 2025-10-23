@@ -1,6 +1,6 @@
 ## Desktop Cat: QT Overlay (XFCE4)
 
-[<img src="https://raw.githubusercontent.com/yumiaura/yumiaura/refs/heads/main/images/cat.gif" width="164" alt="cat.gif"/>](https://pypi.org/project/mycat/)
+[<img src="https://raw.githubusercontent.com/yumiaura/yumiaura/refs/heads/main/images/cat.gif" width="164" alt="cat.gif"/>](https://github.com/yumiaura)
 
 I made a cute little animated cat for your desktop.<br>
 It’s a lightweight Python + QT app — no borders, and you can drag it around easily.<br>
@@ -59,4 +59,5 @@ sudo apt install imagemagick
 convert images/cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 images/cat.gif
 ```
 
+Thank you for reading to the end 😄
 
