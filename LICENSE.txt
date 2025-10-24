@@ -1,0 +1,26 @@
+MIT CAT LICENSE (Meow-IT License)
+
+Copyright (c) 2025 @yumicabrera (GitHub)
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this Cat and associated files (the “Cat Software”), to deal in the Cat
+without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, cuddle, feed, water,
+and pet the Cat, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Cat (including any kittens
+produced therefrom).
+
+The Cat must be properly cared for, including but not limited to:
+regular feeding, hydration, petting sessions, and naps in sunny spots.
+Failure to comply with these terms may result in sad meows and emotional guilt.
+
+THE CAT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF BEHAVIOR, OBEDIENCE, OR NON-SHEDDING.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES,
+OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM,
+OUT OF, OR IN CONNECTION WITH THE CAT SOFTWARE OR THE USE OR OTHER DEALINGS IN THE CAT.
+
+ADDITIONAL DISCLAIMER:
+The Cat may sit on your keyboard, knock objects off your desk, or demand attention
+at inconvenient times. These are considered normal features, not bugs.

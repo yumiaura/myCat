@@ -210,4 +210,7 @@ convert images/cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 image
 - Create a new issue with your system details (OS, desktop environment, Python version)
 - Include any error messages from the terminal
 
+#### License
+[MIT License](LICENSE.txt)
+
 Thank you for reading to the end! 😸🐾
