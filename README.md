@@ -11,7 +11,7 @@ If you like it, maybe I’ll share an [AnimeGirl](https://github.com/yumiaura/my
 ### 1. Install Dependencies
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-pip
+sudo apt install -y python3 python3-pip libxcb-cursor0 libxkbcommon-x11-0
 pip install PySide6
 ```
 
