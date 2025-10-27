@@ -14,17 +14,17 @@ Dependencies:
 pip install PySide6
 """
 
-import argparse
-import json
 import os
-import signal
 import sys
 import time
+import json
+import signal
+import argparse
 from pathlib import Path
-from importlib.resources import files, as_file
-from typing import Optional, Tuple
-
+from types import FrameType
 from PySide6 import QtCore, QtGui, QtWidgets
+from importlib.resources import files, as_file
+
 
 # Config paths
 CFG_DIR = Path.home() / ".config" / "pixelcat"
@@ -33,7 +33,7 @@ CFG_FILE = CFG_DIR / "config.json"
 
 def slice_sprite_to_pixmaps(
     sprite_path: str, target_width: int
-) -> Tuple[QtGui.QPixmap, QtGui.QPixmap]:
+) -> tuple[QtGui.QPixmap, QtGui.QPixmap]:
     """
     Load sprite PNG, split into two halves, scale to target_width while keeping aspect.
     The left half is the 'open eyes' frame, right half is the 'closed eyes' frame.
@@ -77,7 +77,7 @@ def slice_sprite_to_pixmaps(
     return open_pixmap, closed_pixmap
 
 
-def load_packaged_pixmaps(target_width: int) -> Tuple[QtGui.QPixmap, QtGui.QPixmap]:
+def load_packaged_pixmaps(target_width: int) -> tuple[QtGui.QPixmap, QtGui.QPixmap]:
     """
     Load the bundled sprite from mycat/images/cat.png inside the installed package.
     """
@@ -86,7 +86,7 @@ def load_packaged_pixmaps(target_width: int) -> Tuple[QtGui.QPixmap, QtGui.QPixm
         return slice_sprite_to_pixmaps(str(sprite_path), target_width)
 
 
-def load_config() -> dict:
+def load_config() -> dict[str, int]:
     """Load configuration from file."""
     try:
         if CFG_FILE.exists():
@@ -97,7 +97,7 @@ def load_config() -> dict:
         return {}
 
 
-def save_config(config: dict) -> None:
+def save_config(config: dict[str, int]) -> None:
     """Save configuration to file."""
     try:
         CFG_DIR.mkdir(parents=True, exist_ok=True)
@@ -278,7 +278,7 @@ def main() -> None:
     app.setQuitOnLastWindowClosed(True)
     
     # Setup signal handlers for graceful shutdown
-    def signal_handler(signum, frame):
+    def signal_handler(signum: int, frame: FrameType | None) -> None:
         """Handle Ctrl+C gracefully."""
         print("\nReceived interrupt signal, shutting down...")
         app.quit()
