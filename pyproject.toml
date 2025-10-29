@@ -31,3 +31,6 @@ include = ["mycat*"]
 # Include packaged images inside the wheel
 [tool.setuptools.package-data]
 mycat = ["images/*"]
+
+[tool.mypy]
+strict = true

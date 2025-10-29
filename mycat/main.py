@@ -10,17 +10,17 @@ Dependencies:
 pip install PySide6
 """
 
-import argparse
-import configparser
-import logging
 import os
-import signal
 import sys
 import time
+import json
+import signal
+import argparse
 from pathlib import Path
-from typing import Optional
-
+from types import FrameType
 from PySide6 import QtCore, QtGui, QtWidgets
+from importlib.resources import files, as_file
+
 
 # Configure logging
 logging.basicConfig(
@@ -42,7 +42,9 @@ MAX_IMAGE_WIDTH = 500  # Maximum width for images in pixels (images will be scal
 PNG_TIME = 5.0  # Seconds to show PNG before playing GIF
 
 
-def scan_images_directory() -> list[str]:
+def slice_sprite_to_pixmaps(
+    sprite_path: str, target_width: int
+) -> tuple[QtGui.QPixmap, QtGui.QPixmap]:
     """
     Scan the images/ directory for PNG/GIF pairs.
     Returns a list of base names (without extension) for which both PNG and GIF exist.
@@ -89,7 +91,7 @@ def scale_pixmap_if_needed(pixmap: QtGui.QPixmap, max_width: int) -> QtGui.QPixm
     )
 
 
-def load_packaged_images(image_path: Optional[str] = None, default_image: Optional[str] = None) -> tuple[QtGui.QPixmap, QtGui.QMovie, str]:
+def load_packaged_pixmaps(target_width: int) -> tuple[QtGui.QPixmap, QtGui.QPixmap]:
     """
     Load PNG and GIF from images/ directory relative to the script.
     If image_path is provided, use it as the base for both PNG and GIF.
@@ -140,13 +142,8 @@ def load_packaged_images(image_path: Optional[str] = None, default_image: Option
     return pixmap, movie, base_name
 
 
-def load_config() -> dict:
-    """Load configuration from INI file."""
-    config_data = {'x': 100, 'y': 100}
-    
-    if not CFG_FILE.exists():
-        return config_data
-    
+def load_config() -> dict[str, int]:
+    """Load configuration from file."""
     try:
         config = configparser.ConfigParser()
         config.read(CFG_FILE)
@@ -162,57 +159,8 @@ def load_config() -> dict:
     return config_data
 
 
-def save_config(config: dict) -> None:
-    """Save configuration to INI file."""
-    try:
-        CFG_DIR.mkdir(parents=True, exist_ok=True)
-        
-        # Read existing config if it exists
-        file_config = configparser.ConfigParser()
-        if CFG_FILE.exists():
-            file_config.read(CFG_FILE)
-        
-        # Ensure [window] section exists
-        if 'window' not in file_config:
-            file_config.add_section('window')
-        
-        # Update window position if provided
-        if 'x' in config:
-            file_config['window']['x'] = str(config['x'])
-        if 'y' in config:
-            file_config['window']['y'] = str(config['y'])
-        
-        # Write to file
-        with open(CFG_FILE, 'w') as f:
-            file_config.write(f)
-    except Exception as e:
-        logger.error(f"Config save error: {e}")
-
-
-def load_image_from_ini() -> Optional[str]:
-    """Load default image setting from INI file."""
-    if not CFG_FILE.exists():
-        logger.info(f"INI config not found, using default: cat")
-        return None
-    
-    try:
-        config = configparser.ConfigParser()
-        config.read(CFG_FILE)
-        
-        if 'settings' in config and 'default_image' in config['settings']:
-            image_name = config['settings']['default_image']
-            logger.info(f"Loaded image from INI: {image_name}")
-            return image_name
-        else:
-            logger.info(f"INI config exists but no default_image setting found, using default: cat")
-            return None
-    except Exception as e:
-        logger.error(f"Error reading INI file: {e}, using default: cat")
-        return None
-
-
-def save_image_to_ini(image_name: str) -> None:
-    """Save current image setting to INI file."""
+def save_config(config: dict[str, int]) -> None:
+    """Save configuration to file."""
     try:
         CFG_DIR.mkdir(parents=True, exist_ok=True)
         
@@ -549,7 +497,7 @@ def main() -> None:
         sys.exit(1)
     
     # Setup signal handlers for graceful shutdown
-    def signal_handler(signum, frame):
+    def signal_handler(signum: int, frame: FrameType | None) -> None:
         """Handle Ctrl+C gracefully."""
         logger.info("\nReceived interrupt signal, shutting down...")
         app.quit()

@@ -46,8 +46,19 @@ mycat
 # Uninstall
 python3 -m pip uninstall mycat
 ```
+### 2.3 Install with uv
+```bash
+# Install
+git clone https://github.com/yumiaura/mycat
+cd mycat
+uv sync
+# Run
+mycat
+# Uninstall
+uv pip uninstall mycat
+```
 
-### 2.3 Run without installation 🏃‍♂️
+### 2.4 Run without installation 🏃‍♂️
 ```bash
 # Clone repository
 git clone https://github.com/yumiaura/mycat
@@ -65,6 +76,8 @@ mycat
 
 # Run from source without installation
 python3 mycat/main.py
+# or u can use uv
+uv mycat/main.py
 ```
 
 #### Command-Line Options
