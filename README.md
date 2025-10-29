@@ -1,3 +1,5 @@
+EN | [CN](https://github.com/Dendroculus/myCat/blob/main/docs/readmeCN.md) | [ID](https://github.com/Dendroculus/myCat/blob/main/docs/readmeID.md)
+
 ## Desktop Cat: QT Overlay 🐱
 
 [<img src="https://raw.githubusercontent.com/yumiaura/yumiaura/refs/heads/main/images/cat.gif" width="164" alt="cat.gif"/>](https://github.com/yumiaura)
