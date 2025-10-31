@@ -1,4 +1,4 @@
-[EN](https://github.com/yumiaura/myCat/blob/main/README.md) | [中文](https://github.com/Dendroculus/myCat/blob/main/docs/readmeCN.md) | ID
+[EN](https://github.com/yumiaura/myCat/blob/main/README.md) | [中文](https://github.com/yumiaura/myCat/blob/main/docs/readmeCN.md) | ID
 
 # Kucing Desktop: Aplikasi Mengambang QT 🐱
 

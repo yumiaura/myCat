@@ -21,6 +21,11 @@ dependencies = [
   "PySide6>=6.5.0"
 ]
 
+[dependency-groups]
+dev = [
+    "ruff>=0.14.3",
+]
+
 # Console script `mycat` → calls mycat.main:main
 [project.scripts]
 mycat = "mycat.main:main"
@@ -34,3 +39,12 @@ mycat = ["images/*"]
 
 [tool.mypy]
 strict = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py38"
+extend-exclude = ["README.md", "docs/*"]
+
+[tool.ruff.lint]
+select = ["C4", "E", "F", "I", "PERF", "UP"]
+ignore = ["PERF203"]
