@@ -1,4 +1,4 @@
-EN | [CN](https://github.com/Dendroculus/myCat/blob/main/docs/readmeCN.md) | [ID](https://github.com/Dendroculus/myCat/blob/main/docs/readmeID.md)
+EN | [CN](https://github.com/yumiaura/myCat/blob/main/docs/readmeCN.md) | [ID](https://github.com/yumiaura/myCat/blob/main/docs/readmeID.md)
 
 ## Desktop Cat: QT Overlay 🐱
 
