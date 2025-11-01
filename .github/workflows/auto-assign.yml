@@ -21,7 +21,7 @@ jobs:
           numOfAssignee: 1
       - name: Auto-assign PR
         if: github.event_name == 'pull_request'
-        uses: kentaro-m/auto-assign-action@v2.2.0
+        uses: kentaro-m/auto-assign-action@v2.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           addAssignees: yumiaura
