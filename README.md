@@ -12,6 +12,9 @@ If you like it, maybe I'll share an [AnimeGirl](https://github.com/yumiaura/myca
 <img width="1440" height="900" alt="image" src="https://github.com/user-attachments/assets/5bc3c45b-83ef-4fcb-8977-781eaf7b045b" />
 
 ### 1. Install Dependencies
+
+**Requirements**: Python 3.9 or higher
+
 ```bash
 sudo apt update
 sudo apt install -y python3 python3-pip libxcb-cursor0
@@ -185,6 +188,7 @@ zip images/cat.zip images/cat.gif
 - The config file should be at `~/.config/pixelcat/config.ini`
 
 **Installation issues on Windows** 🪟
+- Ensure you have Python 3.9 or higher: `python --version`
 - Make sure you're using the `run_windows.bat` script from the project root
 - Check that PySide6 installed correctly: `pip list | findstr PySide6`
 - Try running `python -c "import PySide6; print('PySide6 OK')"` to test
@@ -192,6 +196,12 @@ zip images/cat.zip images/cat.gif
 **Permission errors** 🔒
 - On Linux, avoid using `sudo` for installation - use user installs instead
 - Check that virtual environment activation worked: `which python3` and `which pip`
+
+**Python version issues** 🐍
+- This application requires Python 3.9 or higher due to modern type hints
+- Check your version: `python --version` or `python3 --version`
+- If you have Python 3.8 or older, please upgrade to Python 3.9+
+- Tested and working on Python 3.9, 3.10, 3.11, and 3.12
 
 #### Getting Help 🤝
 - Check the [GitHub Issues](https://github.com/yumiaura/mycat/issues) for similar problems
