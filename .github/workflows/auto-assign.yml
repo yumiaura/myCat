@@ -4,16 +4,25 @@ on:
     types: [opened]
   pull_request:
     types: [opened]
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
 jobs:
-  run:
+  assign:
     runs-on: ubuntu-latest
-    permissions:
-      issues: write
-      pull-requests: write
     steps:
-      - name: 'Auto-assign issue'
+      - name: Auto-assign issue
+        if: github.event_name == 'issues'
         uses: pozil/auto-assign-issue@v1
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           assignees: yumiaura
           numOfAssignee: 1
+      - name: Auto-assign PR
+        if: github.event_name == 'pull_request'
+        uses: kentaro-m/auto-assign-action@v2.2.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          addAssignees: yumiaura
+          addReviewers: yumiaura
