@@ -10,17 +10,21 @@ Dependencies:
 pip install PySide6
 """
 
-import argparse
-import configparser
-import logging
 import os
-import signal
 import sys
-import tempfile
+import math
 import time
+import shutil
+import signal
 import zipfile
+import logging
+import argparse
+import tempfile
+import configparser
 from pathlib import Path
 from typing import Optional
+from openai import OpenAI
+from datetime import datetime
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -34,9 +38,16 @@ LOGGING = {
 logging.basicConfig(**LOGGING)
 logger = logging.getLogger(__name__)
 
+# OpenAI client (uses key from environment variable)
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 # Config paths
 CFG_DIR = Path.home() / ".config" / "pixelcat"
 CFG_FILE = CFG_DIR / "config.ini"
+
+# Paths for history
+HSTR_DIR = CFG_DIR / "history"
+HSTR_DIR.mkdir(parents=True, exist_ok=True)
 
 # Image scaling settings
 IMAGE_WIDTH_MAX = 300  # Maximum width for images in pixels (images will be scaled down if larger)
@@ -596,6 +607,8 @@ class PixelCatWindow(QtWidgets.QWidget):
         
         # Save current image to INI on startup
         save_image_to_ini(self.file_name)
+
+        self.chat_dialog = None
     
     def _load_position(self) -> None:
         """Load window position from config."""
@@ -909,22 +922,413 @@ class PixelCatWindow(QtWidgets.QWidget):
         painter.drawPixmap(x, y, self.current_pixmap)
     
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
-        """Handle mouse press for dragging."""
+        """Handle mouse press for dragging or chat open."""
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            # We check - if the click is without movement, we open the chat
+            click_pos = event.globalPosition().toPoint()
+            self.drag_start_pos = click_pos - self.frameGeometry().topLeft()
+
+            # If the click is fast and no movement has started, open a dialog
             self.dragging = True
-            self.drag_start_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            self._click_time = time.time()
     
     def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
         """Handle mouse move for dragging."""
         if self.dragging and event.buttons() == QtCore.Qt.MouseButton.LeftButton:
             new_pos = event.globalPosition().toPoint() - self.drag_start_pos
             self.move(new_pos)
-    
+
     def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
-        """Handle mouse release to stop dragging and save position."""
         if event.button() == QtCore.Qt.MouseButton.LeftButton and self.dragging:
             self.dragging = False
-            self._save_position()
+            duration = time.time() - getattr(self, "_click_time", 0)
+
+            if duration < 0.25:
+                # If the window is already open, just show it and return to the top
+                if self.chat_dialog and self.chat_dialog.isVisible():
+                    self.chat_dialog.raise_()
+                    self.chat_dialog.activateWindow()
+                    return
+
+                # otherwise create a new one
+                self.chat_dialog = ChatDialog(self)
+                self.chat_dialog.show()
+
+                self._position_chat_dialog()
+            else:
+                self._save_position()
+
+    def _position_chat_dialog(self):
+        """Place the window next to the cat without going beyond the screen."""
+        if not self.chat_dialog:
+            return
+
+        screen_rect = QtGui.QGuiApplication.primaryScreen().availableGeometry()
+        cat_rect = self.geometry()
+        dialog = self.chat_dialog
+
+        dialog_width = dialog.width()
+        dialog_height = dialog.height()
+
+        # Position: above the cat's head
+        x = cat_rect.center().x() - dialog_width // 2
+        y = cat_rect.top() - dialog_height - 10  # a little taller than the cat
+
+        # If it goes beyond the top of the screen, move it down
+        if y < 0:
+            y = cat_rect.bottom() + 10
+
+        # if it goes beyond the left or right edge, move it
+        if x < 0:
+            x = 10
+        if x + dialog_width > screen_rect.width():
+            x = screen_rect.width() - dialog_width - 10
+
+        dialog.move(x, y)
+
+class ChatDialog(QtWidgets.QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(
+            QtCore.Qt.WindowType.FramelessWindowHint |
+            QtCore.Qt.WindowType.Tool |
+            QtCore.Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setFixedSize(420, 320)
+
+        # --- Drag and drop ---
+        self.dragging = False
+        self.drag_offset = QtCore.QPoint()
+
+        # Container with appearance animation
+        self.container = QtWidgets.QWidget(self)
+        self.container.setGeometry(0, 0, 420, 320)
+
+        # Transparency effect
+        self.opacity_effect = QtWidgets.QGraphicsOpacityEffect(self.container)
+        self.container.setGraphicsEffect(self.opacity_effect)
+        self.opacity_effect.setOpacity(0.0)
+
+        # Smooth appearance
+        self.fade_animation = QtCore.QPropertyAnimation(self.opacity_effect, b"opacity")
+        self.fade_animation.setStartValue(0.0)
+        self.fade_animation.setEndValue(1.0)
+        self.fade_animation.setDuration(300)
+        self.fade_animation.setEasingCurve(QtCore.QEasingCurve.Type.OutCubic)
+        self.fade_animation.start()
+
+        # Headline
+        self.title_label = QtWidgets.QLabel("Chat with a cat", self.container)
+        self.title_label.setGeometry(20, 15, 220, 30)
+        self.title_label.setStyleSheet("""
+            QLabel {
+                color: #8b4789;
+                font-family: "Segoe UI", "Arial", sans-serif;
+                font-size: 16px;
+                font-weight: bold;
+            }
+        """)
+
+        # General style for control buttons
+        button_style = """
+            QPushButton {
+                background-color: rgba(255, 150, 200, 150);
+                border: none;
+                border-radius: 14px;
+                font-size: 16px;
+                color: white;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 100, 150, 200);
+            }
+            QPushButton:pressed {
+                background-color: rgba(255, 80, 130, 220);
+            }
+        """
+
+        # Clear History button
+        self.clear_button = QtWidgets.QPushButton("⌫", self.container)
+        self.clear_button.setGeometry(296, 12, 28, 28)
+        self.clear_button.setToolTip("Clear history")
+        self.clear_button.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.clear_button.setStyleSheet(button_style)
+        self.clear_button.clicked.connect(self._clear_history)
+
+        # Folder button
+        self.history_button = QtWidgets.QPushButton("⌂", self.container)
+        self.history_button.setGeometry(338, 12, 28, 28)
+        self.history_button.setToolTip("Open the history folder")
+        self.history_button.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.history_button.setStyleSheet(button_style)
+        self.history_button.clicked.connect(self._open_history_folder)
+
+        # Close button "Cross"
+        self.close_button = QtWidgets.QPushButton("×", self.container)
+        self.close_button.setGeometry(380, 12, 28, 28)
+        self.close_button.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.close_button.setStyleSheet(button_style)
+        self.close_button.clicked.connect(self._close_with_animation)
+
+        # Text area
+        self.text_area = QtWidgets.QTextEdit(self.container)
+        self.text_area.setReadOnly(True)
+        self.text_area.setGeometry(20, 55, 380, 180)
+        self.text_area.setStyleSheet("""
+            QTextEdit {
+                background-color: rgba(255, 255, 255, 245);
+                border: 2px solid rgba(255, 192, 220, 150);
+                border-radius: 18px;
+                font-family: "Segoe UI", "Arial", sans-serif;
+                font-size: 13px;
+                color: #5c2a5a;
+                padding: 12px;
+            }
+            QScrollBar:vertical {
+                background: rgba(255, 230, 245, 200);
+                width: 8px;
+                border-radius: 4px;
+                margin: 2px;
+            }
+            QScrollBar::handle:vertical {
+                background: rgba(255, 150, 200, 180);
+                border-radius: 4px;
+                min-height: 20px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: rgba(255, 130, 180, 200);
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        """)
+
+        # Input field
+        self.input_field = QtWidgets.QLineEdit(self.container)
+        self.input_field.setGeometry(20, 250, 290, 42)
+        self.input_field.setPlaceholderText("Write a message...")
+        self.input_field.setStyleSheet("""
+            QLineEdit {
+                background-color: rgba(255, 255, 255, 250);
+                border: 2px solid rgba(255, 192, 220, 120);
+                border-radius: 21px;
+                padding-left: 16px;
+                padding-right: 16px;
+                font-size: 13px;
+                font-family: "Segoe UI", "Arial", sans-serif;
+                color: #5c2a5a;
+            }
+            QLineEdit:focus {
+                border: 2px solid rgba(255, 150, 200, 200);
+                background-color: rgba(255, 250, 255, 255);
+            }
+            QLineEdit:hover {
+                background-color: rgba(255, 248, 255, 255);
+            }
+        """)
+
+        # Send button
+        self.send_button = QtWidgets.QPushButton("→", self.container)
+        self.send_button.setGeometry(320, 250, 80, 42)
+        self.send_button.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.send_button.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #ffb6d9, stop:1 #ff99cc);
+                border: none;
+                border-radius: 21px;
+                font-size: 20px;
+                color: white;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #ff99cc, stop:1 #ff80b3);
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #ff80b3, stop:1 #ff6699);
+            }
+        """)
+        self.send_button.clicked.connect(self._send_message)
+        self.input_field.returnPressed.connect(self._send_message)
+
+        # --- Working with history ---
+        self.history_file = self._load_or_create_history()
+        self.message_count = 0
+
+    # Load the latest history file or create a new one
+    def _load_or_create_history(self):
+        # Looking for the latest history file
+        latest = max(HSTR_DIR.glob("*.txt"), key=lambda f: f.stat().st_mtime, default=None)
+        if latest and latest.exists():
+            content = latest.read_text(encoding="utf-8").strip()
+            if content:
+                self.text_area.setPlainText(content)
+                # We count the number of messages for correct operation
+                lines = content.split('\n')
+                self.message_count = sum(1 for line in lines if line.startswith("You:"))
+            else:
+                self._show_welcome_message()
+            return latest
+        else:
+            # We create ONE file for the ENTIRE history
+            new_file = HSTR_DIR / "history.txt"
+            if not new_file.exists():
+                new_file.touch()
+            self._show_welcome_message()
+            return new_file
+
+    # Show welcome message
+    def _show_welcome_message(self):
+        self.text_area.clear()
+        self.text_area.setHtml("""
+            <p style='color: #999; font-style: italic; text-align: center; margin-top: 40px;'>
+                Write something...
+            </p>
+        """)
+        self.message_count = 0
+
+    # Button "📁"
+    def _open_history_folder(self):
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(HSTR_DIR)))
+
+    # The "⌫" button clears the chat.
+    def _clear_history(self):
+        # --- Backup ---
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_file = HSTR_DIR / f"history_backup_{timestamp}.txt"
+        
+        if self.history_file.exists():
+            shutil.copy(self.history_file, backup_file)
+        
+        # --- Clearing the current chat window ---
+        self.text_area.clear()
+        self.message_count = 0
+        
+        # --- Clearing history.txt itself ---
+        self.history_file.write_text("", encoding="utf-8")
+        
+        # --- Showing a welcome message ---
+        self._show_welcome_message()
+
+    def _close_with_animation(self):
+        fade_out = QtCore.QPropertyAnimation(self.opacity_effect, b"opacity")
+        fade_out.setStartValue(1.0)
+        fade_out.setEndValue(0.0)
+        fade_out.setDuration(200)
+        fade_out.setEasingCurve(QtCore.QEasingCurve.Type.InCubic)
+        fade_out.finished.connect(self.close)
+        self._fade_out_animation = fade_out
+        fade_out.start()
+
+    # --- Dragging a window ---
+    def mousePressEvent(self, event: QtGui.QMouseEvent):
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.dragging = True
+            self.drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+
+    def mouseMoveEvent(self, event: QtGui.QMouseEvent):
+        if self.dragging:
+            self.move(event.globalPosition().toPoint() - self.drag_offset)
+
+    def mouseReleaseEvent(self, event: QtGui.QMouseEvent):
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.dragging = False
+
+    # --- Drawing a window ---
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        
+        # Shadow
+        shadow_rect = QtCore.QRectF(8, 8, self.width()-16, self.height()-16)
+        shadow_path = QtGui.QPainterPath()
+        shadow_path.addRoundedRect(shadow_rect, 28, 28)
+        painter.fillPath(shadow_path, QtGui.QColor(0, 0, 0, 30))
+        
+        # Main window with gradient
+        rect = QtCore.QRectF(5, 5, self.width()-10, self.height()-10)
+        path = QtGui.QPainterPath()
+        path.addRoundedRect(rect, 28, 28)
+        
+        gradient = QtGui.QLinearGradient(rect.topLeft(), rect.bottomRight())
+        gradient.setColorAt(0, QtGui.QColor(255, 240, 250, 245))
+        gradient.setColorAt(1, QtGui.QColor(255, 230, 245, 240))
+        painter.fillPath(path, gradient)
+        
+        # Outline
+        pen = QtGui.QPen(QtGui.QColor(255, 180, 210, 180))
+        pen.setWidth(2)
+        painter.setPen(pen)
+        painter.drawPath(path)
+
+    # --- AI Sending and Replying ---
+    def _send_message(self):
+        text = self.input_field.text().strip()
+        if not text:
+            return
+
+        # If this is the first message, clear the HTML and switch to plain text.
+        if self.message_count == 0:
+            self.text_area.clear()
+
+        self.message_count += 1
+
+        # Adding a user message
+        current_text = self.text_area.toPlainText()
+        if current_text:
+            self.text_area.setPlainText(current_text + f"\nYou: {text}\n")
+        else:
+            self.text_area.setPlainText(f"You: {text}\n")
+        
+        # Save to file
+        with open(self.history_file, "a", encoding="utf-8") as f:
+            f.write(f"You: {text}\n")
+
+        self.input_field.clear()
+        
+        # Scroll down
+        scrollbar = self.text_area.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+
+        # Requesting a response from AI
+        QtCore.QTimer.singleShot(200, lambda: self._ask_ai(text))
+
+    def _ask_ai(self, text: str):
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content":
+                        "You are a cute, affectionate talking cat belonging to a girl. "
+                        "You respond warmly, playfully and lovingly."},
+                    {"role": "user", "content": text},
+                ]
+            )
+            answer = response.choices[0].message.content.strip()
+        except Exception as e:
+            answer = f"Error: {e}"
+
+        # We also add the cat's response using setPlainText
+        current_text = self.text_area.toPlainText()
+        self.text_area.setPlainText(current_text + f"\nCat: {answer}\n")
+        
+        with open(self.history_file, "a", encoding="utf-8") as f:
+            f.write(f"Cat: {answer}\n")
+
+        scrollbar = self.text_area.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
+
+    def keyPressEvent(self, event: QtGui.QKeyEvent):
+        if event.key() in (QtCore.Qt.Key.Key_Return, QtCore.Qt.Key.Key_Enter):
+            if self.input_field.hasFocus():
+                self._send_message()  # Enter sends the text
+            else:
+                event.ignore()        # Enter is not used anywhere.
+        else:
+            super().keyPressEvent(event)
 
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""

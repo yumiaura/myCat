@@ -18,7 +18,24 @@ sudo apt install -y python3 python3-pip libxcb-cursor0
 pip install PySide6 Pillow
 ```
 
-### 2.1 Install from PyPI
+### 2. Set up OpenAI API token 🔑
+
+This application requires an OpenAI API token to access certain AI features.
+
+#### Windows (PowerShell)
+```powershell
+setx OPENAI_API_KEY "your_api_key_here"
+```
+
+#### Linux/macOS
+
+```bash
+export OPENAI_API_KEY="your_api_key_here"
+```
+
+After setting the token, restart your terminal or source your shell configuration to apply it.
+
+### 3.1 Install from PyPI
 ```bash
 # user install (recommended on Ubuntu)
 python3 -m venv --system-site-packages .venv
@@ -36,7 +53,7 @@ python3 -m pip install --upgrade mycat
 python3 -m pip uninstall mycat
 ```
 
-### 2.2 Download from GitHub and install
+### 3.2 Download from GitHub and install
 ```bash
 # Install
 git clone https://github.com/yumiaura/mycat
@@ -50,7 +67,7 @@ mycat
 python3 -m pip uninstall mycat
 ```
 
-### 2.3 Run without installation 🏃‍♂️
+### 3.3 Run without installation 🏃‍♂️
 ```bash
 # Clone repository
 git clone https://github.com/yumiaura/mycat
@@ -58,7 +75,7 @@ cd mycat
 python3 mycat/main.py --image images/cat.zip
 ```
 
-### 3. Usage & Options 🎮
+### 4. Usage & Options 🎮
 
 After installation, you can customize the cat 🐱 with various command-line options:
 
