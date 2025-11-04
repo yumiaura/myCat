@@ -4,6 +4,12 @@ EN | [CN](https://github.com/yumiaura/myCat/blob/main/docs/readmeCN.md) | [ID](h
 
 [<img src="https://raw.githubusercontent.com/yumiaura/yumiaura/refs/heads/main/images/cat.gif" width="164" alt="cat.gif"/>](https://github.com/yumiaura)
 
+<p class="badges">
+  <img src="https://img.shields.io/pypi/pyversions/mycat?color=brightgreen" alt="Python Versions">
+  <a href="https://pypi.org/project/mycat/"><img src="https://img.shields.io/pypi/v/mycat?color=brightgreen" alt="PyPI Version"></a>
+  <a href="https://pypi.org/project/mycat/"><img src="https://img.shields.io/pepy/dt/mycat?label=pypi%20%7C%20downloads&color=brightgreen" alt="Pepy Total Downloads"/></a>
+</p>
+
 I made a cute little animated cat 🐈 for your desktop.<br>
 It's a lightweight Python + QT app — no borders, and you can drag it around easily.<br>
 Shows static first frame for 5 seconds, then plays GIF animation once, then loops back to static.<br>
