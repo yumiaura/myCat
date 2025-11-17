@@ -166,13 +166,16 @@ class ChatDialog(QtWidgets.QDialog):
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         self.scroll_area.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignBottom
+        )
         main_layout.addWidget(self.scroll_area, 1)
 
         self.messages_widget = QtWidgets.QWidget()
         self.messages_layout = QtWidgets.QVBoxLayout(self.messages_widget)
         self.messages_layout.setContentsMargins(6, 6, 6, 6)
         self.messages_layout.setSpacing(4)
-        self.messages_layout.insertStretch(0, 1)
+        self.messages_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignBottom)
         self.scroll_area.setWidget(self.messages_widget)
         self.scroll_area.verticalScrollBar().rangeChanged.connect(
             lambda *_: QtCore.QTimer.singleShot(0, self._scroll_to_bottom)
@@ -356,8 +359,8 @@ class ChatDialog(QtWidgets.QDialog):
         self._update_bubble_widths()
 
     def _clear_message_widgets(self) -> None:
-        for index in range(self.messages_layout.count() - 1, 0, -1):
-            item = self.messages_layout.takeAt(index)
+        while self.messages_layout.count():
+            item = self.messages_layout.takeAt(0)
             widget = item.widget()
             if widget:
                 widget.deleteLater()
@@ -396,6 +399,7 @@ class ChatDialog(QtWidgets.QDialog):
             widget = item.widget()
             if isinstance(widget, MessageBubble):
                 widget.set_max_width(max_width)
+        self.messages_widget.setMinimumHeight(viewport.height())
 
     def _log_request_summary(self, response: str, success: bool) -> None:
         if self._pending_request_started is None or self._pending_request_text is None:
