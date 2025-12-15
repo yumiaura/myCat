@@ -1,0 +1,12 @@
+services:
+  mycat:
+    build: .
+    image: mycat-mycat 
+    
+    environment:
+      - QT_QPA_PLATFORM=xcb
+      - DISPLAY=host.docker.internal:0
+      - LIBGL_ALWAYS_INDIRECT=1
+
+    volumes: []
+    restart: "no"

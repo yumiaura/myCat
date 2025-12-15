@@ -1,0 +1,14 @@
+services:
+  mycat:
+    build: .
+    image: mycat-mycat 
+    
+    environment:
+      - QT_QPA_PLATFORM=xcb
+      - DISPLAY=:0
+
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+
+    network_mode: host
+    restart: "no"
