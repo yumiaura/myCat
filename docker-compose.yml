@@ -6,9 +6,11 @@ services:
     environment:
       - QT_QPA_PLATFORM=xcb
       - DISPLAY=:0
+      - XAUTHORITY=/root/.Xauthority
 
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - $HOME/.Xauthority:/root/.Xauthority:ro
 
     network_mode: host
     restart: "no"
