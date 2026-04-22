@@ -5,6 +5,8 @@ services:
     image: mycat:local
     container_name: mycat-app-mac
     pull_policy: never
+    env_file:
+      - .env
 
     environment:
       - QT_QPA_PLATFORM=xcb

@@ -747,7 +747,22 @@ class PixelCatWindow(QtWidgets.QWidget):
     def _show_context_menu(self, pos: QtCore.QPoint) -> None:
         """Show context menu at the given position."""
         menu = QtWidgets.QMenu(self)
-        
+
+        toggle_llm_enabled = getattr(self, "_toggle_llm_enabled", None)
+        llm_is_enabled = getattr(self, "_is_llm_enabled", None)
+        if callable(toggle_llm_enabled):
+            llm_enabled_action = menu.addAction("LLM Enabled")
+            llm_enabled_action.setCheckable(True)
+            llm_enabled_action.setChecked(bool(llm_is_enabled() if callable(llm_is_enabled) else True))
+            llm_enabled_action.triggered.connect(lambda _checked: toggle_llm_enabled())
+            menu.addSeparator()
+
+        toggle_chat = getattr(self, "_toggle_llm_chat", None)
+        if callable(toggle_chat):
+            chat_action = menu.addAction("Chat")
+            chat_action.triggered.connect(toggle_chat)
+            menu.addSeparator()
+
         # Add Images submenu if we have available images
         if len(self.available_images) > 0:
             images_menu = menu.addMenu("Images")

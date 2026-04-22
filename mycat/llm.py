@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 from dataclasses import dataclass
 from typing import Optional, Protocol
 
@@ -26,6 +27,7 @@ class LLMContext:
     backend_name: str
     backend: LLMBackend
     settings: llm_prompt.LLMSettings
+    enabled: bool = True
 
 
 class LLMDependencyError(RuntimeError):
@@ -54,12 +56,19 @@ def initialize(args) -> Optional[LLMContext]:
         backend_name = "openai"
     elif getattr(args, "ollama", False):
         backend_name = "ollama"
+    else:
+        # Allow enabling backend without CLI flags (useful for docker-compose runs).
+        llm_prompt.load_env_file()
+        env_backend = (os.getenv("LLM_BACKEND") or "").strip().lower()
+        if env_backend in {"openai", "ollama"}:
+            backend_name = env_backend
 
     if not backend_name:
         logger.debug("LLM backend not requested")
         return None
 
     llm_prompt.load_env_file()
+    enabled = _read_enabled_flag()
     settings = llm_prompt.load_llm_settings()
     logger.info("Initializing LLM backend '%s'", backend_name)
     try:
@@ -69,7 +78,7 @@ def initialize(args) -> Optional[LLMContext]:
         return None
 
     logger.info("LLM backend '%s' ready", backend_name)
-    return LLMContext(backend_name=backend_name, backend=backend, settings=settings)
+    return LLMContext(backend_name=backend_name, backend=backend, settings=settings, enabled=enabled)
 
 
 def attach(window: QtWidgets.QWidget, context: LLMContext) -> None:
@@ -77,7 +86,12 @@ def attach(window: QtWidgets.QWidget, context: LLMContext) -> None:
     if not context:
         return
     logger.debug("Attaching LLM UI to window %s", window)
-    llm_ui.attach_chat(window, context)
+    llm_ui.attach_chat(window, context, enabled=context.enabled)
+
+
+def _read_enabled_flag() -> bool:
+    value = (os.getenv("LLM_ENABLED") or "1").strip().lower()
+    return value not in {"0", "false", "off", "no"}
 
 
 def create_backend(name: str, settings: llm_prompt.LLMSettings) -> LLMBackend:

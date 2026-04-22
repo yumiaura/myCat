@@ -18,19 +18,23 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def attach_chat(window: QtWidgets.QWidget, context: "LLMContext") -> None:
-    controller = _LLMController(window, context)
+def attach_chat(window: QtWidgets.QWidget, context: "LLMContext", enabled: bool = True) -> None:
+    controller = _LLMController(window, context, enabled=enabled)
     setattr(window, "_llm_controller", controller)
+    setattr(window, "_toggle_llm_chat", controller.toggle_chat)
+    setattr(window, "_toggle_llm_enabled", controller.toggle_enabled)
+    setattr(window, "_is_llm_enabled", controller.is_enabled)
     logger.debug("Chat controller attached to window %s", window)
 
 
 class _LLMController(QtCore.QObject):
     """Owns the chat dialog lifecycle and keeps it anchored to the cat window."""
 
-    def __init__(self, window: QtWidgets.QWidget, context: "LLMContext") -> None:
+    def __init__(self, window: QtWidgets.QWidget, context: "LLMContext", enabled: bool = True) -> None:
         super().__init__(window)
         self.window = window
         self.context = context
+        self.enabled = enabled
         self.chat_dialog: Optional[ChatDialog] = None
         self._press_pos: Optional[QtCore.QPoint] = None
         self._press_time: Optional[float] = None
@@ -74,6 +78,9 @@ class _LLMController(QtCore.QObject):
             self._toggle_chat()
 
     def _toggle_chat(self) -> None:
+        if not self.enabled:
+            logger.debug("LLM chat is disabled, ignoring toggle")
+            return
         if self.chat_dialog:
             if self.chat_dialog.isVisible():
                 logger.debug("Hiding chat dialog")
@@ -92,6 +99,23 @@ class _LLMController(QtCore.QObject):
         dialog.destroyed.connect(self._on_chat_destroyed)
         self.chat_dialog = dialog
         self._position_dialog()
+
+    def toggle_chat(self) -> None:
+        """Public hook for opening chat from host UI."""
+        self._toggle_chat()
+
+    def is_enabled(self) -> bool:
+        return self.enabled
+
+    def set_enabled(self, enabled: bool) -> None:
+        self.enabled = enabled
+        if not enabled and self.chat_dialog and self.chat_dialog.isVisible():
+            self.chat_dialog.hide()
+
+    def toggle_enabled(self) -> bool:
+        self.set_enabled(not self.enabled)
+        logger.info("LLM chat %s", "enabled" if self.enabled else "disabled")
+        return self.enabled
 
     def _position_dialog(self) -> None:
         if not self.chat_dialog:
@@ -190,8 +214,24 @@ class ChatDialog(QtWidgets.QDialog):
                 background-color: #dfdfdf;
                 border: 1px solid #b0b0b0;
                 border-radius: 0;
-                padding: 0 6px;
+                padding: 0 5px;
                 min-width: 32px;
+            }
+            QPushButton:hover {
+                background-color: #cecece;
+            }
+            QPushButton:pressed {
+                background-color: #bdbdbd;
+            }
+        """
+        thin_button_style = """
+            QPushButton {
+                background-color: #dfdfdf;
+                border: 1px solid #b0b0b0;
+                border-radius: 0;
+                padding: 0;
+                min-width: 12px;
+                max-width: 12px;
             }
             QPushButton:hover {
                 background-color: #cecece;
@@ -230,15 +270,31 @@ class ChatDialog(QtWidgets.QDialog):
         self.send_button.clicked.connect(self._send_message)
         input_layout.addWidget(self.send_button)
 
-        self.history_button = QtWidgets.QPushButton("📁")
-        self.history_button.setMinimumHeight(34)
-        self.history_button.setDefault(False)
-        self.history_button.setAutoDefault(False)
-        self.history_button.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
-        self.history_button.setToolTip("Open history/config folder")
-        self.history_button.clicked.connect(self._open_history_folder)
-        self.history_button.setStyleSheet(button_style)
-        input_layout.addWidget(self.history_button)
+        self.export_button = QtWidgets.QPushButton("E")
+        self.export_button.setMinimumHeight(34)
+        self.export_button.setMaximumHeight(34)
+        self.export_button.setMinimumWidth(12)
+        self.export_button.setMaximumWidth(12)
+        self.export_button.setDefault(False)
+        self.export_button.setAutoDefault(False)
+        self.export_button.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        self.export_button.setToolTip("Export history to file")
+        self.export_button.clicked.connect(self._export_history)
+        self.export_button.setStyleSheet(thin_button_style)
+        input_layout.addWidget(self.export_button)
+
+        self.import_button = QtWidgets.QPushButton("I")
+        self.import_button.setMinimumHeight(34)
+        self.import_button.setMaximumHeight(34)
+        self.import_button.setMinimumWidth(12)
+        self.import_button.setMaximumWidth(12)
+        self.import_button.setDefault(False)
+        self.import_button.setAutoDefault(False)
+        self.import_button.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        self.import_button.setToolTip("Import history from file")
+        self.import_button.clicked.connect(self._import_history)
+        self.import_button.setStyleSheet(thin_button_style)
+        input_layout.addWidget(self.import_button)
 
         main_layout.addLayout(input_layout)
         self.input_field.returnPressed.connect(self._send_message)
@@ -260,8 +316,43 @@ class ChatDialog(QtWidgets.QDialog):
         self.messages_layout.addWidget(label)
         self.message_count = 0
 
-    def _open_history_folder(self) -> None:
-        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(llm_prompt.CFG_DIR)))
+    def _export_history(self) -> None:
+        default_path = str(llm_prompt.CFG_DIR / "history-export.txt")
+        target_path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self,
+            "Export History",
+            default_path,
+            "Text files (*.txt);;All files (*)",
+        )
+        if not target_path:
+            return
+        try:
+            content = self.history_file.read_text(encoding="utf-8")
+            with open(target_path, "w", encoding="utf-8") as handle:
+                handle.write(content)
+        except OSError as exc:
+            QtWidgets.QMessageBox.warning(self, "Export failed", f"Could not export history:\n{exc}")
+            return
+        QtWidgets.QMessageBox.information(self, "Export complete", f"History saved to:\n{target_path}")
+
+    def _import_history(self) -> None:
+        source_path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "Import History",
+            str(llm_prompt.CFG_DIR),
+            "Text files (*.txt);;All files (*)",
+        )
+        if not source_path:
+            return
+        try:
+            with open(source_path, "r", encoding="utf-8") as handle:
+                content = handle.read()
+            self.history_file.write_text(content, encoding="utf-8")
+        except OSError as exc:
+            QtWidgets.QMessageBox.warning(self, "Import failed", f"Could not import history:\n{exc}")
+            return
+        self._load_history()
+        QtWidgets.QMessageBox.information(self, "Import complete", f"History loaded from:\n{source_path}")
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
         if self.controller.window.isVisible():
@@ -328,7 +419,8 @@ class ChatDialog(QtWidgets.QDialog):
     def _set_input_enabled(self, enabled: bool) -> None:
         self.input_field.setEnabled(enabled)
         self.send_button.setEnabled(enabled)
-        self.history_button.setEnabled(enabled)
+        self.export_button.setEnabled(enabled)
+        self.import_button.setEnabled(enabled)
 
     def _append_message(
         self,
