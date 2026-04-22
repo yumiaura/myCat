@@ -22,6 +22,16 @@ import zipfile
 from pathlib import Path
 from typing import Optional
 
+# Allow running both as `python -m mycat` and `python mycat/main.py`
+if __package__:
+    from . import llm
+else:
+    import importlib
+    repo_root = Path(__file__).resolve().parent.parent
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    llm = importlib.import_module("mycat.llm")
+
 from PySide6 import QtCore, QtGui, QtWidgets
 
 # Configure logging
@@ -33,9 +43,10 @@ LOGGING = {
 }
 logging.basicConfig(**LOGGING)
 logger = logging.getLogger(__name__)
+logger.debug("LLM integration module path: %s", getattr(llm, "__file__", "builtin"))
 
 # Config paths
-CFG_DIR = Path.home() / ".config" / "pixelcat"
+CFG_DIR = Path.home() / ".config" / "mycat"
 CFG_FILE = CFG_DIR / "config.ini"
 
 # Image scaling settings
@@ -58,7 +69,7 @@ def get_temp_dir() -> Path:
     global TEMP_DIR
     if TEMP_DIR is None:
         # Use tmpdir (which may be tmpfs on Linux) or fallback to system temp
-        TEMP_DIR = Path(tempfile.gettempdir()) / "pixelcat"
+        TEMP_DIR = Path(tempfile.gettempdir()) / "mycat"
         TEMP_DIR.mkdir(parents=True, exist_ok=True)
     return TEMP_DIR
 
@@ -736,7 +747,22 @@ class PixelCatWindow(QtWidgets.QWidget):
     def _show_context_menu(self, pos: QtCore.QPoint) -> None:
         """Show context menu at the given position."""
         menu = QtWidgets.QMenu(self)
-        
+
+        toggle_llm_enabled = getattr(self, "_toggle_llm_enabled", None)
+        llm_is_enabled = getattr(self, "_is_llm_enabled", None)
+        if callable(toggle_llm_enabled):
+            llm_enabled_action = menu.addAction("LLM Enabled")
+            llm_enabled_action.setCheckable(True)
+            llm_enabled_action.setChecked(bool(llm_is_enabled() if callable(llm_is_enabled) else True))
+            llm_enabled_action.triggered.connect(lambda _checked: toggle_llm_enabled())
+            menu.addSeparator()
+
+        toggle_chat = getattr(self, "_toggle_llm_chat", None)
+        if callable(toggle_chat):
+            chat_action = menu.addAction("Chat")
+            chat_action.triggered.connect(toggle_chat)
+            menu.addSeparator()
+
         # Add Images submenu if we have available images
         if len(self.available_images) > 0:
             images_menu = menu.addMenu("Images")
@@ -951,11 +977,14 @@ def parse_args() -> argparse.Namespace:
         metavar=("X", "Y"),
         help="Start position (overrides remembered position)",
     )
+    llm.add_arguments(parser)
     return parser.parse_args()
 
 def main() -> None:
     """Main entry point."""
     args = parse_args()
+
+    llm_context = llm.initialize(args)
     
     # Suppress Qt D-Bus warnings on Linux
     import os
@@ -1012,6 +1041,8 @@ def main() -> None:
     
     # Create and show window
     window = PixelCatWindow(png_pixmap, gif_movie, args.wait, file_name, available_images)
+    if llm_context:
+        llm.attach(window, llm_context)
     
     if args.pos:
         window.move(args.pos[0], args.pos[1])
@@ -1035,4 +1066,3 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logger.info("\nShutdown requested by user")
         sys.exit(0)
-

@@ -17,7 +17,7 @@ Thank you for considering contributing to this cute desktop pet project! 🐱
    source .venv/bin/activate
 
    # On Windows
-   python3 -m venv .venv
+   python -m venv .venv
    .venv\Scripts\activate
    ```
 
@@ -25,9 +25,19 @@ Thank you for considering contributing to this cute desktop pet project! 🐱
    ```bash
    pip install -e .
    pip install PySide6  # for development
+   pip install openai
    ```
 
-4. **Run the application:**
+4. **Set up your OpenAI API token:**
+   ```bash
+   # Windows (PowerShell)
+   setx OPENAI_API_KEY "your_api_key_here"
+
+   # Linux/macOS
+   export OPENAI_API_KEY="your_api_key_here"
+   ```
+
+5. **Run the application:**
    ```bash
    # From source
    python3 mycat/main.py

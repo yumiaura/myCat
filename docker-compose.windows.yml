@@ -5,11 +5,14 @@ services:
     image: mycat:local
     container_name: mycat-app-windows
     pull_policy: never
+    env_file:
+      - .env
 
     environment:
       - QT_QPA_PLATFORM=xcb
       - DISPLAY=host.docker.internal:0.0
       - LIBGL_ALWAYS_INDIRECT=1
 
-    volumes: []
+    volumes:
+      - ./mycat:/app/mycat
     restart: "no"

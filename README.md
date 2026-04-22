@@ -19,14 +19,31 @@ If you like it, maybe I'll share an [AnimeGirl](https://github.com/yumiaura/myca
 
 ### 1. Install Dependencies
 
+**Requirements**: Python 3.9 or higher
 ```bash
 sudo apt update
 sudo apt install -y python3 python3-pip libxcb-cursor0
 pip install PySide6 Pillow
 ```
 
-### 2.1 Install from PyPI
+### 2. Set up OpenAI API token 🔑
 
+This application requires an OpenAI API token to access certain AI features.
+
+#### Windows (PowerShell)
+```powershell
+setx OPENAI_API_KEY "your_api_key_here"
+```
+
+#### Linux/macOS
+
+```bash
+export OPENAI_API_KEY="your_api_key_here"
+```
+
+After setting the token, restart your terminal or source your shell configuration to apply it.
+
+### 3.1 Install from PyPI
 ```bash
 # user install (recommended on Ubuntu)
 python3 -m venv --system-site-packages .venv
@@ -44,8 +61,7 @@ python3 -m pip install --upgrade mycat
 python3 -m pip uninstall mycat
 ```
 
-### 2.2 Download from GitHub and install
-
+### 3.2 Download from GitHub and install
 ```bash
 # Install
 git clone https://github.com/yumiaura/mycat
@@ -59,8 +75,7 @@ mycat
 python3 -m pip uninstall mycat
 ```
 
-### 2.3 Run without installation 🏃‍♂️
-
+### 3.3 Run without installation 🏃‍♂️
 ```bash
 # Clone repository
 git clone https://github.com/yumiaura/mycat
@@ -68,7 +83,7 @@ cd mycat
 python3 mycat/main.py --image images/cat.zip
 ```
 
-### 3. Usage & Options 🎮
+### 4. Usage & Options 🎮
 
 After installation, you can customize the cat 🐱 with various command-line options:
 
@@ -239,7 +254,7 @@ docker compose -f docker-compose.mac.yml up
 - The config file should be at `~/.config/pixelcat/config.ini`
 
 **Installation issues on Windows** 🪟
-
+- Ensure you have Python 3.9 or higher: `python --version`
 - Make sure you're using the `run_windows.bat` script from the project root
 - Check that PySide6 installed correctly: `pip list | findstr PySide6`
 - Try running `python -c "import PySide6; print('PySide6 OK')"` to test
@@ -248,6 +263,12 @@ docker compose -f docker-compose.mac.yml up
 
 - On Linux, avoid using `sudo` for installation - use user installs instead
 - Check that virtual environment activation worked: `which python3` and `which pip`
+
+**Python version issues** 🐍
+- This application requires Python 3.9 or higher due to modern type hints
+- Check your version: `python --version` or `python3 --version`
+- If you have Python 3.8 or older, please upgrade to Python 3.9+
+- Tested and working on Python 3.9, 3.10, 3.11, and 3.12
 
 #### Getting Help 🤝
 
