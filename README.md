@@ -164,11 +164,11 @@ Run the desktop cat in a containerized environment for easy deployment across pl
 #### Linux 🐧
 
 ```bash
-# Allow Docker to access X11
+# Required before docker compose up (allow container access to X11)
 xhost +local:docker
 
 # Run the container
-docker compose up
+docker compose up --build
 ```
 
 #### Windows 🪟
