@@ -4,6 +4,12 @@
 
 [<img src="https://raw.githubusercontent.com/yumiaura/yumiaura/refs/heads/main/images/cat.gif" width="164" alt="cat.gif"/>](https://github.com/yumiaura)
 
+<p class="badges">
+  <img src="https://img.shields.io/pypi/pyversions/mycat?color=brightgreen" alt="Python Versions">
+  <a href="https://pypi.org/project/mycat/"><img src="https://img.shields.io/pypi/v/mycat?color=brightgreen" alt="PyPI Version"></a>
+  <a href="https://pypi.org/project/mycat/"><img src="https://img.shields.io/pepy/dt/mycat?label=pypi%20%7C%20downloads&color=brightgreen" alt="Pepy Total Downloads"/></a>
+</p>
+
 我为您制作了一只可爱的小动画猫咪 🐈，可以在您的桌面上陪伴您。
 
 它是一个轻量级的 Python + Qt 应用程序 — 无边框、可轻松拖动。
