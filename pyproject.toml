@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mycat"
-version = "0.1.4"
+version = "0.1.5"
 description = "Desktop Cat: Qt Overlay"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -43,7 +43,7 @@ strict = true
 
 [tool.ruff]
 line-length = 120
-target-version = "py38"
+target-version = "py310"
 extend-exclude = ["README.md", "docs/*"]
 
 [tool.ruff.lint]

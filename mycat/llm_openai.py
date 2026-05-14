@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 
 class OpenAIBackend:
     """Thin wrapper over the OpenAI Chat Completions API."""
 
-    def __init__(self, *, api_key: str, model: str) -> None:
+    def __init__(self, *, api_key: str, model: str, timeout: Optional[float] = 60.0) -> None:
         try:
             from openai import OpenAI
         except ImportError as exc:
@@ -17,7 +17,8 @@ class OpenAIBackend:
             ) from exc
 
         self.model = model
-        self._client = OpenAI(api_key=api_key)
+        self.timeout = timeout
+        self._client = OpenAI(api_key=api_key, timeout=timeout) if timeout else OpenAI(api_key=api_key)
 
     def reply(self, user_text: str, system_prompt: str) -> str:
         response = self._client.chat.completions.create(
@@ -26,6 +27,7 @@ class OpenAIBackend:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_text},
             ],
+            timeout=self.timeout,
         )
 
         message = response.choices[0].message.content
