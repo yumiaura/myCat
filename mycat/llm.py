@@ -103,8 +103,16 @@ def create_backend(name: str, settings: llm_prompt.LLMSettings) -> LLMBackend:
             raise LLMDependencyError(exc) from exc
         if not settings.openai_api_key:
             raise LLMDependencyError("OPENAI_API_KEY is not configured in .env or config.ini")
-        logger.debug("Creating OpenAI backend with model %s", settings.openai_model)
-        return OpenAIBackend(api_key=settings.openai_api_key, model=settings.openai_model)
+        logger.debug(
+            "Creating OpenAI backend with model %s timeout=%s",
+            settings.openai_model,
+            settings.ollama_timeout,
+        )
+        return OpenAIBackend(
+            api_key=settings.openai_api_key,
+            model=settings.openai_model,
+            timeout=settings.ollama_timeout,
+        )
 
     if normalized == "ollama":
         from .llm_ollama import OllamaBackend

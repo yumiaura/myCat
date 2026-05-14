@@ -17,7 +17,7 @@ import os
 import signal
 import sys
 import tempfile
-import time
+import warnings
 import zipfile
 from pathlib import Path
 from typing import Optional
@@ -123,124 +123,6 @@ def parse_gif_frame_delays(gif_path: Path) -> list[int]:
         return []
 
 
-def parse_gif_duration(gif_path: Path) -> float:
-    """
-    Parse GIF file to extract actual frame delays.
-    Returns total duration in seconds.
-    """
-    # Try Pillow first
-    duration = parse_gif_duration_pillow(gif_path)
-    if duration > 0:
-        return duration
-    
-    # Fallback to manual parsing
-    try:
-        import struct
-        with open(gif_path, 'rb') as f:
-            # Read GIF header (6 bytes: GIF89a or GIF87a)
-            header = f.read(6)
-            if not header.startswith(b'GIF'):
-                return 0.0
-            
-            # Read logical screen descriptor (7 bytes)
-            screen_desc = f.read(7)
-            
-            # Check if global color table exists
-            packed = screen_desc[4]
-            gct_exists = (packed & 0x80) >> 7
-            gct_size = packed & 0x07
-            
-            # Skip global color table if present
-            if gct_exists:
-                gct_length = 3 * (2 << gct_size)
-                f.read(gct_length)
-            
-            total_duration = 0.0
-            
-            # Parse image blocks
-            while True:
-                block_type = f.read(1)
-                if not block_type:
-                    break
-                
-                if block_type == b'\x21':  # Extension
-                    ext_label = f.read(1)
-                    if ext_label == b'\xF9':  # Graphic Control Extension
-                        # Read block size
-                        block_size = f.read(1)[0]
-                        if block_size != 4:
-                            # Skip this block
-                            f.read(block_size)
-                            f.read(1)  # Terminator
-                            continue
-                        
-                        # Read GCE data: packed byte, delay (2 bytes little-endian), transparent color
-                        packed_gce = f.read(1)[0]
-                        delay_bytes = f.read(2)
-                        delay = struct.unpack('<H', delay_bytes)[0]
-                        transparent_color = f.read(1)[0]
-                        
-                        # Read block terminator
-                        terminator = f.read(1)[0]
-                        
-                        # Only process valid GCE (terminator should be 0)
-                        if terminator == 0:
-                            # Duration in seconds (delay is in hundredths of a second)
-                            if delay == 0:
-                                # No explicit delay, use default animation speed
-                                duration = 0.1  # 100ms default
-                            else:
-                                duration = delay / 100.0
-                                # Clamp to reasonable minimum
-                                if duration < 0.01:
-                                    duration = 0.1
-                            
-                            total_duration += duration
-                    elif ext_label == b'\xFF':  # Application Extension
-                        # Skip it
-                        ext_size = f.read(1)[0]
-                        f.read(ext_size)
-                        while True:
-                            block_size = f.read(1)[0]
-                            if block_size == 0:
-                                break
-                            f.read(block_size)
-                    elif ext_label == b'\xFE':  # Comment Extension
-                        # Skip it
-                        while True:
-                            block_size = f.read(1)[0]
-                            if block_size == 0:
-                                break
-                            f.read(block_size)
-                elif block_type == b'\x2C':  # Image descriptor
-                    # Skip image descriptor (9 bytes)
-                    f.read(9)
-                    
-                    # Read local color table if present
-                    packed_id = f.read(1)[0]
-                    lct_exists = (packed_id & 0x80) >> 7
-                    lct_size = packed_id & 0x07
-                    if lct_exists:
-                        lct_length = 3 * (2 << lct_size)
-                        f.read(lct_length)
-                    
-                    # Skip image data
-                    while True:
-                        block_size = f.read(1)[0]
-                        if block_size == 0:
-                            break
-                        f.read(block_size)
-                elif block_type == b'\x3B':  # Trailer
-                    break
-            
-            logger.debug(f"Parsed GIF duration: {total_duration:.2f}s")
-            return total_duration
-            
-    except Exception as e:
-        logger.debug(f"Could not parse GIF duration: {e}")
-        return 0.0
-
-
 def get_gif_duration(movie: QtGui.QMovie) -> tuple[float, list[int]]:
     """
     Calculate total duration of GIF animation in seconds and get frame delays.
@@ -251,7 +133,7 @@ def get_gif_duration(movie: QtGui.QMovie) -> tuple[float, list[int]]:
         
         # Parse actual delays from GIF file
         if ANIMATION_GIF_PATH and ANIMATION_GIF_PATH.exists():
-            delays = parse_gif_duration_pillow_fallback(ANIMATION_GIF_PATH)
+            delays = parse_gif_frame_delays(ANIMATION_GIF_PATH)
             if delays:
                 total_duration = sum(delays) / 1000.0
                 return total_duration, delays
@@ -268,20 +150,6 @@ def get_gif_duration(movie: QtGui.QMovie) -> tuple[float, list[int]]:
     except Exception as e:
         logger.debug(f"Could not calculate GIF duration: {e}")
         return 0.0, []
-
-
-def parse_gif_duration_pillow_fallback(gif_path: Path) -> list[int]:
-    """
-    Try Pillow first, then fallback to manual parsing.
-    """
-    # Try Pillow first
-    delays = parse_gif_frame_delays(gif_path)
-    if delays:
-        return delays
-    
-    # Fallback to manual parsing (keep existing code)
-    # ... (keep the existing parse_gif_duration manual parsing code)
-    return []
 
 
 def scale_pixmap_if_needed(pixmap: QtGui.QPixmap, max_width: int, max_height: int) -> QtGui.QPixmap:
@@ -360,8 +228,8 @@ def load_packaged_images(image_path: Optional[str] = None, default_image: Option
             gif_file_name = gif_files[0]
             gif_data = zip_file.read(gif_file_name)
             logger.info(f"Extracted {gif_file_name} from {zip_path.name}")
-    except zipfile.BadZipFile:
-        raise ValueError(f"Invalid ZIP file: {zip_path}")
+    except zipfile.BadZipFile as exc:
+        raise ValueError(f"Invalid ZIP file: {zip_path}") from exc
     
     # Write to temp directory with static names
     temp_dir = get_temp_dir()
@@ -476,27 +344,33 @@ def load_image_from_ini() -> Optional[str]:
 
 
 def save_image_to_ini(image_name: str) -> None:
-    """Save current image setting to INI file."""
+    """Save current image setting to INI file (skips writing if value is unchanged)."""
     try:
         CFG_DIR.mkdir(parents=True, exist_ok=True)
-        
+
         config = configparser.ConfigParser()
-        
+
         # Read existing config if it exists
         if CFG_FILE.exists():
             config.read(CFG_FILE)
-        
+
+        if (
+            config.has_section('settings')
+            and config.get('settings', 'default_image', fallback=None) == image_name
+        ):
+            return
+
         # Ensure [settings] section exists
         if 'settings' not in config:
             config.add_section('settings')
-        
+
         # Set the default_image value
         config['settings']['default_image'] = image_name
-        
+
         # Write to file
         with open(CFG_FILE, 'w') as f:
             config.write(f)
-        
+
         logger.info(f"Saved image setting to INI: {image_name}")
     except Exception as e:
         logger.error(f"Error saving to INI file: {e}")
@@ -561,65 +435,81 @@ class PixelCatWindow(QtWidgets.QWidget):
         
         # Animation state: 'png' -> show PNG, 'gif' -> play GIF
         self.state = 'png'
-        self.next_change = time.time() + self.wait_time
-        
+
         # Setup GIF movie - play once (no looping)
         self.gif_movie.setCacheMode(QtGui.QMovie.CacheMode.CacheAll)
         # Set speed to normal (100%) - uses native GIF frame delays
         self.gif_movie.setSpeed(100)
-        
+
         # Manual frame timing
         self.animation_timer = QtCore.QTimer(self)
+        self.animation_timer.timeout.connect(self._on_animation_frame)
         self.current_frame = 0
-        
-        # Track if we need to manually stop after one loop
-        self.gif_played_once = False
-        
+
         # Log GIF info
         frame_count = self.gif_movie.frameCount()
         gif_size = self.gif_movie.scaledSize()
         logger.debug(f"GIF info: {frame_count} frames, duration: {self.gif_duration:.2f}s")
         logger.info(f"Playing {self.file_name}.zip {original_size.width()}x{original_size.height()} > {gif_size.width()}x{gif_size.height()} (first_frame, {self.wait_time:.1f}s static)")
-        
-        # Setup GIF movie callbacks
-        self.gif_movie.frameChanged.connect(self._on_gif_frame_changed)
-        self.gif_movie.finished.connect(self._on_gif_finished)
-        
+
         # Dragging state
         self.dragging = False
         self.drag_start_pos = QtCore.QPoint()
-        
+
         # Set window size to pixmap size
         pixmap_size = self.current_pixmap.size()
         self.resize(pixmap_size)
-        
+
         # Position window - defaults to top-left area
         self._load_position()
-        
+
         # Setup context menu
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
-        
-        # Setup animation timer (60 FPS)
-        self.timer = QtCore.QTimer(self)
-        self.timer.timeout.connect(self._on_tick)
-        self.timer.start(16)  # ~60 FPS
-        
+
+        # Schedule first animation pass
+        self._schedule_next_animation()
+
         # Save current image to INI on startup
         save_image_to_ini(self.file_name)
     
     def _load_position(self) -> None:
-        """Load window position from config."""
+        """Load window position from config, clamping to the current screen layout."""
         screen = QtWidgets.QApplication.primaryScreen().geometry()
         screen_width = screen.width()
         screen_height = screen.height()
         window_width = self.width()
         window_height = self.height()
-        
+
         config = load_config(screen_width, screen_height, window_width, window_height)
         x = config.get("x", screen_width - window_width - DEFAULT_POSITION_OFFSET_X)
         y = config.get("y", screen_height - window_height - DEFAULT_POSITION_OFFSET_Y)
+        x, y = self._clamp_to_screens(x, y, window_width, window_height)
         self.move(x, y)
+
+    def _clamp_to_screens(self, x: int, y: int, width: int, height: int) -> tuple[int, int]:
+        """Ensure (x, y) keeps the window visible on at least one connected screen."""
+        app = QtWidgets.QApplication.instance()
+        screens = app.screens() if app is not None else []
+        if not screens:
+            return x, y
+
+        window_rect = QtCore.QRect(x, y, width, height)
+        union = QtCore.QRect()
+        for screen in screens:
+            union = union.united(screen.availableGeometry())
+            if screen.availableGeometry().intersects(window_rect):
+                return x, y
+
+        # Off-screen: fall back to the primary screen's bottom-right corner.
+        primary = QtWidgets.QApplication.primaryScreen().availableGeometry()
+        fallback_x = primary.right() - width - DEFAULT_POSITION_OFFSET_X
+        fallback_y = primary.bottom() - height - DEFAULT_POSITION_OFFSET_Y
+        logger.warning(
+            "Saved position (%d, %d) is off-screen (union=%s); resetting to (%d, %d)",
+            x, y, union, fallback_x, fallback_y,
+        )
+        return fallback_x, fallback_y
     
     def _save_position(self) -> None:
         """Save current window position to config."""
@@ -710,28 +600,24 @@ class PixelCatWindow(QtWidgets.QWidget):
             # Reset to PNG state
             self.current_pixmap = self.png_pixmap
             self.state = 'png'
-            self.gif_played_once = False
-            self.next_change = time.time() + self.wait_time
-            
+            self.animation_timer.stop()
+            self._schedule_next_animation()
+
             # Save bottom-right corner position before resize
             old_size = self.size()
             top_left = self.pos()
             bottom_right_x = top_left.x() + old_size.width()
             bottom_right_y = top_left.y() + old_size.height()
-            
+
             # Resize window
             self.resize(self.png_pixmap.size())
-            
+
             # Restore position to keep bottom-right corner in same place
             new_size = self.png_pixmap.size()
             new_x = bottom_right_x - new_size.width()
             new_y = bottom_right_y - new_size.height()
             self.move(new_x, new_y)
-            
-            # Reconnect movie callbacks
-            self.gif_movie.frameChanged.connect(self._on_gif_frame_changed)
-            self.gif_movie.finished.connect(self._on_gif_finished)
-            
+
             # Save to INI
             save_image_to_ini(image_name)
             
@@ -783,145 +669,94 @@ class PixelCatWindow(QtWidgets.QWidget):
         quit_action.triggered.connect(QtWidgets.QApplication.quit)
         menu.exec(self.mapToGlobal(pos))
     
-    def _on_tick(self) -> None:
-        """Called by timer to check if need to switch from PNG to GIF."""
+    def _schedule_next_animation(self) -> None:
+        """Schedule the next PNG -> GIF transition with a single-shot timer."""
+        delay_ms = max(0, int(self.wait_time * 1000))
+        QtCore.QTimer.singleShot(delay_ms, self._start_animation)
+
+    def _start_animation(self) -> None:
+        """Switch from static PNG to one-shot GIF playback."""
+        if self.state != 'png':
+            return
+
         global STATIC_PNG_PATH
-        
-        if self.state == 'png':
-            now = time.time()
-            if now >= self.next_change:
-                # Time to show GIF - reset and play once
-                gif_size = self.gif_movie.scaledSize()
-                logger.info(f"Playing {self.file_name}.zip {self.original_size.width()}x{self.original_size.height()} > {gif_size.width()}x{gif_size.height()} (animation, {self.gif_duration:.2f}s)")
-                self.state = 'gif'
-                self.gif_played_once = False
-                
-                # Reload from static.png to ensure we have fresh first frame
-                static_pixmap = QtGui.QPixmap(str(STATIC_PNG_PATH))
-                if not static_pixmap.isNull():
-                    self.current_pixmap = static_pixmap
-                    self.update()
-                
-                # Recreate movie from file to ensure fresh start
-                self.gif_movie = QtGui.QMovie(str(ANIMATION_GIF_PATH))
-                self.gif_movie.setScaledSize(self.current_pixmap.size())
-                self.gif_movie.setCacheMode(QtGui.QMovie.CacheMode.CacheAll)
-                self.gif_movie.setSpeed(100)
-                
-                # Jump to first frame
-                self.gif_movie.jumpToFrame(0)
-                
-                # Start manual frame-by-frame animation with per-frame delays
-                self.current_frame = 0
-                # Stop and disconnect any existing timer
-                self.animation_timer.stop()
-                # Disconnect if connected (suppress RuntimeWarning)
-                import warnings
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore", RuntimeWarning)
-                    try:
-                        self.animation_timer.timeout.disconnect()
-                    except RuntimeError:
-                        pass
-                self.animation_timer.timeout.connect(self._on_animation_frame)
-                # Start with delay for first frame
-                if self.frame_delays:
-                    self.animation_timer.start(self.frame_delays[0])
-                else:
-                    self.animation_timer.start(100)
-    
+        gif_size = self.gif_movie.scaledSize()
+        logger.info(
+            f"Playing {self.file_name}.zip {self.original_size.width()}x{self.original_size.height()} > "
+            f"{gif_size.width()}x{gif_size.height()} (animation, {self.gif_duration:.2f}s)"
+        )
+        self.state = 'gif'
+
+        # Reload from static.png to ensure we have fresh first frame
+        static_pixmap = QtGui.QPixmap(str(STATIC_PNG_PATH))
+        if not static_pixmap.isNull():
+            self.current_pixmap = static_pixmap
+            self.update()
+
+        # Recreate movie from file to ensure fresh start
+        self.gif_movie = QtGui.QMovie(str(ANIMATION_GIF_PATH))
+        self.gif_movie.setScaledSize(self.current_pixmap.size())
+        self.gif_movie.setCacheMode(QtGui.QMovie.CacheMode.CacheAll)
+        self.gif_movie.setSpeed(100)
+        self.gif_movie.jumpToFrame(0)
+
+        # Start manual frame-by-frame animation with per-frame delays
+        self.current_frame = 0
+        self.animation_timer.stop()
+        if self.frame_delays:
+            self.animation_timer.start(self.frame_delays[0])
+        else:
+            self.animation_timer.start(100)
+
     def _on_animation_frame(self) -> None:
         """Manually advance to next frame at controlled speed."""
         frame_count = self.gif_movie.frameCount()
-        
+
         # Check if we've completed the animation
         if self.current_frame >= frame_count:
-            # Stop the timer
             self.animation_timer.stop()
-            # Disconnect if connected (suppress RuntimeWarning)
-            import warnings
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", RuntimeWarning)
-                try:
-                    self.animation_timer.timeout.disconnect()
-                except RuntimeError:
-                    pass
-            
-            # Log completion
             logger.info(f"Animation complete for {self.file_name} ({frame_count} frames)")
-            
-            # Switch back to static
             QtCore.QTimer.singleShot(50, self._complete_switch_to_png)
             return
-        
+
         # Jump to current frame and display it
         self.gif_movie.jumpToFrame(self.current_frame)
         pixmap = self.gif_movie.currentPixmap()
         if not pixmap.isNull():
             self.current_pixmap = pixmap
             self.update()
-        
+
         # Move to next frame
         self.current_frame += 1
-        
+
         # If not done, stop current timer and restart with next frame's delay
         if self.current_frame < frame_count and self.frame_delays and self.current_frame < len(self.frame_delays):
             delay = self.frame_delays[self.current_frame]
             self.animation_timer.stop()
             self.animation_timer.start(delay)
-    
-    def _on_gif_frame_changed(self, frame_number: int) -> None:
-        """Called when GIF frame changes - update the display."""
-        if self.state == 'gif':
-            frame_count = self.gif_movie.frameCount()
-            
-            # Update current pixmap
-            pixmap = self.gif_movie.currentPixmap()
-            if not pixmap.isNull():
-                self.current_pixmap = pixmap
-                # Don't resize during animation - keep window size
-                self.update()
-            
-            # Check if we've completed one full loop
-            if not self.gif_played_once:
-                # Stop before we reach the last frame
-                if frame_number >= frame_count - 1:
-                    logger.info(f"Animation complete for {self.file_name} ({frame_count} frames)")
-                    self.gif_played_once = True
-                    
-                    # Stop the movie
-                    self.gif_movie.stop()
-                    
-                    # Jump to first frame for next time
-                    self.gif_movie.jumpToFrame(0)
-                    
-                    # Switch back to static.png
-                    QtCore.QTimer.singleShot(50, self._complete_switch_to_png)
-    
+
     def _complete_switch_to_png(self) -> None:
         """Complete the switch from GIF to PNG state."""
         global STATIC_PNG_PATH
-        
+
         if self.state == 'gif':
             # Switch to PNG state
             self.state = 'png'
-            self.next_change = time.time() + self.wait_time
-            
+
             # Reload from static.png file
             static_pixmap = QtGui.QPixmap(str(STATIC_PNG_PATH))
             if not static_pixmap.isNull():
                 self.current_pixmap = static_pixmap
                 self.png_pixmap = static_pixmap
                 self.first_frame_pixmap = static_pixmap
-            
-            logger.info(f"Playing {self.file_name}.zip {self.original_size.width()}x{self.original_size.height()} > {self.png_pixmap.width()}x{self.png_pixmap.height()} (first_frame, {self.wait_time:.1f}s static)")
+
+            logger.info(
+                f"Playing {self.file_name}.zip {self.original_size.width()}x{self.original_size.height()} > "
+                f"{self.png_pixmap.width()}x{self.png_pixmap.height()} (first_frame, {self.wait_time:.1f}s static)"
+            )
             self.update()
-    
-    def _on_gif_finished(self) -> None:
-        """Called when GIF animation finishes."""
-        # Handled in _on_gif_frame_changed
-        pass
-    
+            self._schedule_next_animation()
+
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         """Paint the current pixmap."""
         painter = QtGui.QPainter(self)
@@ -987,13 +822,11 @@ def main() -> None:
     llm_context = llm.initialize(args)
     
     # Suppress Qt D-Bus warnings on Linux
-    import os
     os.environ.setdefault("QT_LOGGING_RULES", "qt.qpa.theme.gnome=false")
     os.environ.setdefault("QT_QPA_PLATFORM_PLUGIN_PATH", "")
     os.environ.setdefault("QT_QPA_NO_NATIVE_MENUBAR", "1")
-    
+
     # Suppress additional Qt warnings
-    import warnings
     warnings.filterwarnings("ignore", category=DeprecationWarning)
     
     # Initialize Qt application with error handling

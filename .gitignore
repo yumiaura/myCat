@@ -10,3 +10,8 @@ build/
 *.bkp
 *.pyc
 uv.lock
+*.zip
+*.md
+!README.md
+!CHANGELOG.md
+!docs/*.md

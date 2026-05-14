@@ -7,7 +7,6 @@ import logging
 import os
 import re
 import tempfile
-from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -19,7 +18,9 @@ APP_NAME = "mycat"
 CFG_DIR = Path.home() / ".config" / APP_NAME
 CFG_FILE = CFG_DIR / "config.ini"
 HISTORY_FILE = CFG_DIR / "history.txt"
-PROMPT_TEMPLATE_PATH = Path(__file__).resolve().parent / "PROMT.j2"
+PROMPT_TEMPLATE_PATH = Path(__file__).resolve().parent / "PROMPT.j2"
+_LEGACY_PROMPT_TEMPLATE_PATH = Path(__file__).resolve().parent / "PROMT.j2"
+HISTORY_MAX_BYTES = 1_000_000
 
 DEFAULT_PROMPT_TEMPLATE = """You are a cute, affectionate talking cat belonging to a girl.
 Current date and time: {{date}}.
@@ -128,12 +129,41 @@ def ensure_history_file() -> Path:
         CFG_DIR.mkdir(parents=True, exist_ok=True)
         if not HISTORY_FILE.exists():
             HISTORY_FILE.touch()
+        _restrict_permissions(HISTORY_FILE)
         return HISTORY_FILE
     except OSError as exc:
         logger.warning("Falling back to temp history file: %s", exc)
         fallback = Path(tempfile.gettempdir()) / "mycat_history.txt"
         fallback.touch(exist_ok=True)
+        _restrict_permissions(fallback)
         return fallback
+
+
+def _restrict_permissions(path: Path) -> None:
+    """Best-effort chmod 600 for files that may hold private chat content."""
+    try:
+        os.chmod(path, 0o600)
+    except OSError as exc:
+        logger.debug("Unable to chmod %s: %s", path, exc)
+
+
+def rotate_history_if_needed(path: Path, max_bytes: int = HISTORY_MAX_BYTES) -> None:
+    """Rotate history file to .1 when it exceeds max_bytes. Best-effort."""
+    try:
+        if not path.exists() or path.stat().st_size <= max_bytes:
+            return
+        backup = path.with_suffix(path.suffix + ".1")
+        try:
+            if backup.exists():
+                backup.unlink()
+        except OSError as exc:
+            logger.debug("Unable to remove old history backup %s: %s", backup, exc)
+        path.replace(backup)
+        path.touch()
+        _restrict_permissions(path)
+        logger.info("Rotated history file to %s", backup)
+    except OSError as exc:
+        logger.warning("Unable to rotate history file %s: %s", path, exc)
 
 
 def parse_history_file(path: Path) -> List[Tuple[str, str, str]]:
@@ -173,6 +203,7 @@ def parse_history_file(path: Path) -> List[Tuple[str, str, str]]:
 
 def append_history_entry(path: Path, role: str, text: str, timestamp: str) -> None:
     """Append a single message to the history file."""
+    rotate_history_if_needed(path)
     label = "REQUEST" if role == "user" else "RESPONSE"
     block = f"[{timestamp}] {label}:\n{text}\n"
     try:
@@ -183,46 +214,58 @@ def append_history_entry(path: Path, role: str, text: str, timestamp: str) -> No
 
 
 def get_history_tail(history_path: Path, limit: int) -> List[str]:
+    """Return the last `limit` messages serialised back to history-file lines.
+
+    Operates on message boundaries (not text lines), so multi-line replies
+    survive intact.
+    """
     if limit <= 0:
         return []
-    lines: deque[str] = deque(maxlen=limit)
-    try:
-        with history_path.open("r", encoding="utf-8") as handle:
-            for line in handle:
-                lines.append(line.rstrip())
-    except OSError as exc:
-        logger.debug("Unable to read history tail: %s", exc)
+    entries = parse_history_file(history_path)
+    if not entries:
         return []
-    return list(lines)
+    tail = entries[-limit:]
+    out: List[str] = []
+    for role, text, ts in tail:
+        label = "REQUEST" if role == "user" else "RESPONSE"
+        out.append(f"[{ts}] {label}:")
+        out.extend(text.splitlines() or [""])
+    return out
+
+
+_PLACEHOLDER_RE = re.compile(r"\{\{\s*(date|history|history_count)\s*\}\}")
 
 
 def render_prompt(history_lines: List[str], history_limit: int) -> str:
-    """Produce the final system prompt text using the stored template."""
+    """Produce the final system prompt text using the stored template.
+
+    Supports both `{{key}}` and `{{ key }}` placeholder forms so the file may
+    use Jinja-style spacing without depending on Jinja2 itself.
+    """
     template = _load_prompt_template()
     history_text = "\n".join(history_lines) if history_lines else "No history available."
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
-    replacements = {
-        "{{date}}": now,
-        "{{history}}": history_text,
-        "{{history_count}}": str(history_limit),
+    values = {
+        "date": now,
+        "history": history_text,
+        "history_count": str(history_limit),
     }
-    rendered = template
-    for key, value in replacements.items():
-        rendered = rendered.replace(key, value)
-    return rendered
+    return _PLACEHOLDER_RE.sub(lambda m: values[m.group(1)], template)
 
 
 def _load_prompt_template() -> str:
     global _PROMPT_TEMPLATE_CACHE
     if _PROMPT_TEMPLATE_CACHE is not None:
         return _PROMPT_TEMPLATE_CACHE
-    if PROMPT_TEMPLATE_PATH.exists():
+    for candidate in (PROMPT_TEMPLATE_PATH, _LEGACY_PROMPT_TEMPLATE_PATH):
+        if not candidate.exists():
+            continue
         try:
-            _PROMPT_TEMPLATE_CACHE = PROMPT_TEMPLATE_PATH.read_text(encoding="utf-8")
-            logger.debug("Loaded prompt template from %s", PROMPT_TEMPLATE_PATH)
+            _PROMPT_TEMPLATE_CACHE = candidate.read_text(encoding="utf-8")
+            logger.debug("Loaded prompt template from %s", candidate)
             return _PROMPT_TEMPLATE_CACHE
         except OSError as exc:
-            logger.warning("Unable to read %s: %s", PROMPT_TEMPLATE_PATH, exc)
+            logger.warning("Unable to read %s: %s", candidate, exc)
     _PROMPT_TEMPLATE_CACHE = DEFAULT_PROMPT_TEMPLATE
     return _PROMPT_TEMPLATE_CACHE
 
@@ -233,6 +276,7 @@ __all__ = [
     "CFG_DIR",
     "CFG_FILE",
     "HISTORY_FILE",
+    "HISTORY_MAX_BYTES",
     "PROMPT_TEMPLATE_PATH",
     "load_env_file",
     "load_llm_settings",
@@ -241,4 +285,5 @@ __all__ = [
     "append_history_entry",
     "get_history_tail",
     "render_prompt",
+    "rotate_history_if_needed",
 ]

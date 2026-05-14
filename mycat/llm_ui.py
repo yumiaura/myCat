@@ -36,8 +36,6 @@ class _LLMController(QtCore.QObject):
         self.context = context
         self.enabled = enabled
         self.chat_dialog: Optional[ChatDialog] = None
-        self._press_pos: Optional[QtCore.QPoint] = None
-        self._press_time: Optional[float] = None
         self.history_file = llm_prompt.ensure_history_file()
 
         window.installEventFilter(self)
@@ -45,37 +43,12 @@ class _LLMController(QtCore.QObject):
         logger.debug("LLM controller initialised with history file %s", self.history_file)
 
     def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
-        if watched is self.window:
-            if event.type() == QtCore.QEvent.Type.MouseButtonPress:
-                self._handle_press(event)
-            elif event.type() == QtCore.QEvent.Type.MouseButtonRelease:
-                self._handle_release(event)
-            elif event.type() in (QtCore.QEvent.Type.Move, QtCore.QEvent.Type.Resize):
-                self._position_dialog()
+        if watched is self.window and event.type() in (
+            QtCore.QEvent.Type.Move,
+            QtCore.QEvent.Type.Resize,
+        ):
+            self._position_dialog()
         return super().eventFilter(watched, event)
-
-    def _handle_press(self, event: QtCore.QEvent) -> None:
-        if not isinstance(event, QtGui.QMouseEvent):
-            return
-        if event.button() != QtCore.Qt.MouseButton.LeftButton:
-            return
-        self._press_pos = event.globalPosition().toPoint()
-        self._press_time = time.monotonic()
-
-    def _handle_release(self, event: QtCore.QEvent) -> None:
-        if not isinstance(event, QtGui.QMouseEvent):
-            return
-        if event.button() != QtCore.Qt.MouseButton.LeftButton:
-            return
-        if self._press_time is None or self._press_pos is None:
-            return
-        duration = time.monotonic() - self._press_time
-        distance = (event.globalPosition().toPoint() - self._press_pos).manhattanLength()
-        self._press_time = None
-        self._press_pos = None
-
-        if duration < 0.25 and distance < 6:
-            self._toggle_chat()
 
     def _toggle_chat(self) -> None:
         if not self.enabled:
