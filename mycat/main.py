@@ -24,7 +24,7 @@ from typing import Optional
 
 # Allow running both as `python -m mycat` and `python mycat/main.py`
 if __package__:
-    from . import llm, skin_catalog
+    from . import llm, reminder, skin_catalog
 else:
     import importlib
     repo_root = Path(__file__).resolve().parent.parent
@@ -32,6 +32,7 @@ else:
         sys.path.insert(0, str(repo_root))
     llm = importlib.import_module("mycat.llm")
     skin_catalog = importlib.import_module("mycat.skin_catalog")
+    reminder = importlib.import_module("mycat.reminder")
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -466,6 +467,10 @@ class PixelCatWindow(QtWidgets.QWidget):
 
         # Save current image to INI on startup
         save_image_to_ini(self.file_name)
+
+        # Reminder scheduler (cat-on-a-plane flyby). Loads any saved reminder
+        # and re-arms it; the flyby UI is imported lazily on first use.
+        self.reminder_controller = reminder.ReminderController(self)
     
     def _load_position(self) -> None:
         """Load window position from config, clamping to the current screen layout."""
@@ -644,6 +649,9 @@ class PixelCatWindow(QtWidgets.QWidget):
 
         shop_action = menu.addAction("Open Shop…")
         shop_action.triggered.connect(self._open_shop)
+
+        reminder_action = menu.addAction("Reminder…")
+        reminder_action.triggered.connect(self._open_reminder)
         menu.addSeparator()
 
         # Rebuild the list every time so freshly-installed skins appear without restart.
@@ -693,6 +701,12 @@ class PixelCatWindow(QtWidgets.QWidget):
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
+
+    def _open_reminder(self) -> None:
+        """Open the reminder settings dialog."""
+        controller = getattr(self, "reminder_controller", None)
+        if controller is not None:
+            controller.open_dialog()
 
     def _on_skin_installed(self, _skin_id: str) -> None:
         self.available_images = skin_catalog.scan_all()
