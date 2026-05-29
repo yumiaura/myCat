@@ -1,0 +1,119 @@
+name: Release binaries
+
+# Triggered by the same tag pattern as publish.yml (PyPI). On tag push we
+# build native binaries for Windows + macOS in parallel, then attach them
+# to the GitHub Release matching that tag.
+#
+# Also dispatchable manually so the workflow can be tested without burning
+# a real release tag — the dispatch run uploads artefacts but skips the
+# Release step.
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write   # needed for the gh-release step
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -e .
+          # openai is an optional dep, but a frozen exe can't `pip install`
+          # later — bundling it here makes --openai work out of the box.
+          pip install openai
+
+      - name: Build with PyInstaller
+        run: pyinstaller --noconfirm mycat.spec
+
+      - name: Rename artefact
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+          else
+            VERSION="dev-${GITHUB_SHA::7}"
+          fi
+          mv dist/mycat.exe "dist/mycat-${VERSION}-windows-x64.exe"
+          ls -la dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mycat-windows
+          path: dist/mycat-*-windows-x64.exe
+          if-no-files-found: error
+
+  build-macos:
+    # macos-14 is Apple Silicon (arm64). For Intel Macs, add a second job on
+    # macos-13 with the same steps + ``-macos-x64.zip`` suffix.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -e .
+          pip install openai
+
+      - name: Build with PyInstaller
+        run: pyinstaller --noconfirm mycat.spec
+
+      - name: Zip .app bundle
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/}"
+          else
+            VERSION="dev-${GITHUB_SHA::7}"
+          fi
+          cd dist
+          # ditto is the recommended way to zip a macOS bundle — preserves
+          # extended attrs/resource forks unlike plain `zip -r`.
+          ditto -c -k --keepParent mycat.app "mycat-${VERSION}-macos-arm64.zip"
+          ls -la
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mycat-macos
+          path: dist/mycat-*-macos-arm64.zip
+          if-no-files-found: error
+
+  release:
+    # Only attach to a Release on real tag pushes — dispatch runs just
+    # produce downloadable artefacts.
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Attach binaries to the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/mycat-windows/*
+            artifacts/mycat-macos/*
+          fail_on_unmatched_files: true
+          # Auto-generated notes from PRs/commits since the previous tag.
+          generate_release_notes: true

@@ -5,6 +5,7 @@ __pycache__/
 .venv/
 mycat.egg-info/
 build/
+dist/
 *.log
 *.swp
 *.bkp
