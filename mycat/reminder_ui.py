@@ -11,7 +11,6 @@ the reminder should fire (relative "in N minutes" or absolute "at HH:MM"), with 
 Test button that launches a flyby immediately.
 """
 
-import json
 import logging
 import math
 import time
@@ -87,117 +86,15 @@ def _tinted_pixmap(base: QtGui.QPixmap, tint: QtGui.QColor) -> QtGui.QPixmap:
     return result
 
 
-# Sprite assets live inside the package at ``mycat/assets/`` (gitignored — they
-# are AI-generated locally, not distributed). FlybyWindow needs ``plane.png``
-# there to render a flyby at all; ``plane.json`` optionally overrides where the
-# cat face is clipped into the cockpit.
+# A single fixed plane sprite ships with the package at mycat/assets/plane.png.
+# The bundled PNG is already chroma-keyed (transparent background) and cropped
+# to the alpha bbox — no Pillow processing happens at runtime. CANOPY_FRACS
+# (cx, cy, rx, ry as fractions of the cropped sprite, in its right-facing
+# orientation) tells _draw_cat_face where to plant the cat head inside the
+# fuselage. Multiply-blend recolouring (pink / white / blue / red) is applied
+# on top of the bundled sprite — that's the only thing the user can customize.
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
-DEFAULT_CANOPY_FRACS = (0.60, 0.28, 0.16, 0.22)  # cx, cy, rx, ry (right-facing)
-
-
-def _chroma_key_white_background(path):
-    """Load ``path``, strip the AI-painted opaque-white background, crop to bbox.
-
-    Returns ``(pixmap, orig_size, bbox)`` where ``orig_size`` is the input
-    image's ``(width, height)`` and ``bbox`` is the ``(left, top, right, bottom)``
-    crop rectangle in the original coordinate system. Callers use these to
-    remap canopy fractions from "fractions-of-original" to
-    "fractions-of-cropped". If the image already had a transparent / non-white
-    border, ``orig_size`` and ``bbox`` are ``None`` (no remap needed).
-
-    AI image generators routinely ignore the ``background="transparent"`` hint
-    and ship the sprite on an opaque-white canvas. Without this step the
-    multiply-tint paints the whole canvas pink/blue instead of just the plane.
-    Interior white pixels (the fuselage) are NOT connected to the corners and
-    so survive untouched — they are exactly what we want recolourable.
-    """
-    try:
-        from PIL import Image, ImageDraw
-    except ImportError:
-        # Pillow is a declared project dep, but degrade gracefully.
-        return QtGui.QPixmap(str(path)), None, None
-
-    pil = Image.open(str(path)).convert("RGBA")
-    orig_w, orig_h = pil.width, pil.height
-    corners = [(0, 0), (orig_w - 1, 0), (0, orig_h - 1), (orig_w - 1, orig_h - 1)]
-    near_white = 0
-    for cx, cy in corners:
-        r, g, b, a = pil.getpixel((cx, cy))
-        if a > 200 and min(r, g, b) > 230:
-            near_white += 1
-    if near_white < 3:
-        return QtGui.QPixmap(str(path)), None, None  # already transparent
-
-    # thresh=60 catches both the pure-white AI canvas AND the slightly-grey
-    # "transparency-indicator" squares that gpt-image-1 sometimes paints into
-    # the background. Real plane outlines are much darker (rgb < 80) so they
-    # are far below the threshold and survive intact.
-    for cx, cy in corners:
-        try:
-            ImageDraw.floodfill(pil, (cx, cy), (0, 0, 0, 0), thresh=60)
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("floodfill from %s failed: %s", (cx, cy), exc)
-
-    # Crop the transparent border away so the spec'd plane width corresponds
-    # to the visible plane width, not "plane plus 30% empty canvas margins".
-    bbox = pil.getbbox()
-    if bbox is not None:
-        pil = pil.crop(bbox)
-
-    qimg = QtGui.QImage(
-        pil.tobytes("raw", "RGBA"), pil.width, pil.height,
-        QtGui.QImage.Format.Format_RGBA8888,
-    ).copy()
-    return QtGui.QPixmap.fromImage(qimg), (orig_w, orig_h), bbox
-
-
-def _load_plane_assets():
-    """Return ``(QPixmap | None, canopy_fracs)`` loaded from ``mycat/assets/``.
-
-    Canopy fractions in ``plane.json`` are specified in the ORIGINAL image
-    coordinate space (fractions of the un-cropped canvas). If the chroma-key
-    pass cropped the sprite to its alpha bbox, we remap the fractions into the
-    cropped coordinate system here so the cat face still lands inside the
-    drawn cockpit.
-    """
-    sprite_path = ASSETS_DIR / "plane.png"
-    if not sprite_path.exists():
-        logger.warning(
-            "No plane sprite at %s — generate one with tools/gen_plane.py", sprite_path,
-        )
-        return None, DEFAULT_CANOPY_FRACS
-    pix, orig_size, bbox = _chroma_key_white_background(sprite_path)
-    if pix.isNull():
-        logger.warning("Failed to load plane sprite from %s", sprite_path)
-        return None, DEFAULT_CANOPY_FRACS
-
-    fracs = DEFAULT_CANOPY_FRACS
-    manifest = ASSETS_DIR / "plane.json"
-    if manifest.exists():
-        try:
-            data = json.loads(manifest.read_text())
-            c = data.get("canopy", {})
-            fracs = (
-                float(c.get("cx_frac", DEFAULT_CANOPY_FRACS[0])),
-                float(c.get("cy_frac", DEFAULT_CANOPY_FRACS[1])),
-                float(c.get("rx_frac", DEFAULT_CANOPY_FRACS[2])),
-                float(c.get("ry_frac", DEFAULT_CANOPY_FRACS[3])),
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("plane.json at %s is malformed: %s", manifest, exc)
-
-    if orig_size is not None and bbox is not None:
-        ow, oh = orig_size
-        bl, bt, br, bb = bbox
-        nw, nh = max(1, br - bl), max(1, bb - bt)
-        cx, cy, rx, ry = fracs
-        fracs = (
-            (cx * ow - bl) / nw,
-            (cy * oh - bt) / nh,
-            rx * ow / nw,
-            ry * oh / nh,
-        )
-    return pix, fracs
+CANOPY_FRACS = (0.485, 0.103, 0.118, 0.230)  # cx, cy, rx, ry (right-facing)
 
 
 class FlybyWindow(QtWidgets.QWidget):
@@ -250,12 +147,18 @@ class FlybyWindow(QtWidgets.QWidget):
         # four liveries, all chosen client-side.
         self._plane_color = _resolve_plane_color(getattr(reminder, "plane_color", "pink"))
 
-        # PNG plane sprite from ``mycat/assets/plane.png``. Required: without it
-        # FlybyWindow has nothing to fly and paintEvent draws only the flag.
-        self._plane_sprite, self._canopy_fracs = _load_plane_assets()
-        if self._plane_sprite is not None:
-            # Bake the tint into the sprite once, so per-frame drawing is cheap.
-            self._plane_sprite = _tinted_pixmap(self._plane_sprite, self._plane_color)
+        # Bundled plane sprite. Tint baked in here so per-frame drawing is just
+        # a drawPixmap call. If the bundled PNG is missing (corrupted install),
+        # paintEvent falls back to drawing only the flag.
+        sprite_path = ASSETS_DIR / "plane.png"
+        sprite = QtGui.QPixmap(str(sprite_path))
+        if sprite.isNull():
+            logger.warning("Plane sprite missing at %s — flyby will be flag-only",
+                            sprite_path)
+            self._plane_sprite = None
+        else:
+            self._plane_sprite = _tinted_pixmap(sprite, self._plane_color)
+        self._canopy_fracs = CANOPY_FRACS
 
         # Plane size — width is user-configurable, height follows the sprite's
         # cropped aspect ratio so the plane never gets squashed. Without a
