@@ -15,3 +15,6 @@ uv.lock
 !README.md
 !CHANGELOG.md
 !docs/*.md
+
+assets3d/
+tools/

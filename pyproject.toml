@@ -22,6 +22,16 @@ dependencies = [
     "pyside6>=6.10.0",
 ]
 
+# Optional local voice chat (speech-to-text + text-to-speech). Needs system
+# audio tools too: PipeWire (pw-play/pw-record), PulseAudio (paplay/parecord),
+# or ALSA (aplay/arecord). Install with:  pip install "mycat[voice]"
+[project.optional-dependencies]
+voice = [
+    "faster-whisper>=1.0",
+    "piper-tts>=1.3",
+    "numpy>=1.24",
+]
+
 [dependency-groups]
 dev = [
     "ruff>=0.14.3",
@@ -34,9 +44,9 @@ mycat = "mycat.main:main"
 [tool.setuptools.packages.find]
 include = ["mycat*"]
 
-# Include packaged images inside the wheel
+# Include packaged images and prompt templates inside the wheel
 [tool.setuptools.package-data]
-mycat = ["images/*"]
+mycat = ["images/*", "*.j2"]
 
 [tool.mypy]
 strict = true
