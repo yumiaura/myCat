@@ -391,7 +391,8 @@ class ChatDialog(QtWidgets.QDialog):
             return
         duration = time.monotonic() - self._pending_request_started
         status = "success" if success else "error"
-        logger.info("Request: %s", self._pending_request_text)
+        # The request itself is already logged when it is sent (see _send_message);
+        # here we only log the outcome to avoid a duplicate "Request:" line.
         logger.info("LLM request %s in %.2fs", status, duration)
         logger.info("Response: %s", response)
 
