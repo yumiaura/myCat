@@ -205,7 +205,9 @@ class FlybyWindow(QtWidgets.QWidget):
         # Chosen plane sprite (assets/planes/<name>.png, falling back to the
         # bundled plane.png). Tint baked in here so per-frame drawing is just a
         # drawPixmap call. If the PNG is missing, paintEvent draws only the flag.
-        sprite_path = plane_sprite_path(getattr(reminder, "plane", "plane1"))
+        # Only plane1 has a cockpit the cat peeks from; the rest fly cat-free.
+        self.plane_name = getattr(reminder, "plane", "plane1")
+        sprite_path = plane_sprite_path(self.plane_name)
         sprite = QtGui.QPixmap(str(sprite_path))
         if sprite.isNull():
             logger.warning("Plane sprite missing at %s — flyby will be flag-only",
@@ -361,7 +363,8 @@ class FlybyWindow(QtWidgets.QWidget):
         self._draw_flag(painter, flag_attach, flag_dir, self._banner_w, self._flag_h, self._text)
         if self._plane_sprite is not None:
             self._draw_rope(painter, rope_from, flag_attach)
-            self._draw_cat_face(painter, plane_rect, facing_right=self._ltr)
+            if self.plane_name == "plane1":
+                self._draw_cat_face(painter, plane_rect, facing_right=self._ltr)
             self._draw_plane(painter, plane_rect, facing_right=self._ltr)
 
         # Refresh the input mask so only the plane+flag bbox is interactive.
