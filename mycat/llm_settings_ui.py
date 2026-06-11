@@ -126,11 +126,14 @@ class OllamaSettingsDialog(QtWidgets.QDialog):
         form = QtWidgets.QFormLayout()
         form.addRow(self._enabled)
         form.addRow("Host", self._host)
-        form.addRow("Port", self._port)
-        host_row = QtWidgets.QHBoxLayout()
-        host_row.addStretch(1)
-        host_row.addWidget(self._load_btn)
-        form.addRow("", self._wrap(host_row))
+        # Port and the load button share a row. The row is added as a bare layout
+        # (not wrapped in a QWidget) so the button keeps the dialog's button style
+        # instead of sitting on a stray system-coloured panel.
+        port_row = QtWidgets.QHBoxLayout()
+        port_row.addWidget(self._port)
+        port_row.addWidget(self._load_btn)
+        port_row.addStretch(1)
+        form.addRow("Port", port_row)
         form.addRow("Model", self._model)
 
         buttons = QtWidgets.QHBoxLayout()
@@ -157,12 +160,6 @@ class OllamaSettingsDialog(QtWidgets.QDialog):
         QtCore.QTimer.singleShot(0, self._on_load)
 
     # -- helpers ------------------------------------------------------------
-
-    def _wrap(self, inner_layout) -> QtWidgets.QWidget:
-        holder = QtWidgets.QWidget()
-        holder.setLayout(inner_layout)
-        inner_layout.setContentsMargins(0, 0, 0, 0)
-        return holder
 
     def _controller(self):
         return getattr(self.host_window, "_llm_controller", None)
@@ -275,6 +272,7 @@ class OllamaSettingsDialog(QtWidgets.QDialog):
         enabled = self._enabled.isChecked()
         try:
             llm_prompt.save_ollama_settings(base_url, model)
+            llm_prompt.save_llm_enabled(enabled)
         except OSError as exc:
             self._set_status(f"Could not save: {exc}", STATUS_ERR)
             return
