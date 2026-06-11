@@ -707,12 +707,31 @@ class ReminderDialog(QtWidgets.QDialog):
         self._controller = controller
         self.setWindowTitle("Reminder")
         self.setMinimumWidth(380)
-        # Explicit input colours so text stays visible on the light field
-        # background (matches the fix applied to the chat input).
+        # Force a complete light theme on the whole dialog. Styling only the input
+        # fields left the dialog background, labels, group box and buttons to the
+        # system palette, which is unreadable (dark text on dark) under a dark
+        # desktop theme. Pin every widget type to dark-on-light with a pink accent.
         self.setStyleSheet(
+            "QDialog { background: #ffffff; color: #1c1c1c; }"
+            "QLabel, QRadioButton, QCheckBox, QGroupBox {"
+            " color: #1c1c1c; background: transparent; }"
+            "QGroupBox { border: 1px solid #d6d6d6; border-radius: 6px;"
+            " margin-top: 8px; padding-top: 6px; }"
+            "QGroupBox::title { subcontrol-origin: margin; left: 8px;"
+            " padding: 0 4px; color: #1c1c1c; }"
             "QLineEdit, QSpinBox, QTimeEdit, QComboBox {"
             " color: #1c1c1c; background: #ffffff;"
+            " border: 1px solid #c0c0c0; border-radius: 4px; padding: 2px 4px;"
             " selection-color: white; selection-background-color: #ff6f91; }"
+            "QComboBox QAbstractItemView {"
+            " color: #1c1c1c; background: #ffffff;"
+            " selection-color: white; selection-background-color: #ff6f91; }"
+            "QPushButton {"
+            " color: #1c1c1c; background: #f0f0f0;"
+            " border: 1px solid #c0c0c0; border-radius: 4px; padding: 4px 14px; }"
+            "QPushButton:hover { background: #e7e7e7; }"
+            "QPushButton:default { color: white; background: #ff6f91; border: none; }"
+            "QPushButton:disabled { color: #9a9a9a; background: #f5f5f5; }"
         )
 
         existing = reminder or Reminder()
