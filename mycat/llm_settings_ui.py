@@ -121,7 +121,7 @@ class OllamaSettingsDialog(QtWidgets.QDialog):
         self._save_btn = QtWidgets.QPushButton("Save")
         self._test_btn.setEnabled(False)
         self._save_btn.setEnabled(False)
-        close_btn = QtWidgets.QPushButton("Close")
+        cancel_btn = QtWidgets.QPushButton("Cancel")
 
         form = QtWidgets.QFormLayout()
         form.addRow(self._enabled)
@@ -136,7 +136,7 @@ class OllamaSettingsDialog(QtWidgets.QDialog):
         buttons = QtWidgets.QHBoxLayout()
         buttons.addWidget(self._test_btn)
         buttons.addStretch(1)
-        buttons.addWidget(close_btn)
+        buttons.addWidget(cancel_btn)
         buttons.addWidget(self._save_btn)
 
         layout = QtWidgets.QVBoxLayout(self)
@@ -148,7 +148,7 @@ class OllamaSettingsDialog(QtWidgets.QDialog):
         self._model.currentIndexChanged.connect(self._on_model_changed)
         self._test_btn.clicked.connect(self._on_test)
         self._save_btn.clicked.connect(self._on_save)
-        close_btn.clicked.connect(self.accept)
+        cancel_btn.clicked.connect(self.reject)
         # Reset model list if the user edits the endpoint after a load.
         self._host.textEdited.connect(self._invalidate_models)
         self._port.valueChanged.connect(self._invalidate_models)
@@ -285,6 +285,7 @@ class OllamaSettingsDialog(QtWidgets.QDialog):
             self._set_status(f"Saved to config, but live apply failed: {exc}", STATUS_ERR)
             return
         self._set_status("Saved ✓", STATUS_OK)
+        self.accept()
 
     def _apply_live(self, base_url: str, model: str, enabled: bool) -> None:
         controller = self._controller()
