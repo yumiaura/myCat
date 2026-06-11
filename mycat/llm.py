@@ -68,7 +68,7 @@ def initialize(args) -> Optional[LLMContext]:
         return None
 
     llm_prompt.load_env_file()
-    enabled = _read_enabled_flag()
+    enabled = llm_prompt.load_llm_enabled()
     settings = llm_prompt.load_llm_settings()
     logger.info("Initializing LLM backend '%s'", backend_name)
     try:
@@ -87,11 +87,6 @@ def attach(window: QtWidgets.QWidget, context: LLMContext) -> None:
         return
     logger.debug("Attaching LLM UI to window %s", window)
     llm_ui.attach_chat(window, context, enabled=context.enabled)
-
-
-def _read_enabled_flag() -> bool:
-    value = (os.getenv("LLM_ENABLED") or "1").strip().lower()
-    return value not in {"0", "false", "off", "no"}
 
 
 def create_backend(name: str, settings: llm_prompt.LLMSettings) -> LLMBackend:

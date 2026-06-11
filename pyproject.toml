@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mycat"
-version = "0.1.5"
+version = "0.1.6"
 description = "Desktop Cat: Qt Overlay"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -25,7 +25,11 @@ dependencies = [
 [dependency-groups]
 dev = [
     "ruff>=0.14.3",
+    "pytest>=8.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 # Console script `mycat` → calls mycat.main:main
 [project.scripts]
@@ -34,9 +38,10 @@ mycat = "mycat.main:main"
 [tool.setuptools.packages.find]
 include = ["mycat*"]
 
-# Include packaged images inside the wheel
+# Bundle non-Python data inside the wheel: skin zips, the plane sprite and the
+# prompt template.
 [tool.setuptools.package-data]
-mycat = ["images/*"]
+mycat = ["images/*", "assets/*", "assets/planes/*", "*.j2"]
 
 [tool.mypy]
 strict = true

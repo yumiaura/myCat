@@ -123,6 +123,65 @@ def load_llm_settings() -> LLMSettings:
     return settings
 
 
+def save_ollama_settings(url: str, model: str) -> None:
+    """Persist the Ollama url and model into the [ollama] section of config.ini.
+
+    Reads the existing file, updates only the two keys (leaving other sections
+    and the timeout untouched) and writes it back.
+    """
+    CFG_DIR.mkdir(parents=True, exist_ok=True)
+    parser = configparser.ConfigParser()
+    if CFG_FILE.exists():
+        try:
+            parser.read(CFG_FILE)
+        except configparser.Error as exc:
+            logger.warning("Unable to parse %s before saving: %s", CFG_FILE, exc)
+    if not parser.has_section("ollama"):
+        parser.add_section("ollama")
+    parser.set("ollama", "url", url)
+    parser.set("ollama", "model", model)
+    with open(CFG_FILE, "w") as handle:
+        parser.write(handle)
+    logger.info("Saved Ollama settings: url=%s model=%s", url, model)
+
+
+def save_llm_enabled(enabled: bool) -> None:
+    """Persist the LLM enabled flag into [llm] of config.ini."""
+    CFG_DIR.mkdir(parents=True, exist_ok=True)
+    parser = configparser.ConfigParser()
+    if CFG_FILE.exists():
+        try:
+            parser.read(CFG_FILE)
+        except configparser.Error as exc:
+            logger.warning("Unable to parse %s before saving: %s", CFG_FILE, exc)
+    if not parser.has_section("llm"):
+        parser.add_section("llm")
+    parser.set("llm", "enabled", "true" if enabled else "false")
+    with open(CFG_FILE, "w") as handle:
+        parser.write(handle)
+    logger.info("Saved LLM enabled=%s", enabled)
+
+
+def load_llm_enabled() -> bool:
+    """Whether the LLM is enabled.
+
+    config.ini [llm] enabled overrides the LLM_ENABLED env var (same precedence
+    as the rest of the settings), so unchecking the box in the dialog survives a
+    restart.
+    """
+    env_value = (os.getenv("LLM_ENABLED") or "").strip().lower()
+    enabled = True if env_value == "" else env_value not in {"0", "false", "off", "no"}
+    if CFG_FILE.exists():
+        parser = configparser.ConfigParser()
+        try:
+            parser.read(CFG_FILE)
+            if parser.has_option("llm", "enabled"):
+                enabled = parser.getboolean("llm", "enabled")
+        except (configparser.Error, ValueError) as exc:
+            logger.warning("Unable to read LLM enabled flag: %s", exc)
+    return enabled
+
+
 def ensure_history_file() -> Path:
     """Return a writable history file path, creating one if needed."""
     try:

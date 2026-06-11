@@ -197,23 +197,6 @@ class ChatDialog(QtWidgets.QDialog):
                 background-color: #bdbdbd;
             }
         """
-        thin_button_style = """
-            QPushButton {
-                background-color: #dfdfdf;
-                border: 1px solid #b0b0b0;
-                border-radius: 0;
-                padding: 0;
-                min-width: 12px;
-                max-width: 12px;
-            }
-            QPushButton:hover {
-                background-color: #cecece;
-            }
-            QPushButton:pressed {
-                background-color: #bdbdbd;
-            }
-        """
-
         self.input_field = QtWidgets.QLineEdit()
         self.input_field.setPlaceholderText("Write a message…")
         self.input_field.setMinimumHeight(34)
@@ -221,6 +204,9 @@ class ChatDialog(QtWidgets.QDialog):
             """
             QLineEdit {
                 background-color: white;
+                color: #1c1c1c;
+                selection-color: white;
+                selection-background-color: #4a90e2;
                 border: 1px solid #b0b0b0;
                 border-radius: 0;
                 padding-left: 10px;
@@ -243,32 +229,6 @@ class ChatDialog(QtWidgets.QDialog):
         self.send_button.clicked.connect(self._send_message)
         input_layout.addWidget(self.send_button)
 
-        self.export_button = QtWidgets.QPushButton("E")
-        self.export_button.setMinimumHeight(34)
-        self.export_button.setMaximumHeight(34)
-        self.export_button.setMinimumWidth(12)
-        self.export_button.setMaximumWidth(12)
-        self.export_button.setDefault(False)
-        self.export_button.setAutoDefault(False)
-        self.export_button.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
-        self.export_button.setToolTip("Export history to file")
-        self.export_button.clicked.connect(self._export_history)
-        self.export_button.setStyleSheet(thin_button_style)
-        input_layout.addWidget(self.export_button)
-
-        self.import_button = QtWidgets.QPushButton("I")
-        self.import_button.setMinimumHeight(34)
-        self.import_button.setMaximumHeight(34)
-        self.import_button.setMinimumWidth(12)
-        self.import_button.setMaximumWidth(12)
-        self.import_button.setDefault(False)
-        self.import_button.setAutoDefault(False)
-        self.import_button.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
-        self.import_button.setToolTip("Import history from file")
-        self.import_button.clicked.connect(self._import_history)
-        self.import_button.setStyleSheet(thin_button_style)
-        input_layout.addWidget(self.import_button)
-
         main_layout.addLayout(input_layout)
         self.input_field.returnPressed.connect(self._send_message)
         self._typing_indicator: Optional[TypingIndicator] = None
@@ -288,44 +248,6 @@ class ChatDialog(QtWidgets.QDialog):
         label.setStyleSheet("color: #888; font-style: italic; margin-top: 40px;")
         self.messages_layout.addWidget(label)
         self.message_count = 0
-
-    def _export_history(self) -> None:
-        default_path = str(llm_prompt.CFG_DIR / "history-export.txt")
-        target_path, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self,
-            "Export History",
-            default_path,
-            "Text files (*.txt);;All files (*)",
-        )
-        if not target_path:
-            return
-        try:
-            content = self.history_file.read_text(encoding="utf-8")
-            with open(target_path, "w", encoding="utf-8") as handle:
-                handle.write(content)
-        except OSError as exc:
-            QtWidgets.QMessageBox.warning(self, "Export failed", f"Could not export history:\n{exc}")
-            return
-        QtWidgets.QMessageBox.information(self, "Export complete", f"History saved to:\n{target_path}")
-
-    def _import_history(self) -> None:
-        source_path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self,
-            "Import History",
-            str(llm_prompt.CFG_DIR),
-            "Text files (*.txt);;All files (*)",
-        )
-        if not source_path:
-            return
-        try:
-            with open(source_path, "r", encoding="utf-8") as handle:
-                content = handle.read()
-            self.history_file.write_text(content, encoding="utf-8")
-        except OSError as exc:
-            QtWidgets.QMessageBox.warning(self, "Import failed", f"Could not import history:\n{exc}")
-            return
-        self._load_history()
-        QtWidgets.QMessageBox.information(self, "Import complete", f"History loaded from:\n{source_path}")
 
     def closeEvent(self, event: QtGui.QCloseEvent) -> None:
         if self.controller.window.isVisible():
@@ -392,8 +314,6 @@ class ChatDialog(QtWidgets.QDialog):
     def _set_input_enabled(self, enabled: bool) -> None:
         self.input_field.setEnabled(enabled)
         self.send_button.setEnabled(enabled)
-        self.export_button.setEnabled(enabled)
-        self.import_button.setEnabled(enabled)
 
     def _append_message(
         self,

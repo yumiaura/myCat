@@ -2,9 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## 0.1.6
 
 ### Added
+- **Reminder** — a cat-on-a-plane banner that flies across the top of the screen at a chosen time (one-shot or daily). Configure it via right-click → Reminder….
+- **Ollama settings menu** (right-click → Ollama…) — set host/port, fetch and pick a model, run a timed connection test, and enable/save the backend live (no file editing or restart). The LLM-enabled state now persists across restarts.
 - `run.sh` / `run.bat` minimal launchers in the repo root that pass CLI flags through to `mycat` (branch `fix/headless-x11-overlay`).
 - `--debug` flag to surface the verbose per-frame animation logging.
 - `MYCAT_SHAPE_MASK=1/0` environment override to force or disable the no-compositor shape-mask fallback.

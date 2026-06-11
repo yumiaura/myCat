@@ -26,13 +26,15 @@ from typing import Optional
 
 # Allow running both as `python -m mycat` and `python mycat/main.py`
 if __package__:
-    from . import llm
+    from . import llm, reminder, skin_catalog
 else:
     import importlib
     repo_root = Path(__file__).resolve().parent.parent
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
     llm = importlib.import_module("mycat.llm")
+    skin_catalog = importlib.import_module("mycat.skin_catalog")
+    reminder = importlib.import_module("mycat.reminder")
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -77,20 +79,8 @@ def get_temp_dir() -> Path:
 
 
 def scan_images_directory() -> list[str]:
-    """
-    Scan the images/ directory for ZIP archives containing GIF files.
-    Returns a list of base names (without extension) for ZIP files.
-    """
-    script_dir = Path(__file__).resolve().parent
-    images_dir = script_dir / "images"
-    
-    if not images_dir.exists():
-        return []
-    
-    # Get all ZIP files
-    zip_files = sorted(p.stem for p in images_dir.glob("*.zip"))
-    
-    return zip_files
+    """Return sorted unique skin ids from bundled + user-installed locations."""
+    return skin_catalog.scan_all()
 
 
 def parse_gif_frame_delays(gif_path: Path) -> list[int]:
@@ -212,9 +202,14 @@ def load_packaged_images(image_path: Optional[str] = None, default_image: Option
             base_name = default_image
         else:
             base_name = "cat"
-        
-        zip_path = script_dir / "images" / f"{base_name}.zip"
-    
+
+        resolved = skin_catalog.find_skin_zip(base_name)
+        if resolved is None:
+            raise FileNotFoundError(
+                f"ZIP not found for skin '{base_name}' in bundled or user skins dir"
+            )
+        zip_path = resolved
+
     if not zip_path.exists():
         raise FileNotFoundError(f"ZIP not found: {zip_path}")
     
@@ -492,6 +487,10 @@ class PixelCatWindow(QtWidgets.QWidget):
 
         # Save current image to INI on startup
         save_image_to_ini(self.file_name)
+
+        # Reminder scheduler (cat-on-a-plane flyby). Loads any saved reminder
+        # and re-arms it; the flyby UI is imported lazily on first use.
+        self.reminder_controller = reminder.ReminderController(self)
     
     def _load_position(self) -> None:
         """Load window position from config; default to the bottom-right corner."""
@@ -546,10 +545,9 @@ class PixelCatWindow(QtWidgets.QWidget):
     def _load_image(self, image_name: str) -> None:
         """Load a different GIF from ZIP and extract first frame."""
         try:
-            zip_path = Path(__file__).resolve().parent / "images" / f"{image_name}.zip"
-            
-            if not zip_path.exists():
-                logger.error(f"ZIP file not found: {image_name}.zip")
+            zip_path = skin_catalog.find_skin_zip(image_name)
+            if zip_path is None:
+                logger.error(f"ZIP file not found for skin: {image_name}")
                 return
             
             # Extract first GIF from ZIP
@@ -660,40 +658,109 @@ class PixelCatWindow(QtWidgets.QWidget):
         """Show context menu at the given position."""
         menu = QtWidgets.QMenu(self)
 
-        toggle_llm_enabled = getattr(self, "_toggle_llm_enabled", None)
-        llm_is_enabled = getattr(self, "_is_llm_enabled", None)
-        if callable(toggle_llm_enabled):
-            llm_enabled_action = menu.addAction("LLM Enabled")
-            llm_enabled_action.setCheckable(True)
-            llm_enabled_action.setChecked(bool(llm_is_enabled() if callable(llm_is_enabled) else True))
-            llm_enabled_action.triggered.connect(lambda _checked: toggle_llm_enabled())
-            menu.addSeparator()
-
+        # "Chat" appears only once Ollama is configured (a controller exists),
+        # and is greyed out while the LLM is disabled.
         toggle_chat = getattr(self, "_toggle_llm_chat", None)
         if callable(toggle_chat):
             chat_action = menu.addAction("Chat")
             chat_action.triggered.connect(toggle_chat)
+            llm_is_enabled = getattr(self, "_is_llm_enabled", None)
+            if callable(llm_is_enabled):
+                chat_action.setEnabled(bool(llm_is_enabled()))
             menu.addSeparator()
 
-        # Add Images submenu if we have available images
+        # "Ollama…" (the enabled checkbox now lives inside that dialog); always
+        # available so the backend can be configured from scratch.
+        ollama_action = menu.addAction("Ollama…")
+        ollama_action.triggered.connect(self.open_llm_settings)
+
+        # Shop temporarily hidden from the menu (work in progress). The dialog
+        # and its handler stay in the codebase; re-enable by uncommenting:
+        # shop_action = menu.addAction("Open Shop…")
+        # shop_action.triggered.connect(self._open_shop)
+
+        reminder_action = menu.addAction("Reminder…")
+        reminder_action.triggered.connect(self._open_reminder)
+        menu.addSeparator()
+
+        # Rebuild the list every time so freshly-installed skins appear without restart.
+        self.available_images = skin_catalog.scan_all()
         if len(self.available_images) > 0:
             images_menu = menu.addMenu("Images")
             for img_name in self.available_images:
                 action = images_menu.addAction(img_name)
-                # Mark current image with checkmark
                 if img_name == self.file_name:
                     action.setCheckable(True)
                     action.setChecked(True)
-                # Connect action to load image
                 action.triggered.connect(lambda checked, name=img_name: self._load_image(name))
-        
-        # Add separator if we have both menu and quit
-        if len(self.available_images) > 0:
             menu.addSeparator()
-        
+
         quit_action = menu.addAction("Quit")
         quit_action.triggered.connect(QtWidgets.QApplication.quit)
         menu.exec(self.mapToGlobal(pos))
+
+    def open_llm_settings(self) -> None:
+        """Open the Ollama settings dialog (host/port, model, test, save)."""
+        try:
+            if __package__:
+                from .llm_settings_ui import OllamaSettingsDialog
+            else:
+                import importlib
+
+                OllamaSettingsDialog = importlib.import_module(
+                    "mycat.llm_settings_ui"
+                ).OllamaSettingsDialog
+        except Exception:
+            logger.exception("Failed to import Ollama settings dialog")
+            return
+        dialog = OllamaSettingsDialog(self, parent=self)
+        dialog.exec()
+
+    def _open_shop(self) -> None:
+        """Lazily import and show the shop dialog."""
+        existing = getattr(self, "_shop_dialog", None)
+        if existing is not None:
+            try:
+                existing.show()
+                existing.raise_()
+                existing.activateWindow()
+                return
+            except RuntimeError:
+                self._shop_dialog = None  # Qt object was deleted
+
+        try:
+            if __package__:
+                from .shop_ui import ShopDialog
+            else:
+                import importlib
+                ShopDialog = importlib.import_module("mycat.shop_ui").ShopDialog
+        except Exception:
+            logger.exception("Failed to import shop UI")
+            return
+
+        dialog = ShopDialog(self, config_path=CFG_FILE)
+        dialog.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        dialog.destroyed.connect(lambda _=None: setattr(self, "_shop_dialog", None))
+        dialog.skin_installed.connect(self._on_skin_installed)
+        dialog.skin_uninstalled.connect(self._on_skin_uninstalled)
+        self._shop_dialog = dialog
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+
+    def _open_reminder(self) -> None:
+        """Open the reminder settings dialog."""
+        controller = getattr(self, "reminder_controller", None)
+        if controller is not None:
+            controller.open_dialog()
+
+    def _on_skin_installed(self, _skin_id: str) -> None:
+        self.available_images = skin_catalog.scan_all()
+
+    def _on_skin_uninstalled(self, skin_id: str) -> None:
+        self.available_images = skin_catalog.scan_all()
+        if self.file_name == skin_id and self.available_images:
+            self._load_image(self.available_images[0])
     
     def _schedule_next_animation(self) -> None:
         """Schedule the next PNG -> GIF transition with a single-shot timer."""
