@@ -672,10 +672,10 @@ class PixelCatWindow(QtWidgets.QWidget):
                 chat_action.setEnabled(bool(llm_is_enabled()))
             menu.addSeparator()
 
-        # "Ollama…" (the enabled checkbox now lives inside that dialog); always
-        # available so the backend can be configured from scratch.
-        ollama_action = menu.addAction("Ollama…")
-        ollama_action.triggered.connect(self.open_llm_settings)
+        # "LLM…" — pick the chat vendor (Ollama / OpenAI / Grok / custom …) and
+        # model. Always available so the backend can be configured from scratch.
+        llm_action = menu.addAction("LLM…")
+        llm_action.triggered.connect(self.open_llm_settings)
 
         # Shop temporarily hidden from the menu (work in progress). The dialog
         # and its handler stay in the codebase; re-enable by uncommenting:
@@ -703,20 +703,20 @@ class PixelCatWindow(QtWidgets.QWidget):
         menu.exec(self.mapToGlobal(pos))
 
     def open_llm_settings(self) -> None:
-        """Open the Ollama settings dialog (host/port, model, test, save)."""
+        """Open the LLM vendor settings dialog (vendor, model, test, save)."""
         try:
             if __package__:
-                from .llm_settings_ui import OllamaSettingsDialog
+                from .llm_settings_ui import LLMSettingsDialog
             else:
                 import importlib
 
-                OllamaSettingsDialog = importlib.import_module(
+                LLMSettingsDialog = importlib.import_module(
                     "mycat.llm_settings_ui"
-                ).OllamaSettingsDialog
+                ).LLMSettingsDialog
         except Exception:
-            logger.exception("Failed to import Ollama settings dialog")
+            logger.exception("Failed to import LLM settings dialog")
             return
-        dialog = OllamaSettingsDialog(self, parent=self)
+        dialog = LLMSettingsDialog(self, parent=self)
         dialog.exec()
 
     def _open_shop(self) -> None:

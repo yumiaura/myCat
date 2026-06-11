@@ -6,11 +6,11 @@ import argparse
 import logging
 import os
 from dataclasses import dataclass
-from typing import Optional, Protocol
+from typing import Protocol
 
 from PySide6 import QtWidgets
 
-from . import llm_prompt, llm_ui
+from . import llm_prompt, llm_ui, llm_vendors
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ class LLMContext:
     backend: LLMBackend
     settings: llm_prompt.LLMSettings
     enabled: bool = True
+    vendor: llm_vendors.Vendor | None = None
 
 
 class LLMDependencyError(RuntimeError):
@@ -49,36 +50,46 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def initialize(args) -> Optional[LLMContext]:
-    """Configure the selected backend (OpenAI or Ollama)."""
-    backend_name: Optional[str] = None
-    if getattr(args, "openai", False):
-        backend_name = "openai"
-    elif getattr(args, "ollama", False):
-        backend_name = "ollama"
-    else:
-        # Allow enabling backend without CLI flags (useful for docker-compose runs).
-        llm_prompt.load_env_file()
-        env_backend = (os.getenv("LLM_BACKEND") or "").strip().lower()
-        if env_backend in {"openai", "ollama"}:
-            backend_name = env_backend
+def vendor_is_configured() -> bool:
+    """Whether a chat vendor has been chosen (config or LLM_BACKEND env)."""
+    parser = llm_vendors.read_config()
+    if parser.has_option("llm", "vendor"):
+        return True
+    env_backend = (os.getenv("LLM_BACKEND") or "").strip().lower()
+    return env_backend in set(llm_vendors.builtin_vendors())
 
-    if not backend_name:
-        logger.debug("LLM backend not requested")
+
+def initialize(args) -> LLMContext | None:
+    """Configure the active chat vendor (Ollama by default, or any cloud vendor)."""
+    llm_prompt.load_env_file()
+
+    vendor_name: str | None = None
+    if getattr(args, "openai", False):
+        vendor_name = "openai"
+    elif getattr(args, "ollama", False):
+        vendor_name = "ollama"
+    elif vendor_is_configured():
+        vendor_name = llm_vendors.active_vendor_name()
+
+    if not vendor_name:
+        logger.debug("LLM chat not requested")
         return None
 
-    llm_prompt.load_env_file()
+    vendors = llm_vendors.load_vendors()
+    vendor = vendors.get(vendor_name) or vendors[llm_vendors.DEFAULT_VENDOR]
     enabled = llm_prompt.load_llm_enabled()
     settings = llm_prompt.load_llm_settings()
-    logger.info("Initializing LLM backend '%s'", backend_name)
+    logger.info("Initializing LLM vendor '%s' (kind=%s)", vendor.name, vendor.kind)
     try:
-        backend = create_backend(backend_name, settings)
+        backend = create_backend_for_vendor(vendor, settings.ollama_timeout)
     except (LLMDependencyError, ImportError, RuntimeError) as exc:
-        logger.warning("LLM backend '%s' disabled: %s", backend_name, exc)
+        logger.warning("LLM vendor '%s' disabled: %s", vendor.name, exc)
         return None
 
-    logger.info("LLM backend '%s' ready", backend_name)
-    return LLMContext(backend_name=backend_name, backend=backend, settings=settings, enabled=enabled)
+    logger.info("LLM vendor '%s' ready", vendor.name)
+    return LLMContext(
+        backend_name=vendor.name, backend=backend, settings=settings, enabled=enabled, vendor=vendor
+    )
 
 
 def attach(window: QtWidgets.QWidget, context: LLMContext) -> None:
@@ -89,42 +100,25 @@ def attach(window: QtWidgets.QWidget, context: LLMContext) -> None:
     llm_ui.attach_chat(window, context, enabled=context.enabled)
 
 
-def create_backend(name: str, settings: llm_prompt.LLMSettings) -> LLMBackend:
-    normalized = name.strip().lower()
-    if normalized == "openai":
-        try:
-            from .llm_openai import OpenAIBackend
-        except ModuleNotFoundError as exc:
-            raise LLMDependencyError(exc) from exc
-        if not settings.openai_api_key:
-            raise LLMDependencyError("OPENAI_API_KEY is not configured in .env or config.ini")
-        logger.debug(
-            "Creating OpenAI backend with model %s timeout=%s",
-            settings.openai_model,
-            settings.ollama_timeout,
-        )
-        return OpenAIBackend(
-            api_key=settings.openai_api_key,
-            model=settings.openai_model,
-            timeout=settings.ollama_timeout,
-        )
-
-    if normalized == "ollama":
+def create_backend_for_vendor(vendor: llm_vendors.Vendor, timeout: float) -> LLMBackend:
+    """Build the right backend adapter for a vendor's kind."""
+    if vendor.kind == llm_vendors.KIND_OLLAMA:
         from .llm_ollama import OllamaBackend
 
-        logger.debug(
-            "Creating Ollama backend url=%s model=%s timeout=%s",
-            settings.ollama_url,
-            settings.ollama_model,
-            settings.ollama_timeout,
-        )
-        return OllamaBackend(
-            url=settings.ollama_url,
-            model=settings.ollama_model,
-            timeout=settings.ollama_timeout,
+        return OllamaBackend(url=vendor.base_url, model=vendor.model, timeout=timeout)
+
+    if vendor.kind == llm_vendors.KIND_OPENAI:
+        from .llm_openai_compat import OpenAICompatBackend
+
+        key = vendor.resolve_key()
+        if not key:
+            hint = f"set ${vendor.api_key_env}" if vendor.api_key_env else "enter an API key"
+            raise LLMDependencyError(f"No API key for {vendor.name} — {hint} in LLM settings")
+        return OpenAICompatBackend(
+            base_url=vendor.base_url, api_key=key, model=vendor.model, timeout=timeout
         )
 
-    raise LLMDependencyError(f"Unsupported LLM backend: {name}")
+    raise LLMDependencyError(f"Unsupported vendor kind: {vendor.kind}")
 
 
 __all__ = [
