@@ -53,6 +53,9 @@ class Reminder:
     # Plane width in screen pixels; the height scales by the sprite's aspect
     # ratio (after alpha-bbox crop) so the plane never gets squashed.
     plane_width: int = 160
+    # Which bundled plane sprite to fly (stem under assets/planes/, e.g.
+    # "plane1".."plane4"). Empty falls back to the single bundled plane.png.
+    plane: str = "plane1"
     # Cosmetic — how the user last set the schedule, only used to pre-fill the
     # dialog. The scheduler always trusts ``fire_at``.
     mode: str = "in"  # "in" (relative) | "at" (absolute time of day)
@@ -88,6 +91,7 @@ def load_reminder() -> Reminder | None:
             speed=section.getfloat("speed", fallback=DEFAULT_SPEED),
             plane_color=section.get("plane_color", "pink"),
             plane_width=section.getint("plane_width", fallback=160),
+            plane=section.get("plane", "plane1"),
             mode=section.get("mode", "in"),
             in_minutes=section.getint("in_minutes", fallback=10),
         )
@@ -114,6 +118,7 @@ def save_reminder(reminder: Reminder) -> None:
         section["speed"] = str(reminder.speed)
         section["plane_color"] = reminder.plane_color
         section["plane_width"] = str(reminder.plane_width)
+        section["plane"] = reminder.plane
         section["mode"] = reminder.mode
         section["in_minutes"] = str(reminder.in_minutes)
         with open(CFG_FILE, "w") as fh:

@@ -23,3 +23,27 @@ def test_next_future_occurrence_keeps_future_value():
     now = datetime(2026, 6, 11, 12, 0, 0)
     later = datetime(2026, 6, 11, 18, 0, 0)
     assert reminder.next_future_occurrence(later, now=now) == later
+
+
+def test_plane_field_defaults_to_plane1():
+    assert reminder.Reminder().plane == "plane1"
+
+
+def test_plane_roundtrips_through_config(monkeypatch, tmp_path):
+    monkeypatch.setattr(reminder, "CFG_DIR", tmp_path)
+    monkeypatch.setattr(reminder, "CFG_FILE", tmp_path / "config.ini")
+    reminder.save_reminder(reminder.Reminder(text="hi", plane="plane3"))
+    loaded = reminder.load_reminder()
+    assert loaded is not None
+    assert loaded.plane == "plane3"
+
+
+def test_available_planes_lists_bundled_sprites():
+    from mycat import reminder_ui
+
+    planes = reminder_ui.available_planes()
+    assert "plane1" in planes
+    assert len(planes) >= 4
+    assert reminder_ui.plane_sprite_path("plane2").name == "plane2.png"
+    # Unknown name falls back to the bundled single sprite.
+    assert reminder_ui.plane_sprite_path("nope").name == "plane.png"

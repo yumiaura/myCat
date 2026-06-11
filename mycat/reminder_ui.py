@@ -116,7 +116,23 @@ def _tinted_pixmap(base: QtGui.QPixmap, tint: QtGui.QColor) -> QtGui.QPixmap:
 # fuselage. Multiply-blend recolouring (pink / white / blue / red) is applied
 # on top of the bundled sprite — that's the only thing the user can customize.
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+PLANES_DIR = ASSETS_DIR / "planes"
 CANOPY_FRACS = (0.485, 0.103, 0.118, 0.230)  # cx, cy, rx, ry (right-facing)
+
+
+def available_planes() -> list:
+    """Sorted stems of the selectable plane sprites under assets/planes/."""
+    if not PLANES_DIR.is_dir():
+        return []
+    return sorted(p.stem for p in PLANES_DIR.glob("*.png"))
+
+
+def plane_sprite_path(name: str) -> Path:
+    """Path to the chosen plane sprite, falling back to the bundled plane.png."""
+    candidate = PLANES_DIR / f"{name}.png"
+    if name and candidate.exists():
+        return candidate
+    return ASSETS_DIR / "plane.png"
 
 
 class FlybyWindow(QtWidgets.QWidget):
@@ -186,10 +202,10 @@ class FlybyWindow(QtWidgets.QWidget):
         # four liveries, all chosen client-side.
         self._plane_color = _resolve_plane_color(getattr(reminder, "plane_color", "pink"))
 
-        # Bundled plane sprite. Tint baked in here so per-frame drawing is just
-        # a drawPixmap call. If the bundled PNG is missing (corrupted install),
-        # paintEvent falls back to drawing only the flag.
-        sprite_path = ASSETS_DIR / "plane.png"
+        # Chosen plane sprite (assets/planes/<name>.png, falling back to the
+        # bundled plane.png). Tint baked in here so per-frame drawing is just a
+        # drawPixmap call. If the PNG is missing, paintEvent draws only the flag.
+        sprite_path = plane_sprite_path(getattr(reminder, "plane", "plane1"))
         sprite = QtGui.QPixmap(str(sprite_path))
         if sprite.isNull():
             logger.warning("Plane sprite missing at %s — flyby will be flag-only",
@@ -763,6 +779,22 @@ class ReminderDialog(QtWidgets.QDialog):
         self._direction.setCurrentIndex(max(0, idx))
         form.addRow("Direction", self._direction)
 
+        self.plane_combo = QtWidgets.QComboBox()
+        self.plane_combo.setIconSize(QtCore.QSize(48, 24))
+        for name in available_planes():
+            sprite = QtGui.QPixmap(str(plane_sprite_path(name)))
+            icon = QtGui.QIcon(
+                sprite.scaled(
+                    48, 24,
+                    QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                    QtCore.Qt.TransformationMode.SmoothTransformation,
+                )
+            ) if not sprite.isNull() else QtGui.QIcon()
+            self.plane_combo.addItem(icon, name.capitalize(), name)
+        idx = self.plane_combo.findData(existing.plane)
+        self.plane_combo.setCurrentIndex(max(0, idx))
+        form.addRow("Plane", self.plane_combo)
+
         self._color = QtWidgets.QComboBox()
         for name, qcolor in PLANE_COLORS.items():
             swatch = QtGui.QPixmap(20, 20)
@@ -851,6 +883,7 @@ class ReminderDialog(QtWidgets.QDialog):
         direction = self._direction.currentData()
         plane_color = self._color.currentData() or "pink"
         plane_width = self._plane_width_spin.value()
+        plane = self.plane_combo.currentData() or "plane1"
         now = datetime.now()
         if self._in_radio.isChecked():
             minutes = self._in_spin.value()
@@ -863,6 +896,7 @@ class ReminderDialog(QtWidgets.QDialog):
                 enabled=True,
                 plane_color=plane_color,
                 plane_width=plane_width,
+                plane=plane,
                 mode="in",
                 in_minutes=minutes,
             )
@@ -878,6 +912,7 @@ class ReminderDialog(QtWidgets.QDialog):
             enabled=True,
             plane_color=plane_color,
             plane_width=plane_width,
+            plane=plane,
             mode="at",
             in_minutes=self._in_spin.value(),
         )
