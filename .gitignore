@@ -15,4 +15,4 @@ uv.lock
 *.md
 !README.md
 !CHANGELOG.md
-!docs/*.md
+!docs/**/*.md
