@@ -164,16 +164,16 @@ class FlybyWindow(QtWidgets.QWidget):
         # MYCAT_SHAPE_MASK=1/0 forces or disables it (mirrors PixelCatWindow).
         force_mask = os.environ.get("MYCAT_SHAPE_MASK")
         if force_mask in ("0", "1"):
-            self._silhouette_mask = force_mask == "1"
+            self.silhouette_mask = force_mask == "1"
         else:
-            self._silhouette_mask = platform_name == "xcb" and has_no_x11_compositor()
+            self.silhouette_mask = platform_name == "xcb" and has_no_x11_compositor()
         # Geometry of what was last painted, captured by the _draw_* helpers so
         # the mask can follow the real shapes (set each frame in paintEvent).
-        self._flag_shape = None
-        self._flag_pole = None
-        self._rope_path = None
-        self._plane_blit = None
-        self._cat_blit = None
+        self.flag_shape = None
+        self.flag_pole = None
+        self.rope_path = None
+        self.plane_blit = None
+        self.cat_blit = None
 
         self._text = (reminder.text or reminder_mod.DEFAULT_TEXT).strip() or reminder_mod.DEFAULT_TEXT
         self._ltr = reminder.normalized_direction() != DIRECTION_RTL
@@ -300,11 +300,11 @@ class FlybyWindow(QtWidgets.QWidget):
         painter.setRenderHint(QtGui.QPainter.RenderHint.SmoothPixmapTransform, True)
 
         # Forget last frame's shapes; the _draw_* helpers re-record what they paint.
-        self._flag_shape = None
-        self._flag_pole = None
-        self._rope_path = None
-        self._plane_blit = None
-        self._cat_blit = None
+        self.flag_shape = None
+        self.flag_pole = None
+        self.rope_path = None
+        self.plane_blit = None
+        self.cat_blit = None
 
         t = 0.0 if self._start_time is None else max(0.0, time.monotonic() - self._start_time)
         bob = math.sin(t * 1.9) * 2.5  # gentle vertical "alive" motion
@@ -355,8 +355,8 @@ class FlybyWindow(QtWidgets.QWidget):
     def _update_input_mask(self, plane_rect, flag_attach, flag_dir) -> None:
         # Without a compositor, clip to the drawn silhouette so transparent areas
         # are not painted black; with a compositor keep the cheap bounding box.
-        if self._silhouette_mask:
-            region = self._silhouette_region()
+        if self.silhouette_mask:
+            region = self.silhouette_region()
             if not region.isEmpty():
                 self.setMask(region)
                 return
@@ -375,23 +375,23 @@ class FlybyWindow(QtWidgets.QWidget):
         union_rect = union_rect.adjusted(-8, -8, 8, 8).toRect()
         self.setMask(QtGui.QRegion(union_rect))
 
-    def _silhouette_region(self) -> QtGui.QRegion:
+    def silhouette_region(self) -> QtGui.QRegion:
         """Region matching the actually-drawn shapes (flag, pole, rope, plane, cat).
 
         Used on X11 without a compositor so the window clips to the silhouette
         instead of a bounding box (which would render a black rectangle).
         """
         region = QtGui.QRegion()
-        if self._flag_shape is not None:
-            region += QtGui.QRegion(self._flag_shape.toPolygon())
-        if self._flag_pole is not None:
-            region += QtGui.QRegion(self._flag_pole.toRect())
-        if self._rope_path is not None:
+        if self.flag_shape is not None:
+            region += QtGui.QRegion(self.flag_shape.toPolygon())
+        if self.flag_pole is not None:
+            region += QtGui.QRegion(self.flag_pole.toRect())
+        if self.rope_path is not None:
             stroker = QtGui.QPainterPathStroker()
             stroker.setWidth(6)
-            outline = stroker.createStroke(self._rope_path).toFillPolygon().toPolygon()
+            outline = stroker.createStroke(self.rope_path).toFillPolygon().toPolygon()
             region += QtGui.QRegion(outline)
-        for blit in (self._cat_blit, self._plane_blit):
+        for blit in (self.cat_blit, self.plane_blit):
             if blit is None:
                 continue
             pixmap, bx, by = blit
@@ -460,7 +460,7 @@ class FlybyWindow(QtWidgets.QWidget):
         painter.setBrush(self._plane_color)
         painter.setPen(QtGui.QPen(self._plane_color.darker(150), 2))
         painter.drawPolygon(polygon)
-        self._flag_shape = polygon
+        self.flag_shape = polygon
 
         # Pole — a thin dark vertical bar overlapping the attach edge so the
         # cloth reads as "sewn to the pole".
@@ -468,7 +468,7 @@ class FlybyWindow(QtWidgets.QWidget):
         painter.setBrush(FLAG_POLE_COLOR)
         pole_rect = QtCore.QRectF(pole_x - pole_w / 2, top_y - 5, pole_w, height + 10)
         painter.drawRect(pole_rect)
-        self._flag_pole = pole_rect
+        self.flag_pole = pole_rect
 
         # Text — luminance-aware contrast so a white-livery flag stays readable.
         c = self._plane_color
@@ -497,7 +497,7 @@ class FlybyWindow(QtWidgets.QWidget):
         painter.setPen(pen)
         painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
         painter.drawPath(path)
-        self._rope_path = path
+        self.rope_path = path
 
     # -- plane --------------------------------------------------------------
 
@@ -526,7 +526,7 @@ class FlybyWindow(QtWidgets.QWidget):
         painter.setRenderHint(QtGui.QPainter.RenderHint.SmoothPixmapTransform, False)
         painter.drawPixmap(px, py, scaled)
         painter.restore()
-        self._plane_blit = (scaled, px, py)
+        self.plane_blit = (scaled, px, py)
 
     # -- cat face inside the cockpit ---------------------------------------
 
@@ -553,7 +553,7 @@ class FlybyWindow(QtWidgets.QWidget):
         painter.setRenderHint(QtGui.QPainter.RenderHint.SmoothPixmapTransform, False)
         painter.drawPixmap(px, py, cat)
         painter.restore()
-        self._cat_blit = (cat, px, py)
+        self.cat_blit = (cat, px, py)
 
     # -- interaction: pause + drag + context menu ---------------------------
 

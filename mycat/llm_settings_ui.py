@@ -100,74 +100,74 @@ class OllamaSettingsDialog(QtWidgets.QDialog):
         self.pool = QtCore.QThreadPool(self)
         self.models: list = []
 
-        url, model = self._current_url_model()
-        host, port = self._split_url(url)
-        self._saved_model = model
+        url, model = self.current_url_model()
+        host, port = self.split_url(url)
+        self.saved_model = model
 
-        self._enabled = QtWidgets.QCheckBox("LLM enabled")
-        self._enabled.setChecked(self._current_enabled())
+        self.enabled_box = QtWidgets.QCheckBox("LLM enabled")
+        self.enabled_box.setChecked(self.current_enabled())
 
-        self._host = QtWidgets.QLineEdit(host)
-        self._port = QtWidgets.QSpinBox()
-        self._port.setRange(1, 65535)
-        self._port.setValue(port)
-        self._load_btn = QtWidgets.QPushButton("Load models")
-        self._model = QtWidgets.QComboBox()
-        self._model.setEnabled(False)
-        self._status = QtWidgets.QLabel("")
-        self._status.setWordWrap(True)
-        self._test_btn = QtWidgets.QPushButton("Test")
-        self._save_btn = QtWidgets.QPushButton("Save")
-        self._test_btn.setEnabled(False)
-        self._save_btn.setEnabled(False)
+        self.host_edit = QtWidgets.QLineEdit(host)
+        self.port_spin = QtWidgets.QSpinBox()
+        self.port_spin.setRange(1, 65535)
+        self.port_spin.setValue(port)
+        self.load_btn = QtWidgets.QPushButton("Load models")
+        self.model_combo = QtWidgets.QComboBox()
+        self.model_combo.setEnabled(False)
+        self.status_label = QtWidgets.QLabel("")
+        self.status_label.setWordWrap(True)
+        self.test_btn = QtWidgets.QPushButton("Test")
+        self.save_btn = QtWidgets.QPushButton("Save")
+        self.test_btn.setEnabled(False)
+        self.save_btn.setEnabled(False)
         cancel_btn = QtWidgets.QPushButton("Cancel")
 
         form = QtWidgets.QFormLayout()
-        form.addRow(self._enabled)
-        form.addRow("Host", self._host)
+        form.addRow(self.enabled_box)
+        form.addRow("Host", self.host_edit)
         # Port and the load button share a row. The row is added as a bare layout
         # (not wrapped in a QWidget) so the button keeps the dialog's button style
         # instead of sitting on a stray system-coloured panel.
         port_row = QtWidgets.QHBoxLayout()
-        port_row.addWidget(self._port)
+        port_row.addWidget(self.port_spin)
         port_row.addStretch(1)
-        port_row.addWidget(self._load_btn)
+        port_row.addWidget(self.load_btn)
         # Don't let the load button grab the dialog default (it would highlight).
-        self._load_btn.setAutoDefault(False)
-        self._load_btn.setDefault(False)
+        self.load_btn.setAutoDefault(False)
+        self.load_btn.setDefault(False)
         form.addRow("Port", port_row)
-        form.addRow("Model", self._model)
+        form.addRow("Model", self.model_combo)
 
         buttons = QtWidgets.QHBoxLayout()
-        buttons.addWidget(self._test_btn)
+        buttons.addWidget(self.test_btn)
         buttons.addStretch(1)
         buttons.addWidget(cancel_btn)
-        buttons.addWidget(self._save_btn)
+        buttons.addWidget(self.save_btn)
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.addLayout(form)
-        layout.addWidget(self._status)
+        layout.addWidget(self.status_label)
         layout.addLayout(buttons)
 
-        self._load_btn.clicked.connect(self._on_load)
-        self._model.currentIndexChanged.connect(self._on_model_changed)
-        self._test_btn.clicked.connect(self._on_test)
-        self._save_btn.clicked.connect(self._on_save)
+        self.load_btn.clicked.connect(self.on_load)
+        self.model_combo.currentIndexChanged.connect(self.on_model_changed)
+        self.test_btn.clicked.connect(self.on_test)
+        self.save_btn.clicked.connect(self.on_save)
         cancel_btn.clicked.connect(self.reject)
         # Reset model list if the user edits the endpoint after a load.
-        self._host.textEdited.connect(self._invalidate_models)
-        self._port.valueChanged.connect(self._invalidate_models)
+        self.host_edit.textEdited.connect(self.invalidate_models)
+        self.port_spin.valueChanged.connect(self.invalidate_models)
 
         # Fetch the model list immediately so the user lands on a ready selector.
-        QtCore.QTimer.singleShot(0, self._on_load)
+        QtCore.QTimer.singleShot(0, self.on_load)
 
     # -- helpers ------------------------------------------------------------
 
-    def _controller(self):
+    def controller(self):
         return getattr(self.host_window, "_llm_controller", None)
 
-    def _current_url_model(self):
-        controller = self._controller()
+    def current_url_model(self):
+        controller = self.controller()
         if controller is not None:
             settings = controller.context.settings
             return settings.ollama_url, settings.ollama_model
@@ -175,127 +175,127 @@ class OllamaSettingsDialog(QtWidgets.QDialog):
         settings = llm_prompt.load_llm_settings()
         return settings.ollama_url, settings.ollama_model
 
-    def _current_enabled(self) -> bool:
-        controller = self._controller()
+    def current_enabled(self) -> bool:
+        controller = self.controller()
         if controller is not None:
             return bool(controller.is_enabled())
         return True
 
-    def _current_timeout(self) -> float:
-        controller = self._controller()
+    def current_timeout(self) -> float:
+        controller = self.controller()
         if controller is not None:
             return float(controller.context.settings.ollama_timeout)
         return float(llm_prompt.load_llm_settings().ollama_timeout)
 
-    def _split_url(self, url: str):
+    def split_url(self, url: str):
         parts = urlsplit(url if "//" in url else f"http://{url}")
         return (parts.hostname or "localhost"), (parts.port or 11434)
 
-    def _base_url(self) -> str:
-        return f"http://{self._host.text().strip() or 'localhost'}:{self._port.value()}"
+    def base_url(self) -> str:
+        return f"http://{self.host_edit.text().strip() or 'localhost'}:{self.port_spin.value()}"
 
-    def _set_status(self, text: str, style: str = STATUS_INFO) -> None:
-        self._status.setStyleSheet(style)
-        self._status.setText(text)
+    def set_status(self, text: str, style: str = STATUS_INFO) -> None:
+        self.status_label.setStyleSheet(style)
+        self.status_label.setText(text)
 
-    def _invalidate_models(self, *_args) -> None:
+    def invalidate_models(self, *args) -> None:
         self.models = []
-        self._model.clear()
-        self._model.setEnabled(False)
-        self._test_btn.setEnabled(False)
-        self._save_btn.setEnabled(False)
+        self.model_combo.clear()
+        self.model_combo.setEnabled(False)
+        self.test_btn.setEnabled(False)
+        self.save_btn.setEnabled(False)
 
     # -- load models --------------------------------------------------------
 
-    def _on_load(self) -> None:
-        self._load_btn.setEnabled(False)
-        self._set_status("Loading models…", STATUS_INFO)
-        worker = ModelsWorker(self._base_url(), 10.0)
-        worker.signals.models.connect(self._on_models)
-        worker.signals.error.connect(self._on_load_error)
+    def on_load(self) -> None:
+        self.load_btn.setEnabled(False)
+        self.set_status("Loading models…", STATUS_INFO)
+        worker = ModelsWorker(self.base_url(), 10.0)
+        worker.signals.models.connect(self.on_models)
+        worker.signals.error.connect(self.on_load_error)
         self.pool.start(worker)
 
-    def _on_models(self, names: list) -> None:
-        self._load_btn.setEnabled(True)
+    def on_models(self, names: list) -> None:
+        self.load_btn.setEnabled(True)
         self.models = names
-        self._model.blockSignals(True)
-        self._model.clear()
-        self._model.addItems(names)
-        self._model.setEnabled(True)
-        if self._saved_model in names:
-            self._model.setCurrentText(self._saved_model)
-        self._model.blockSignals(False)
-        self._set_status(f"Found {len(names)} model(s).", STATUS_OK)
-        self._on_model_changed()
+        self.model_combo.blockSignals(True)
+        self.model_combo.clear()
+        self.model_combo.addItems(names)
+        self.model_combo.setEnabled(True)
+        if self.saved_model in names:
+            self.model_combo.setCurrentText(self.saved_model)
+        self.model_combo.blockSignals(False)
+        self.set_status(f"Found {len(names)} model(s).", STATUS_OK)
+        self.on_model_changed()
 
-    def _on_load_error(self, message: str) -> None:
-        self._load_btn.setEnabled(True)
-        self._invalidate_models()
-        self._set_status(f"Could not load models: {message}", STATUS_ERR)
+    def on_load_error(self, message: str) -> None:
+        self.load_btn.setEnabled(True)
+        self.invalidate_models()
+        self.set_status(f"Could not load models: {message}", STATUS_ERR)
 
     # -- model selection ----------------------------------------------------
 
-    def _on_model_changed(self, *_args) -> None:
-        has_model = self._model.isEnabled() and bool(self._model.currentText())
-        self._test_btn.setEnabled(has_model)
-        self._save_btn.setEnabled(has_model)
+    def on_model_changed(self, *args) -> None:
+        has_model = self.model_combo.isEnabled() and bool(self.model_combo.currentText())
+        self.test_btn.setEnabled(has_model)
+        self.save_btn.setEnabled(has_model)
 
     # -- test ---------------------------------------------------------------
 
-    def _on_test(self) -> None:
-        model = self._model.currentText()
+    def on_test(self) -> None:
+        model = self.model_combo.currentText()
         if not model:
             return
-        self._test_btn.setEnabled(False)
-        self._set_status(f"Testing {model}…", STATUS_INFO)
-        worker = TestWorker(self._base_url(), model, self._current_timeout() or TEST_TIMEOUT)
-        worker.signals.tested.connect(self._on_tested)
-        worker.signals.error.connect(self._on_test_error)
+        self.test_btn.setEnabled(False)
+        self.set_status(f"Testing {model}…", STATUS_INFO)
+        worker = TestWorker(self.base_url(), model, self.current_timeout() or TEST_TIMEOUT)
+        worker.signals.tested.connect(self.on_tested)
+        worker.signals.error.connect(self.on_test_error)
         self.pool.start(worker)
 
-    def _on_tested(self, elapsed: float, reply: str) -> None:
-        self._test_btn.setEnabled(True)
+    def on_tested(self, elapsed: float, reply: str) -> None:
+        self.test_btn.setEnabled(True)
         short = reply.strip().replace("\n", " ")
         if len(short) > 40:
             short = short[:40] + "…"
-        self._set_status(f"OK — {elapsed:.2f} s (reply: {short})", STATUS_OK)
+        self.set_status(f"OK — {elapsed:.2f} s (reply: {short})", STATUS_OK)
 
-    def _on_test_error(self, message: str) -> None:
-        self._test_btn.setEnabled(True)
-        self._set_status(f"Test failed: {message}", STATUS_ERR)
+    def on_test_error(self, message: str) -> None:
+        self.test_btn.setEnabled(True)
+        self.set_status(f"Test failed: {message}", STATUS_ERR)
 
     # -- save ---------------------------------------------------------------
 
-    def _on_save(self) -> None:
-        model = self._model.currentText()
+    def on_save(self) -> None:
+        model = self.model_combo.currentText()
         if not model:
             return
-        base_url = self._base_url()
-        enabled = self._enabled.isChecked()
+        endpoint = self.base_url()
+        enabled = self.enabled_box.isChecked()
         try:
-            llm_prompt.save_ollama_settings(base_url, model)
+            llm_prompt.save_ollama_settings(endpoint, model)
             llm_prompt.save_llm_enabled(enabled)
         except OSError as exc:
-            self._set_status(f"Could not save: {exc}", STATUS_ERR)
+            self.set_status(f"Could not save: {exc}", STATUS_ERR)
             return
         try:
-            self._apply_live(base_url, model, enabled)
+            self.apply_live(endpoint, model, enabled)
         except Exception as exc:  # noqa: BLE001 - report but the config is saved
             logger.exception("Failed to apply Ollama settings live")
-            self._set_status(f"Saved to config, but live apply failed: {exc}", STATUS_ERR)
+            self.set_status(f"Saved to config, but live apply failed: {exc}", STATUS_ERR)
             return
-        self._set_status("Saved ✓", STATUS_OK)
+        self.set_status("Saved ✓", STATUS_OK)
         self.accept()
 
-    def _apply_live(self, base_url: str, model: str, enabled: bool) -> None:
-        controller = self._controller()
+    def apply_live(self, endpoint: str, model: str, enabled: bool) -> None:
+        controller = self.controller()
         if controller is not None and controller.context.backend_name == "ollama":
             backend = controller.context.backend
             if hasattr(backend, "chat_url"):
-                backend.chat_url = f"{base_url.rstrip('/')}/api/chat"
+                backend.chat_url = f"{endpoint.rstrip('/')}/api/chat"
             if hasattr(backend, "model"):
                 backend.model = model
-            controller.context.settings.ollama_url = base_url
+            controller.context.settings.ollama_url = endpoint
             controller.context.settings.ollama_model = model
             controller.context.enabled = enabled
             controller.set_enabled(enabled)
@@ -306,7 +306,7 @@ class OllamaSettingsDialog(QtWidgets.QDialog):
         from . import llm, llm_ui
 
         settings = llm_prompt.load_llm_settings()
-        settings.ollama_url = base_url
+        settings.ollama_url = endpoint
         settings.ollama_model = model
         backend = llm.create_backend("ollama", settings)
         context = llm.LLMContext(

@@ -11,34 +11,34 @@ def make_window():
 
 def test_buttons_disabled_until_model_selected(qapp):
     dialog = llm_settings_ui.OllamaSettingsDialog(make_window())
-    assert dialog._test_btn.isEnabled() is False
-    assert dialog._save_btn.isEnabled() is False
+    assert dialog.test_btn.isEnabled() is False
+    assert dialog.save_btn.isEnabled() is False
 
 
 def test_on_models_populates_and_preselects(qapp):
     dialog = llm_settings_ui.OllamaSettingsDialog(make_window())
-    dialog._saved_model = "b"
-    dialog._on_models(["a", "b", "c"])
-    assert dialog._model.isEnabled()
-    assert dialog._model.currentText() == "b"
-    assert dialog._test_btn.isEnabled()
-    assert dialog._save_btn.isEnabled()
+    dialog.saved_model = "b"
+    dialog.on_models(["a", "b", "c"])
+    assert dialog.model_combo.isEnabled()
+    assert dialog.model_combo.currentText() == "b"
+    assert dialog.test_btn.isEnabled()
+    assert dialog.save_btn.isEnabled()
 
 
 def test_invalidate_models_disables_actions(qapp):
     dialog = llm_settings_ui.OllamaSettingsDialog(make_window())
-    dialog._on_models(["a", "b"])
-    dialog._invalidate_models()
-    assert dialog._model.count() == 0
-    assert dialog._test_btn.isEnabled() is False
-    assert dialog._save_btn.isEnabled() is False
+    dialog.on_models(["a", "b"])
+    dialog.invalidate_models()
+    assert dialog.model_combo.count() == 0
+    assert dialog.test_btn.isEnabled() is False
+    assert dialog.save_btn.isEnabled() is False
 
 
 def test_base_url_from_host_and_port(qapp):
     dialog = llm_settings_ui.OllamaSettingsDialog(make_window())
-    dialog._host.setText("example.local")
-    dialog._port.setValue(12345)
-    assert dialog._base_url() == "http://example.local:12345"
+    dialog.host_edit.setText("example.local")
+    dialog.port_spin.setValue(12345)
+    assert dialog.base_url() == "http://example.local:12345"
 
 
 class Backend:
@@ -76,7 +76,7 @@ def test_apply_live_updates_existing_backend(qapp):
     window._llm_controller = Controller()
     dialog = llm_settings_ui.OllamaSettingsDialog(window)
 
-    dialog._apply_live("http://1.2.3.4:9999", "qwen3:8b", False)
+    dialog.apply_live("http://1.2.3.4:9999", "qwen3:8b", False)
 
     controller = window._llm_controller
     assert controller.context.backend.chat_url == "http://1.2.3.4:9999/api/chat"

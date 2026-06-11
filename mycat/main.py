@@ -672,7 +672,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         # "Ollama…" (the enabled checkbox now lives inside that dialog); always
         # available so the backend can be configured from scratch.
         ollama_action = menu.addAction("Ollama…")
-        ollama_action.triggered.connect(self._open_llm_settings)
+        ollama_action.triggered.connect(self.open_llm_settings)
 
         # Shop temporarily hidden from the menu (work in progress). The dialog
         # and its handler stay in the codebase; re-enable by uncommenting:
@@ -699,7 +699,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         quit_action.triggered.connect(QtWidgets.QApplication.quit)
         menu.exec(self.mapToGlobal(pos))
 
-    def _open_llm_settings(self) -> None:
+    def open_llm_settings(self) -> None:
         """Open the Ollama settings dialog (host/port, model, test, save)."""
         try:
             if __package__:
