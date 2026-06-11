@@ -38,9 +38,10 @@ mycat = "mycat.main:main"
 [tool.setuptools.packages.find]
 include = ["mycat*"]
 
-# Include packaged images inside the wheel
+# Bundle non-Python data inside the wheel: skin zips, the plane sprite and the
+# prompt template.
 [tool.setuptools.package-data]
-mycat = ["images/*"]
+mycat = ["images/*", "assets/*", "*.j2"]
 
 [tool.mypy]
 strict = true
