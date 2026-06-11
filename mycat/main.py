@@ -390,17 +390,20 @@ class PixelCatWindow(QtWidgets.QWidget):
             platform_name = (app_instance.platformName() or "").lower()
         
         # Window flags for transparent, frameless, always-on-top window
+        # Qt.Window (not Qt.Tool) so the cat gets an entry in the taskbar /
+        # program list at startup — Tool windows are hidden from it.
         flags = (
             QtCore.Qt.WindowType.FramelessWindowHint |
-            QtCore.Qt.WindowType.Tool
+            QtCore.Qt.WindowType.Window
         )
         if platform_name != "offscreen":
             flags |= QtCore.Qt.WindowType.WindowStaysOnTopHint
         super().__init__(None, flags)
-        
+
         # Setup transparency
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.setWindowTitle("Pixel Cat")
+        self.setWindowTitle("mycat")
+        self.setWindowIcon(make_app_icon())
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
 
         # On X11 without a compositor, per-pixel alpha renders as a black box.
@@ -1095,6 +1098,20 @@ def ensure_virtual_monitor() -> None:
     logger.info("No active RANDR monitor — registered virtual monitor %s so Qt sees the screen.", geometry)
 
 
+def make_app_icon() -> QtGui.QIcon:
+    """A 😽 cat icon, used for the tray, the app icon and the splash."""
+    pixmap = QtGui.QPixmap(64, 64)
+    pixmap.fill(QtCore.Qt.GlobalColor.transparent)
+    painter = QtGui.QPainter(pixmap)
+    painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+    font = QtGui.QFont()
+    font.setPointSize(40)
+    painter.setFont(font)
+    painter.drawText(pixmap.rect(), QtCore.Qt.AlignmentFlag.AlignCenter, "😽")
+    painter.end()
+    return QtGui.QIcon(pixmap)
+
+
 def main() -> None:
     """Main entry point."""
     args = parse_args()
@@ -1117,10 +1134,20 @@ def main() -> None:
     # Register a virtual monitor before the QApplication reads screen geometry.
     ensure_virtual_monitor()
 
+    # WM_CLASS instance name (read by Qt at QApplication construction). Without
+    # this the taskbar uses the script name ("main.py") and groups mycat with
+    # other python apps launched the same way.
+    os.environ.setdefault("RESOURCE_NAME", "mycat")
+
     # Initialize Qt application with error handling
     try:
         app = QtWidgets.QApplication(sys.argv)
         app.setQuitOnLastWindowClosed(True)
+        app.setWindowIcon(make_app_icon())  # 😽 — used for the taskbar entry and dialogs
+        # Give the window a distinct WM_CLASS so the taskbar doesn't group it with
+        # other python "main.py" apps. setDesktopFileName drives the X11 class.
+        app.setApplicationName("mycat")
+        app.setDesktopFileName("mycat")
         platform_name = (app.platformName() or "").lower()
     except Exception as e:
         logger.error(f"Failed to initialize Qt application: {e}")
