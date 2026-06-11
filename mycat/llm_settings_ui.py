@@ -28,7 +28,6 @@ LIGHT_QSS = (
     " color: #1c1c1c; background: #f0f0f0;"
     " border: 1px solid #c0c0c0; border-radius: 4px; padding: 5px 14px; }"
     "QPushButton:hover { background: #e7e7e7; }"
-    "QPushButton:default { color: white; background: #ff6f91; border: none; }"
     "QPushButton:disabled { color: #9a9a9a; background: #f5f5f5; }"
 )
 
@@ -131,8 +130,11 @@ class OllamaSettingsDialog(QtWidgets.QDialog):
         # instead of sitting on a stray system-coloured panel.
         port_row = QtWidgets.QHBoxLayout()
         port_row.addWidget(self._port)
-        port_row.addWidget(self._load_btn)
         port_row.addStretch(1)
+        port_row.addWidget(self._load_btn)
+        # Don't let the load button grab the dialog default (it would highlight).
+        self._load_btn.setAutoDefault(False)
+        self._load_btn.setDefault(False)
         form.addRow("Port", port_row)
         form.addRow("Model", self._model)
 
