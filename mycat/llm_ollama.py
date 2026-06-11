@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
-from typing import Any, Dict
+from typing import Any
 
 
 class OllamaBackend:
@@ -17,7 +17,7 @@ class OllamaBackend:
         self.timeout = timeout
 
     def reply(self, user_text: str, system_prompt: str) -> str:
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "model": self.model,
             "messages": [
                 {"role": "system", "content": system_prompt},

@@ -10,7 +10,6 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 from . import secret_store
 
@@ -31,7 +30,7 @@ Recent conversation (latest {{history_count}} messages):
 Stay warm, playful, and loving when you reply."""
 
 _ENV_LOADED = False
-_PROMPT_TEMPLATE_CACHE: Optional[str] = None
+_PROMPT_TEMPLATE_CACHE: str | None = None
 
 HISTORY_HEADER_RE = re.compile(r"^\[(?P<timestamp>.+?)\]\s+(?P<label>REQUEST|RESPONSE):$")
 
@@ -40,7 +39,7 @@ HISTORY_HEADER_RE = re.compile(r"^\[(?P<timestamp>.+?)\]\s+(?P<label>REQUEST|RES
 class LLMSettings:
     """Configuration bundle for all supported LLM backends."""
 
-    openai_api_key: Optional[str]
+    openai_api_key: str | None
     openai_model: str
     ollama_url: str
     ollama_model: str
@@ -75,7 +74,7 @@ def load_env_file() -> None:
         except OSError as exc:
             logger.debug("Unable to read env file %s: %s", path, exc)
 
-    candidates: List[Path] = []
+    candidates: list[Path] = []
     override_path = os.environ.get("MYCAT_ENV_FILE")
     if override_path:
         candidates.append(Path(override_path).expanduser())
@@ -230,12 +229,12 @@ def rotate_history_if_needed(path: Path, max_bytes: int = HISTORY_MAX_BYTES) -> 
         logger.warning("Unable to rotate history file %s: %s", path, exc)
 
 
-def parse_history_file(path: Path) -> List[Tuple[str, str, str]]:
+def parse_history_file(path: Path) -> list[tuple[str, str, str]]:
     """Parse history file into structured messages."""
-    entries: List[Tuple[str, str, str]] = []
-    role: Optional[str] = None
-    timestamp: Optional[str] = None
-    buffer: List[str] = []
+    entries: list[tuple[str, str, str]] = []
+    role: str | None = None
+    timestamp: str | None = None
+    buffer: list[str] = []
 
     def flush() -> None:
         nonlocal role, timestamp, buffer
@@ -277,7 +276,7 @@ def append_history_entry(path: Path, role: str, text: str, timestamp: str) -> No
         logger.debug("Unable to write history entry: %s", exc)
 
 
-def get_history_tail(history_path: Path, limit: int) -> List[str]:
+def get_history_tail(history_path: Path, limit: int) -> list[str]:
     """Return the last `limit` messages serialised back to history-file lines.
 
     Operates on message boundaries (not text lines), so multi-line replies
@@ -289,7 +288,7 @@ def get_history_tail(history_path: Path, limit: int) -> List[str]:
     if not entries:
         return []
     tail = entries[-limit:]
-    out: List[str] = []
+    out: list[str] = []
     for role, text, ts in tail:
         label = "REQUEST" if role == "user" else "RESPONSE"
         out.append(f"[{ts}] {label}:")
@@ -300,7 +299,7 @@ def get_history_tail(history_path: Path, limit: int) -> List[str]:
 _PLACEHOLDER_RE = re.compile(r"\{\{\s*(date|history|history_count)\s*\}\}")
 
 
-def render_prompt(history_lines: List[str], history_limit: int) -> str:
+def render_prompt(history_lines: list[str], history_limit: int) -> str:
     """Produce the final system prompt text using the stored template.
 
     Supports both `{{key}}` and `{{ key }}` placeholder forms so the file may

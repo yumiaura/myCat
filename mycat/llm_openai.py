@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
-
 
 class OpenAIBackend:
     """Thin wrapper over the OpenAI Chat Completions API."""
 
-    def __init__(self, *, api_key: str, model: str, timeout: Optional[float] = 60.0) -> None:
+    def __init__(self, *, api_key: str, model: str, timeout: float | None = 60.0) -> None:
         try:
             from openai import OpenAI
         except ImportError as exc:
@@ -35,10 +33,7 @@ class OpenAIBackend:
             return message.strip()
 
         if isinstance(message, list):
-            parts: List[str] = []
-            for chunk in message:
-                if isinstance(chunk, dict):
-                    parts.append(chunk.get("text", "").strip())
+            parts = [chunk.get("text", "").strip() for chunk in message if isinstance(chunk, dict)]
             return " ".join(parts).strip()
 
         return str(message or "").strip()

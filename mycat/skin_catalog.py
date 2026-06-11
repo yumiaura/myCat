@@ -18,7 +18,6 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +66,7 @@ def scan_all() -> list[str]:
     return sorted(seen)
 
 
-def find_skin_zip(skin_id: str) -> Optional[Path]:
+def find_skin_zip(skin_id: str) -> Path | None:
     """Resolve `skin_id` to an existing ZIP path. User dir takes precedence."""
     for directory in (user_skins_dir(), bundled_skins_dir()):
         candidate = directory / f"{skin_id}.zip"

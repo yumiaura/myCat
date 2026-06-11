@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Pixel Cat with GIF animation from ZIP archives, PySide6 transparent overlay
 - Shows first frame of GIF from ZIP for 5 seconds, then plays GIF once, then back to first frame
@@ -22,7 +21,6 @@ import tempfile
 import warnings
 import zipfile
 from pathlib import Path
-from typing import Optional
 
 # Allow running both as `python -m mycat` and `python mycat/main.py`
 if __package__:
@@ -182,16 +180,16 @@ def scale_pixmap_if_needed(pixmap: QtGui.QPixmap, max_width: int, max_height: in
     return pixmap
 
 
-def load_packaged_images(image_path: Optional[str] = None, default_image: Optional[str] = None) -> tuple[QtGui.QPixmap, QtGui.QMovie, str]:
+def load_packaged_images(
+    image_path: str | None = None, default_image: str | None = None
+) -> tuple[QtGui.QPixmap, QtGui.QMovie, str]:
     """
     Load GIF from ZIP archive and extract to temp files.
     If image_path is provided, use it (should point to ZIP file).
     Returns: (first_frame_pixmap, gif_movie, base_name)
     """
     global STATIC_PNG_PATH, ANIMATION_GIF_PATH
-    
-    script_dir = Path(__file__).resolve().parent
-    
+
     if image_path:
         # User provided ZIP path
         zip_path = Path(image_path)
@@ -251,8 +249,12 @@ def load_packaged_images(image_path: Optional[str] = None, default_image: Option
     original_size = first_frame.size()
     first_frame = scale_pixmap_if_needed(first_frame, IMAGE_WIDTH_MAX, IMAGE_HEIGHT_MAX)
     if original_size != first_frame.size():
-        logger.info(f"Resized {Path(zip_path).name}: {original_size.width()}x{original_size.height()} -> {first_frame.width()}x{first_frame.height()}")
-    
+        logger.info(
+            f"Resized {Path(zip_path).name}: "
+            f"{original_size.width()}x{original_size.height()} -> "
+            f"{first_frame.width()}x{first_frame.height()}"
+        )
+
     # Save first frame as PNG
     first_frame.save(str(STATIC_PNG_PATH), "PNG")
     
@@ -321,10 +323,10 @@ def save_config(config: dict) -> None:
         logger.error(f"Config save error: {e}")
 
 
-def load_image_from_ini() -> Optional[str]:
+def load_image_from_ini() -> str | None:
     """Load default image setting from INI file."""
     if not CFG_FILE.exists():
-        logger.info(f"INI config not found, using default: cat")
+        logger.info("INI config not found, using default: cat")
         return None
     
     try:
@@ -336,7 +338,7 @@ def load_image_from_ini() -> Optional[str]:
             logger.info(f"Loaded image from INI: {image_name}")
             return image_name
         else:
-            logger.info(f"INI config exists but no default_image setting found, using default: cat")
+            logger.info("INI config exists but no default_image setting found, using default: cat")
             return None
     except Exception as e:
         logger.error(f"Error reading INI file: {e}, using default: cat")
@@ -472,7 +474,10 @@ class PixelCatWindow(QtWidgets.QWidget):
         frame_count = self.gif_movie.frameCount()
         gif_size = self.gif_movie.scaledSize()
         logger.debug(f"GIF info: {frame_count} frames, duration: {self.gif_duration:.2f}s")
-        logger.info(f"Playing {self.file_name}.zip {original_size.width()}x{original_size.height()} > {gif_size.width()}x{gif_size.height()} (first_frame, {self.wait_time:.1f}s static)")
+        logger.info(
+            f"Playing {self.file_name}.zip {original_size.width()}x{original_size.height()} > "
+            f"{gif_size.width()}x{gif_size.height()} (first_frame, {self.wait_time:.1f}s static)"
+        )
 
         # Dragging state
         self.dragging = False
@@ -588,7 +593,11 @@ class PixelCatWindow(QtWidgets.QWidget):
             original_size = first_frame.size()
             first_frame = scale_pixmap_if_needed(first_frame, IMAGE_WIDTH_MAX, IMAGE_HEIGHT_MAX)
             if original_size != first_frame.size():
-                logger.info(f"Resized {image_name}.zip: {original_size.width()}x{original_size.height()} -> {first_frame.width()}x{first_frame.height()}")
+                logger.info(
+                    f"Resized {image_name}.zip: "
+                    f"{original_size.width()}x{original_size.height()} -> "
+                    f"{first_frame.width()}x{first_frame.height()}"
+                )
             
             # Save as PNG
             first_frame.save(str(STATIC_PNG_PATH), "PNG")
@@ -951,7 +960,7 @@ def parse_args() -> argparse.Namespace:
     llm.add_arguments(parser)
     return parser.parse_args()
 
-def x11_compositor_active() -> Optional[bool]:
+def x11_compositor_active() -> bool | None:
     """Return True/False when an X11 compositing manager is running, None if undetermined.
 
     Every EWMH-compliant compositor (picom, xfwm4, mutter, kwin, ...) owns the
@@ -991,7 +1000,7 @@ def x11_compositor_active() -> Optional[bool]:
         x11.XCloseDisplay(display)
 
 
-def x11_screen_size() -> Optional[tuple]:
+def x11_screen_size() -> tuple | None:
     """Root window size straight from the X server, for when Qt reports a 0x0 screen.
 
     Some X setups (nested or remote servers without RANDR) leave QScreen geometry
@@ -1051,7 +1060,7 @@ def usable_screen_rect() -> "QtCore.QRect":
     return QtCore.QRect(0, 0, 0, 0)
 
 
-def randr_monitor_count() -> Optional[int]:
+def randr_monitor_count() -> int | None:
     """Number of active RANDR monitors via `xrandr --listmonitors`, or None if unknown."""
     xrandr = shutil.which("xrandr")
     if not xrandr:
@@ -1230,7 +1239,10 @@ def main() -> None:
     # Load images
     try:
         png_pixmap, gif_movie, file_name = load_packaged_images(args.image, default_image)
-        logger.info(f"Playing {file_name}.zip (first frame) {png_pixmap.width()}x{png_pixmap.height()} for {args.wait:.1f}s")
+        logger.info(
+            f"Playing {file_name}.zip (first frame) "
+            f"{png_pixmap.width()}x{png_pixmap.height()} for {args.wait:.1f}s"
+        )
     except Exception as e:
         logger.error(f"Error loading images: {e}")
         sys.exit(2)
