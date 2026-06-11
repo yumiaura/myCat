@@ -272,6 +272,10 @@ class LLMSettingsDialog(QtWidgets.QDialog):
         self.model_combo.blockSignals(True)
         self.model_combo.clear()
         self.model_combo.addItems(names)
+        # Long model ids get truncated in the narrow combo — show the full name
+        # as a tooltip on each dropdown entry.
+        for i in range(self.model_combo.count()):
+            self.model_combo.setItemData(i, names[i], QtCore.Qt.ItemDataRole.ToolTipRole)
         if keep:
             self.model_combo.setCurrentText(keep)
         self.model_combo.blockSignals(False)
@@ -285,7 +289,10 @@ class LLMSettingsDialog(QtWidgets.QDialog):
     # -- model / actions ----------------------------------------------------
 
     def on_model_changed(self, *args) -> None:
-        has_model = bool(self.model_combo.currentText().strip())
+        text = self.model_combo.currentText().strip()
+        # Tooltip on the collapsed combo too, so the full selected name shows.
+        self.model_combo.setToolTip(text)
+        has_model = bool(text)
         self.test_btn.setEnabled(has_model)
         self.save_btn.setEnabled(has_model)
 
