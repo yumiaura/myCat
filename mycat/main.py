@@ -658,20 +658,18 @@ class PixelCatWindow(QtWidgets.QWidget):
         """Show context menu at the given position."""
         menu = QtWidgets.QMenu(self)
 
-        toggle_llm_enabled = getattr(self, "_toggle_llm_enabled", None)
-        llm_is_enabled = getattr(self, "_is_llm_enabled", None)
-        if callable(toggle_llm_enabled):
-            llm_enabled_action = menu.addAction("LLM Enabled")
-            llm_enabled_action.setCheckable(True)
-            llm_enabled_action.setChecked(bool(llm_is_enabled() if callable(llm_is_enabled) else True))
-            llm_enabled_action.triggered.connect(lambda _checked: toggle_llm_enabled())
-            menu.addSeparator()
+        # LLM controls sit just above the shop. "Ollama…" is always available so
+        # the backend can be configured from scratch (the enabled checkbox now
+        # lives inside that dialog). "Chat" appears only once Ollama is
+        # configured — i.e. a controller exists.
+        ollama_action = menu.addAction("Ollama…")
+        ollama_action.triggered.connect(self._open_llm_settings)
 
         toggle_chat = getattr(self, "_toggle_llm_chat", None)
         if callable(toggle_chat):
             chat_action = menu.addAction("Chat")
             chat_action.triggered.connect(toggle_chat)
-            menu.addSeparator()
+        menu.addSeparator()
 
         shop_action = menu.addAction("Open Shop…")
         shop_action.triggered.connect(self._open_shop)
@@ -695,6 +693,23 @@ class PixelCatWindow(QtWidgets.QWidget):
         quit_action = menu.addAction("Quit")
         quit_action.triggered.connect(QtWidgets.QApplication.quit)
         menu.exec(self.mapToGlobal(pos))
+
+    def _open_llm_settings(self) -> None:
+        """Open the Ollama settings dialog (host/port, model, test, save)."""
+        try:
+            if __package__:
+                from .llm_settings_ui import OllamaSettingsDialog
+            else:
+                import importlib
+
+                OllamaSettingsDialog = importlib.import_module(
+                    "mycat.llm_settings_ui"
+                ).OllamaSettingsDialog
+        except Exception:
+            logger.exception("Failed to import Ollama settings dialog")
+            return
+        dialog = OllamaSettingsDialog(self, parent=self)
+        dialog.exec()
 
     def _open_shop(self) -> None:
         """Lazily import and show the shop dialog."""

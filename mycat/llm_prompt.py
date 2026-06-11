@@ -123,6 +123,28 @@ def load_llm_settings() -> LLMSettings:
     return settings
 
 
+def save_ollama_settings(url: str, model: str) -> None:
+    """Persist the Ollama url and model into the [ollama] section of config.ini.
+
+    Reads the existing file, updates only the two keys (leaving other sections
+    and the timeout untouched) and writes it back.
+    """
+    CFG_DIR.mkdir(parents=True, exist_ok=True)
+    parser = configparser.ConfigParser()
+    if CFG_FILE.exists():
+        try:
+            parser.read(CFG_FILE)
+        except configparser.Error as exc:
+            logger.warning("Unable to parse %s before saving: %s", CFG_FILE, exc)
+    if not parser.has_section("ollama"):
+        parser.add_section("ollama")
+    parser.set("ollama", "url", url)
+    parser.set("ollama", "model", model)
+    with open(CFG_FILE, "w") as handle:
+        parser.write(handle)
+    logger.info("Saved Ollama settings: url=%s model=%s", url, model)
+
+
 def ensure_history_file() -> Path:
     """Return a writable history file path, creating one if needed."""
     try:
