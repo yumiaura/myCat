@@ -14,5 +14,7 @@ uv.lock
 *.zip
 *.md
 !README.md
+!README_CN.md
+!README_ID.md
 !CHANGELOG.md
 !docs/*.md
