@@ -391,14 +391,13 @@ class ChatDialog(QtWidgets.QDialog):
         if self._pending_request_started is None or self._pending_request_text is None:
             return
         duration = time.monotonic() - self._pending_request_started
-        # One line: outcome + duration + the serialized response (or error). The
-        # request itself is already logged when it is sent (see _send_message).
-        # json.dumps keeps it on a single line (newlines escaped) and readable.
-        payload = json.dumps(response, ensure_ascii=False)
+        # One line. The request itself is already logged when it is sent.
         if success:
-            logger.info("LLM request success in %.2fs | Response: %s", duration, payload)
+            # Readable text, newlines collapsed so it stays on one line.
+            logger.info("response: %s (%.2fs)", response.replace("\n", " ").strip(), duration)
         else:
-            logger.info("LLM request error in %.2fs | Error: %s", duration, payload)
+            # On failure: ERROR level, with the serialized error and the time.
+            logger.error("error: %s (%.2fs)", json.dumps(response, ensure_ascii=False), duration)
 
 
 class _LLMWorkerSignals(QtCore.QObject):

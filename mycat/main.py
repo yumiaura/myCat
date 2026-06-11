@@ -38,6 +38,15 @@ else:
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+# Make logs readable for non-ASCII text (Cyrillic, emoji): force UTF-8 on the
+# console streams when the locale left them as ASCII (otherwise the logger
+# escapes e.g. "Ты" to "Ты").
+for console_stream in (sys.stdout, sys.stderr):
+    try:
+        console_stream.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
+
 # Configure logging
 LOGGING = {
     "handlers": [logging.StreamHandler()],
