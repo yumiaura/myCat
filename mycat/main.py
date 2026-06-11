@@ -1134,11 +1134,20 @@ def main() -> None:
     # Register a virtual monitor before the QApplication reads screen geometry.
     ensure_virtual_monitor()
 
+    # WM_CLASS instance name (read by Qt at QApplication construction). Without
+    # this the taskbar uses the script name ("main.py") and groups mycat with
+    # other python apps launched the same way.
+    os.environ.setdefault("RESOURCE_NAME", "mycat")
+
     # Initialize Qt application with error handling
     try:
         app = QtWidgets.QApplication(sys.argv)
         app.setQuitOnLastWindowClosed(True)
         app.setWindowIcon(make_app_icon())  # 😽 — used for the taskbar entry and dialogs
+        # Give the window a distinct WM_CLASS so the taskbar doesn't group it with
+        # other python "main.py" apps. setDesktopFileName drives the X11 class.
+        app.setApplicationName("mycat")
+        app.setDesktopFileName("mycat")
         platform_name = (app.platformName() or "").lower()
     except Exception as e:
         logger.error(f"Failed to initialize Qt application: {e}")
