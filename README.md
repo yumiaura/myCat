@@ -22,6 +22,11 @@ If you like it, maybe I'll share an [AnimeGirl](https://github.com/yumiaura/myca
 
 <img width="1440" height="900" alt="image" src="https://github.com/user-attachments/assets/5bc3c45b-83ef-4fcb-8977-781eaf7b045b" />
 
+<img width="395" height="296" alt="image" src="https://github.com/user-attachments/assets/db773425-2d91-418d-92c6-169754165b6b" />
+
+<img width="451" height="296" alt="image" src="https://github.com/user-attachments/assets/1a077126-4793-4c26-9279-fec5ea72e8b1" />
+
+
 ### 1. Install Dependencies
 
 **Requirements**: Python 3.9 or higher
