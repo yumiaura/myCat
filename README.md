@@ -1,4 +1,4 @@
-EN | [CN](https://github.com/yumiaura/myCat/blob/main/README_CN.md) | [ID](https://github.com/yumiaura/myCat/blob/main/README_ID.md)
+EN | [RU](https://github.com/yumiaura/myCat/blob/main/docs/README_RU.md) | [CN](https://github.com/yumiaura/myCat/blob/main/docs/README_CN.md) | [ID](https://github.com/yumiaura/myCat/blob/main/docs/README_ID.md)
 
 ## Desktop Cat: QT Overlay 🐱
 

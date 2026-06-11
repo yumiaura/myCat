@@ -1,4 +1,4 @@
-[EN](https://github.com/yumiaura/myCat/blob/main/README.md) | CN | [ID](https://github.com/yumiaura/myCat/blob/main/README_ID.md)
+[EN](https://github.com/yumiaura/myCat/blob/main/README.md) | [RU](https://github.com/yumiaura/myCat/blob/main/docs/README_RU.md) | CN | [ID](https://github.com/yumiaura/myCat/blob/main/docs/README_ID.md)
 
 # 桌面猫咪：QT 悬浮应用 🐱
 
@@ -160,11 +160,11 @@ docker compose -f docker-compose.mac.yml up
 ### 🤝 获取帮助
 
 - 在 [GitHub Issues](https://github.com/yumiaura/myCat/issues) 搜索类似问题。
-- 阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 了解开发环境。
+- 阅读 [CONTRIBUTING.md](../CONTRIBUTING.md) 了解开发环境。
 - 新建 issue，附上系统、桌面环境、Python 版本和终端错误信息。
 
 ### 许可证
 
-[MIT License](LICENSE.txt)
+[MIT License](../LICENSE.txt)
 
 感谢您读到最后！😸🐾

@@ -1,4 +1,4 @@
-[EN](https://github.com/yumiaura/myCat/blob/main/README.md) | [中文](https://github.com/yumiaura/myCat/blob/main/README_CN.md) | ID
+[EN](https://github.com/yumiaura/myCat/blob/main/README.md) | [RU](https://github.com/yumiaura/myCat/blob/main/docs/README_RU.md) | [中文](https://github.com/yumiaura/myCat/blob/main/docs/README_CN.md) | ID
 
 # Kucing Desktop: Aplikasi Mengambang QT 🐱
 
@@ -160,11 +160,11 @@ docker compose -f docker-compose.mac.yml up
 ### 🤝 Mendapatkan bantuan
 
 - Cari masalah serupa di [GitHub Issues](https://github.com/yumiaura/myCat/issues).
-- Baca [CONTRIBUTING.md](CONTRIBUTING.md) untuk setup pengembangan.
+- Baca [CONTRIBUTING.md](../CONTRIBUTING.md) untuk setup pengembangan.
 - Buat issue baru dengan OS, lingkungan desktop, versi Python, dan pesan galat dari terminal.
 
 ### Lisensi
 
-[MIT License](LICENSE.txt)
+[MIT License](../LICENSE.txt)
 
 Terima kasih sudah membaca sampai akhir! 😸🐾
