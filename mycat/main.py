@@ -26,7 +26,7 @@ from typing import Optional
 
 # Allow running both as `python -m mycat` and `python mycat/main.py`
 if __package__:
-    from . import llm, reminder, skin_catalog
+    from . import llm, reminder, secret_store, skin_catalog
 else:
     import importlib
     repo_root = Path(__file__).resolve().parent.parent
@@ -35,6 +35,7 @@ else:
     llm = importlib.import_module("mycat.llm")
     skin_catalog = importlib.import_module("mycat.skin_catalog")
     reminder = importlib.import_module("mycat.reminder")
+    secret_store = importlib.import_module("mycat.secret_store")
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -314,6 +315,7 @@ def save_config(config: dict) -> None:
         # Write to file
         with open(CFG_FILE, 'w') as f:
             file_config.write(f)
+        secret_store.secure_file(CFG_FILE)
     except Exception as e:
         logger.error(f"Config save error: {e}")
 
@@ -367,6 +369,7 @@ def save_image_to_ini(image_name: str) -> None:
         # Write to file
         with open(CFG_FILE, 'w') as f:
             config.write(f)
+        secret_store.secure_file(CFG_FILE)
 
         logger.info(f"Saved image setting to INI: {image_name}")
     except Exception as e:

@@ -12,6 +12,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from . import secret_store
+
 logger = logging.getLogger(__name__)
 
 APP_NAME = "mycat"
@@ -92,7 +94,8 @@ def load_env_file() -> None:
 def load_llm_settings() -> LLMSettings:
     """Merge values from environment variables and config.ini into a single settings object."""
     settings = LLMSettings(
-        openai_api_key=os.getenv("OPENAI_API_KEY"),
+        # Prefer the OS keyring; fall back to the env var (and a config section below).
+        openai_api_key=secret_store.get_secret("openai_api_key") or os.getenv("OPENAI_API_KEY"),
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
         ollama_url=os.getenv("OLLAMA_URL", "http://127.0.0.1:11434"),
         ollama_model=os.getenv("OLLAMA_MODEL", "llama3.1"),
@@ -142,6 +145,7 @@ def save_ollama_settings(url: str, model: str) -> None:
     parser.set("ollama", "model", model)
     with open(CFG_FILE, "w") as handle:
         parser.write(handle)
+    secret_store.secure_file(CFG_FILE)
     logger.info("Saved Ollama settings: url=%s model=%s", url, model)
 
 
@@ -159,6 +163,7 @@ def save_llm_enabled(enabled: bool) -> None:
     parser.set("llm", "enabled", "true" if enabled else "false")
     with open(CFG_FILE, "w") as handle:
         parser.write(handle)
+    secret_store.secure_file(CFG_FILE)
     logger.info("Saved LLM enabled=%s", enabled)
 
 
