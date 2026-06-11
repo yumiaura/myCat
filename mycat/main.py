@@ -26,7 +26,7 @@ from typing import Optional
 
 # Allow running both as `python -m mycat` and `python mycat/main.py`
 if __package__:
-    from . import llm, reminder, secret_store, skin_catalog
+    from . import autostart, llm, reminder, secret_store, skin_catalog
 else:
     import importlib
     repo_root = Path(__file__).resolve().parent.parent
@@ -36,6 +36,7 @@ else:
     skin_catalog = importlib.import_module("mycat.skin_catalog")
     reminder = importlib.import_module("mycat.reminder")
     secret_store = importlib.import_module("mycat.secret_store")
+    autostart = importlib.import_module("mycat.autostart")
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -701,6 +702,12 @@ class PixelCatWindow(QtWidgets.QWidget):
                 action.triggered.connect(lambda checked, name=img_name: self._load_image(name))
             menu.addSeparator()
 
+        if autostart.is_supported():
+            login_action = menu.addAction("Start on login")
+            login_action.setCheckable(True)
+            login_action.setChecked(autostart.is_enabled())
+            login_action.toggled.connect(autostart.set_enabled)
+
         quit_action = menu.addAction("Quit")
         quit_action.triggered.connect(QtWidgets.QApplication.quit)
         menu.exec(self.mapToGlobal(pos))
@@ -1115,6 +1122,44 @@ def make_app_icon() -> QtGui.QIcon:
     return QtGui.QIcon(pixmap)
 
 
+def setup_tray(app, window, icon_pixmap):
+    """A persistent cat icon in the system tray with a quick-action menu.
+
+    Returns the tray icon (kept alive by the caller), or None when no system
+    tray is available.
+    """
+    if not QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
+        return None
+    icon = QtGui.QIcon(icon_pixmap) if icon_pixmap and not icon_pixmap.isNull() else make_app_icon()
+    tray = QtWidgets.QSystemTrayIcon(icon, app)
+    tray.setToolTip("mycat 🐱")
+
+    menu = QtWidgets.QMenu(window)
+    toggle_chat = getattr(window, "_toggle_llm_chat", None)
+    if callable(toggle_chat):
+        menu.addAction("Chat", toggle_chat)
+    menu.addAction("Reminder…", window._open_reminder)
+    menu.addAction("LLM…", window.open_llm_settings)
+    if autostart.is_supported():
+        menu.addSeparator()
+        login_action = menu.addAction("Start on login")
+        login_action.setCheckable(True)
+        login_action.setChecked(autostart.is_enabled())
+        login_action.toggled.connect(autostart.set_enabled)
+    menu.addSeparator()
+    menu.addAction("Quit", QtWidgets.QApplication.quit)
+    tray.setContextMenu(menu)
+
+    def on_activated(reason):
+        if reason == QtWidgets.QSystemTrayIcon.ActivationReason.DoubleClick:
+            window.show()
+            window.raise_()
+
+    tray.activated.connect(on_activated)
+    tray.show()
+    return tray
+
+
 def main() -> None:
     """Main entry point."""
     args = parse_args()
@@ -1203,6 +1248,8 @@ def main() -> None:
         QtCore.QTimer.singleShot(0, app.quit)
     else:
         window.show()
+        # Persistent cat tray icon (kept on the window so it isn't GC'd).
+        window.tray_icon = setup_tray(app, window, png_pixmap)
 
     try:
         sys.exit(app.exec())
