@@ -15,6 +15,11 @@ It's a lightweight Python + QT app — no borders, and you can drag it around ea
 Shows static first frame for 5 seconds, then plays GIF animation once, then loops back to static.<br>
 If you like it, maybe I'll share an [AnimeGirl](https://github.com/yumiaura/mycat/discussions/1) version next time~ 😉<br>
 
+### ✨ What's new in 0.1.6
+
+- **Reminder** 🛩️ — set a message and a time (one-shot or daily) and the cat flies a little banner plane across the top of your screen. Right-click the cat → *Reminder…* to set it up (message, direction, plane, color). Pick one of four plane sprites.
+- **Ollama chat** 💬 — talk to the cat through a local [Ollama](https://ollama.com) server, no API key needed. Configure it right from the app (no file editing): right-click → *Ollama…* to enter host/port, load and pick a model, run a connection test, and enable it — then right-click → *Chat* to start chatting. OpenAI is still supported too.
+
 <img width="1440" height="900" alt="image" src="https://github.com/user-attachments/assets/5bc3c45b-83ef-4fcb-8977-781eaf7b045b" />
 
 ### 1. Install Dependencies
