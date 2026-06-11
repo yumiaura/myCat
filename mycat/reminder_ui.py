@@ -400,6 +400,18 @@ class FlybyWindow(QtWidgets.QWidget):
                 region += QtGui.QRegion(int(bx), int(by), pixmap.width(), pixmap.height())
             else:
                 region += QtGui.QRegion(bitmap).translated(int(bx), int(by))
+
+        # A window mask that is entirely off-screen stops the window from
+        # receiving paint events, which would freeze the mask there forever and
+        # the plane would never fly in. While the group is still fully off-screen,
+        # keep a 2x2 on-screen anchor at the entry edge so repaints keep coming;
+        # once any part of the plane is on screen the silhouette itself keeps the
+        # cycle alive and no anchor (and no stray pixel) is added.
+        screen = QtCore.QRect(0, 0, self._screen_w, self.height())
+        if not region.boundingRect().intersects(screen):
+            anchor_x = 0 if self._ltr else max(0, self._screen_w - 2)
+            anchor_y = self._band_top + self._band_h // 2
+            region += QtGui.QRegion(anchor_x, anchor_y, 2, 2)
         return region
 
     # -- flag (static rectangle, plane-coloured) ----------------------------
