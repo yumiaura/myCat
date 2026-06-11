@@ -1095,6 +1095,91 @@ def ensure_virtual_monitor() -> None:
     logger.info("No active RANDR monitor — registered virtual monitor %s so Qt sees the screen.", geometry)
 
 
+def make_app_icon() -> QtGui.QIcon:
+    """A 😽 cat icon, used for the tray, the app icon and the splash."""
+    pixmap = QtGui.QPixmap(64, 64)
+    pixmap.fill(QtCore.Qt.GlobalColor.transparent)
+    painter = QtGui.QPainter(pixmap)
+    painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+    font = QtGui.QFont()
+    font.setPointSize(40)
+    painter.setFont(font)
+    painter.drawText(pixmap.rect(), QtCore.Qt.AlignmentFlag.AlignCenter, "😽")
+    painter.end()
+    return QtGui.QIcon(pixmap)
+
+
+def make_splash_pixmap() -> QtGui.QPixmap:
+    """An opaque startup card (😽 + name) — opaque so it has no black corners
+    on X11 without a compositor."""
+    width, height = 300, 140
+    pixmap = QtGui.QPixmap(width, height)
+    pixmap.fill(QtGui.QColor("#fff7fb"))
+    painter = QtGui.QPainter(pixmap)
+    painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+    painter.setPen(QtGui.QPen(QtGui.QColor("#ff6f91"), 2))
+    painter.drawRoundedRect(2, 2, width - 4, height - 4, 16, 16)
+
+    emoji_font = QtGui.QFont()
+    emoji_font.setPointSize(44)
+    painter.setFont(emoji_font)
+    painter.setPen(QtGui.QColor("#1c1c1c"))
+    painter.drawText(QtCore.QRect(16, 20, 90, 100), QtCore.Qt.AlignmentFlag.AlignCenter, "😽")
+
+    title_font = QtGui.QFont()
+    title_font.setPointSize(22)
+    title_font.setBold(True)
+    painter.setFont(title_font)
+    painter.drawText(
+        QtCore.QRect(108, 32, width - 118, 38),
+        QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
+        "mycat",
+    )
+
+    sub_font = QtGui.QFont()
+    sub_font.setPointSize(11)
+    painter.setFont(sub_font)
+    painter.setPen(QtGui.QColor("#9a7886"))
+    painter.drawText(
+        QtCore.QRect(110, 74, width - 118, 28),
+        QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
+        "loading…",
+    )
+    painter.end()
+    return pixmap
+
+
+def show_startup_indicator(app: QtWidgets.QApplication, window: QtWidgets.QWidget):
+    """Give the app a visible startup presence: a 😽 tray icon (with a one-shot
+    notification), or a brief splash window when no system tray is available."""
+    icon = make_app_icon()
+    app.setWindowIcon(icon)
+
+    if QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
+        tray = QtWidgets.QSystemTrayIcon(icon, app)
+        tray.setToolTip("mycat 😽")
+        menu = QtWidgets.QMenu(window)
+        toggle_chat = getattr(window, "_toggle_llm_chat", None)
+        if callable(toggle_chat):
+            menu.addAction("Chat", toggle_chat)
+        menu.addAction("Reminder…", window._open_reminder)
+        menu.addAction("Ollama…", window.open_llm_settings)
+        menu.addSeparator()
+        menu.addAction("Quit", QtWidgets.QApplication.quit)
+        tray.setContextMenu(menu)
+        tray.show()
+        try:
+            tray.showMessage("mycat", "Your cat is here 😽", icon, 4000)
+        except Exception:  # noqa: BLE001 - notifications are best-effort
+            pass
+        return tray
+
+    splash = QtWidgets.QSplashScreen(make_splash_pixmap(), QtCore.Qt.WindowType.WindowStaysOnTopHint)
+    splash.show()
+    QtCore.QTimer.singleShot(2000, splash.close)
+    return splash
+
+
 def main() -> None:
     """Main entry point."""
     args = parse_args()
@@ -1173,6 +1258,8 @@ def main() -> None:
         QtCore.QTimer.singleShot(0, app.quit)
     else:
         window.show()
+        # Keep a reference so the tray icon / splash is not garbage-collected.
+        window.startup_indicator = show_startup_indicator(app, window)
 
     try:
         sys.exit(app.exec())
