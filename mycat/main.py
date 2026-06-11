@@ -26,13 +26,15 @@ from typing import Optional
 
 # Allow running both as `python -m mycat` and `python mycat/main.py`
 if __package__:
-    from . import llm
+    from . import llm, personas, voice
 else:
     import importlib
     repo_root = Path(__file__).resolve().parent.parent
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
     llm = importlib.import_module("mycat.llm")
+    personas = importlib.import_module("mycat.personas")
+    voice = importlib.import_module("mycat.voice")
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -64,6 +66,7 @@ DEFAULT_POSITION_OFFSET_Y = 10  # Offset from bottom edge of screen
 TEMP_DIR = None
 STATIC_PNG_PATH = None
 ANIMATION_GIF_PATH = None
+TALK_GIF_PATH = None  # optional talking animation (mouth movement) if present in the zip
 
 
 def get_temp_dir() -> Path:
@@ -196,7 +199,7 @@ def load_packaged_images(image_path: Optional[str] = None, default_image: Option
     If image_path is provided, use it (should point to ZIP file).
     Returns: (first_frame_pixmap, gif_movie, base_name)
     """
-    global STATIC_PNG_PATH, ANIMATION_GIF_PATH
+    global STATIC_PNG_PATH, ANIMATION_GIF_PATH, TALK_GIF_PATH
     
     script_dir = Path(__file__).resolve().parent
     
@@ -226,22 +229,26 @@ def load_packaged_images(image_path: Optional[str] = None, default_image: Option
             if not gif_files:
                 raise ValueError(f"No GIF file found in ZIP: {zip_path}")
             
-            # Get first GIF file
-            gif_file_name = gif_files[0]
+            # Get first GIF file (prefer animation.gif as the idle loop)
+            gif_file_name = "animation.gif" if "animation.gif" in gif_files else gif_files[0]
             gif_data = zip_file.read(gif_file_name)
+            talk_data = zip_file.read("talk.gif") if "talk.gif" in zip_file.namelist() else None
             logger.info(f"Extracted {gif_file_name} from {zip_path.name}")
     except zipfile.BadZipFile as exc:
         raise ValueError(f"Invalid ZIP file: {zip_path}") from exc
-    
+
     # Write to temp directory with static names
     temp_dir = get_temp_dir()
     ANIMATION_GIF_PATH = temp_dir / "animation.gif"
     STATIC_PNG_PATH = temp_dir / "static.png"
-    
+
     logger.info(f"Temporary files: {STATIC_PNG_PATH} / {ANIMATION_GIF_PATH}")
-    
+
     # Write GIF file
     ANIMATION_GIF_PATH.write_bytes(gif_data)
+    TALK_GIF_PATH = temp_dir / "talk.gif" if talk_data else None
+    if talk_data:
+        TALK_GIF_PATH.write_bytes(talk_data)
     
     # Extract first frame and save as PNG
     movie = QtGui.QMovie(str(ANIMATION_GIF_PATH))
@@ -492,7 +499,55 @@ class PixelCatWindow(QtWidgets.QWidget):
 
         # Save current image to INI on startup
         save_image_to_ini(self.file_name)
-    
+
+        # Talking animation (mouth movement while the pet speaks)
+        self.talking = False
+        self.talk_movie = None
+        self._setup_talk_movie()
+
+    def _setup_talk_movie(self) -> None:
+        """Prepare a looping movie used while the pet is 'talking'.
+
+        Uses talk.gif from the zip if present (mouth movement); otherwise falls
+        back to looping the idle animation so the pet is at least animated.
+        """
+        global TALK_GIF_PATH, ANIMATION_GIF_PATH
+        if self.talk_movie is not None:
+            self.talk_movie.stop()
+        path = TALK_GIF_PATH if TALK_GIF_PATH else ANIMATION_GIF_PATH
+        self.talk_movie = QtGui.QMovie(str(path))
+        self.talk_movie.setCacheMode(QtGui.QMovie.CacheMode.CacheAll)
+        self.talk_movie.frameChanged.connect(self._on_talk_frame)
+
+    def _on_talk_frame(self, _frame: int) -> None:
+        if self.state != 'talk' or self.talk_movie is None:
+            return
+        pixmap = self.talk_movie.currentPixmap()
+        if not pixmap.isNull():
+            self.current_pixmap = pixmap
+            self.update()
+
+    def set_talking(self, on: bool) -> None:
+        """Play the talking animation while True; return to idle when False."""
+        if on:
+            if self.talk_movie is None:
+                return
+            self.talking = True
+            self.state = 'talk'
+            self.animation_timer.stop()
+            self.talk_movie.setScaledSize(self.png_pixmap.size())
+            self.talk_movie.jumpToFrame(0)
+            self.talk_movie.start()
+        else:
+            self.talking = False
+            if self.talk_movie is not None:
+                self.talk_movie.stop()
+            if self.state == 'talk':
+                self.state = 'png'
+                self.current_pixmap = self.first_frame_pixmap
+                self.update()
+                self._schedule_next_animation()
+
     def _load_position(self) -> None:
         """Load window position from config; default to the bottom-right corner."""
         rect = usable_screen_rect()
@@ -554,22 +609,28 @@ class PixelCatWindow(QtWidgets.QWidget):
             
             # Extract first GIF from ZIP
             with zipfile.ZipFile(zip_path, 'r') as zip_file:
-                gif_files = [f for f in zip_file.namelist() if f.lower().endswith('.gif')]
+                names = zip_file.namelist()
+                gif_files = [f for f in names if f.lower().endswith('.gif')]
                 if not gif_files:
                     logger.error(f"No GIF file found in ZIP: {image_name}.zip")
                     return
-                
-                gif_data = zip_file.read(gif_files[0])
-                logger.info(f"Extracted {gif_files[0]} from {zip_path.name}")
-            
+
+                gif_name = "animation.gif" if "animation.gif" in gif_files else gif_files[0]
+                gif_data = zip_file.read(gif_name)
+                talk_data = zip_file.read("talk.gif") if "talk.gif" in names else None
+                logger.info(f"Extracted {gif_name} from {zip_path.name}")
+
             # Write to temp directory
-            global STATIC_PNG_PATH, ANIMATION_GIF_PATH
+            global STATIC_PNG_PATH, ANIMATION_GIF_PATH, TALK_GIF_PATH
             temp_dir = get_temp_dir()
             ANIMATION_GIF_PATH = temp_dir / "animation.gif"
             STATIC_PNG_PATH = temp_dir / "static.png"
-            
+
             # Write GIF
             ANIMATION_GIF_PATH.write_bytes(gif_data)
+            TALK_GIF_PATH = temp_dir / "talk.gif" if talk_data else None
+            if talk_data:
+                TALK_GIF_PATH.write_bytes(talk_data)
             
             # Extract first frame
             new_movie = QtGui.QMovie(str(ANIMATION_GIF_PATH))
@@ -644,9 +705,12 @@ class PixelCatWindow(QtWidgets.QWidget):
             new_y = bottom_right_y - new_size.height()
             self.move(new_x, new_y)
 
+            # Rebuild talking animation for the new image
+            self._setup_talk_movie()
+
             # Save to INI
             save_image_to_ini(image_name)
-            
+
             # Save new position
             self._save_position()
             
@@ -656,6 +720,27 @@ class PixelCatWindow(QtWidgets.QWidget):
         except Exception as e:
             logger.error(f"Error loading {image_name}: {e}")
     
+    def _switch_persona(self, key: str) -> None:
+        """Switch personality: prompt, name label, image/animation, and voice."""
+        personas.set(key)
+        info = personas.info()
+        image = info.get("image")
+        if image and image in self.available_images:
+            self._load_image(image)
+        voice_name = info.get("voice")
+        if voice_name:
+            voice_path = Path.home() / ".local" / "share" / "mycat-voices" / f"{voice_name}.onnx"
+            if voice_path.exists():
+                try:
+                    voice.set_voice(str(voice_path))
+                except Exception as exc:
+                    logger.debug("Could not switch voice for persona: %s", exc)
+        # Update the open chat dialog live (title, name labels, voice picker).
+        controller = getattr(self, "_llm_controller", None)
+        if controller is not None and hasattr(controller, "refresh_persona"):
+            controller.refresh_persona()
+        logger.info("Switched persona to %s", key)
+
     def _show_context_menu(self, pos: QtCore.QPoint) -> None:
         """Show context menu at the given position."""
         menu = QtWidgets.QMenu(self)
@@ -674,6 +759,15 @@ class PixelCatWindow(QtWidgets.QWidget):
             chat_action = menu.addAction("Chat")
             chat_action.triggered.connect(toggle_chat)
             menu.addSeparator()
+
+        # Personality submenu (switches prompt, name, image, and voice together)
+        persona_menu = menu.addMenu("Personality")
+        for key in personas.keys():
+            persona_action = persona_menu.addAction(personas.PERSONAS[key]["label"])
+            persona_action.setCheckable(True)
+            persona_action.setChecked(key == personas.get())
+            persona_action.triggered.connect(lambda _checked, k=key: self._switch_persona(k))
+        menu.addSeparator()
 
         # Add Images submenu if we have available images
         if len(self.available_images) > 0:

@@ -254,20 +254,25 @@ def render_prompt(history_lines: List[str], history_limit: int) -> str:
 
 
 def _load_prompt_template() -> str:
-    global _PROMPT_TEMPLATE_CACHE
-    if _PROMPT_TEMPLATE_CACHE is not None:
-        return _PROMPT_TEMPLATE_CACHE
-    for candidate in (PROMPT_TEMPLATE_PATH, _LEGACY_PROMPT_TEMPLATE_PATH):
+    # Load the template for the active persona (cat/dog). Not cached across
+    # personas so switching personality takes effect on the next message.
+    candidates = []
+    try:
+        from . import personas
+
+        candidates.append(personas.template_path())
+    except Exception as exc:  # pragma: no cover
+        logger.debug("Persona template unavailable: %s", exc)
+    candidates.extend((PROMPT_TEMPLATE_PATH, _LEGACY_PROMPT_TEMPLATE_PATH))
+
+    for candidate in candidates:
         if not candidate.exists():
             continue
         try:
-            _PROMPT_TEMPLATE_CACHE = candidate.read_text(encoding="utf-8")
-            logger.debug("Loaded prompt template from %s", candidate)
-            return _PROMPT_TEMPLATE_CACHE
+            return candidate.read_text(encoding="utf-8")
         except OSError as exc:
             logger.warning("Unable to read %s: %s", candidate, exc)
-    _PROMPT_TEMPLATE_CACHE = DEFAULT_PROMPT_TEMPLATE
-    return _PROMPT_TEMPLATE_CACHE
+    return DEFAULT_PROMPT_TEMPLATE
 
 
 __all__ = [
