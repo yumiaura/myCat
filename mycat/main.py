@@ -658,18 +658,18 @@ class PixelCatWindow(QtWidgets.QWidget):
         """Show context menu at the given position."""
         menu = QtWidgets.QMenu(self)
 
-        # LLM controls sit just above the shop. "Ollama…" is always available so
-        # the backend can be configured from scratch (the enabled checkbox now
-        # lives inside that dialog). "Chat" appears only once Ollama is
-        # configured — i.e. a controller exists.
-        ollama_action = menu.addAction("Ollama…")
-        ollama_action.triggered.connect(self._open_llm_settings)
-
+        # "Chat" appears only once Ollama is configured (a controller exists).
         toggle_chat = getattr(self, "_toggle_llm_chat", None)
         if callable(toggle_chat):
             chat_action = menu.addAction("Chat")
             chat_action.triggered.connect(toggle_chat)
-        menu.addSeparator()
+            menu.addSeparator()
+
+        # "Ollama…" sits directly above "Open Shop" (the enabled checkbox now
+        # lives inside that dialog); it is always available so the backend can be
+        # configured from scratch.
+        ollama_action = menu.addAction("Ollama…")
+        ollama_action.triggered.connect(self._open_llm_settings)
 
         shop_action = menu.addAction("Open Shop…")
         shop_action.triggered.connect(self._open_shop)
