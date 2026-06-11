@@ -742,7 +742,6 @@ class ReminderDialog(QtWidgets.QDialog):
             " color: #1c1c1c; background: #f0f0f0;"
             " border: 1px solid #c0c0c0; border-radius: 4px; padding: 4px 14px; }"
             "QPushButton:hover { background: #e7e7e7; }"
-            "QPushButton:default { color: white; background: #ff6f91; border: none; }"
             "QPushButton:disabled { color: #9a9a9a; background: #f5f5f5; }"
         )
 
