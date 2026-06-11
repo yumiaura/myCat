@@ -669,14 +669,15 @@ class PixelCatWindow(QtWidgets.QWidget):
                 chat_action.setEnabled(bool(llm_is_enabled()))
             menu.addSeparator()
 
-        # "Ollama…" sits directly above "Open Shop" (the enabled checkbox now
-        # lives inside that dialog); it is always available so the backend can be
-        # configured from scratch.
+        # "Ollama…" (the enabled checkbox now lives inside that dialog); always
+        # available so the backend can be configured from scratch.
         ollama_action = menu.addAction("Ollama…")
         ollama_action.triggered.connect(self._open_llm_settings)
 
-        shop_action = menu.addAction("Open Shop…")
-        shop_action.triggered.connect(self._open_shop)
+        # Shop temporarily hidden from the menu (work in progress). The dialog
+        # and its handler stay in the codebase; re-enable by uncommenting:
+        # shop_action = menu.addAction("Open Shop…")
+        # shop_action.triggered.connect(self._open_shop)
 
         reminder_action = menu.addAction("Reminder…")
         reminder_action.triggered.connect(self._open_reminder)
