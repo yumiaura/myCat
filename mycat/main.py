@@ -14,7 +14,9 @@ import argparse
 import configparser
 import logging
 import os
+import shutil
 import signal
+import subprocess
 import sys
 import tempfile
 import warnings
@@ -400,7 +402,25 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setWindowTitle("Pixel Cat")
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
-        
+
+        # On X11 without a compositor, per-pixel alpha renders as a black box.
+        # Fall back to clipping the window to the image silhouette (setMask) so
+        # transparency works without a compositor — important for remote desktops
+        # where enabling compositing adds noticeable latency. Edges are hard
+        # (1-bit), which suits the pixel-art cat. MYCAT_SHAPE_MASK=1/0 forces it.
+        self.shape_mask_key = None
+        force_mask = os.environ.get("MYCAT_SHAPE_MASK")
+        if force_mask in ("0", "1"):
+            self.shape_mask_enabled = force_mask == "1"
+        else:
+            self.shape_mask_enabled = platform_name == "xcb" and x11_compositor_active() is False
+        if self.shape_mask_enabled:
+            logger.warning(
+                "No X11 compositor detected — switching to alternative transparency mode "
+                "(shape mask: window clipped to the image silhouette, hard 1-bit edges, no smooth alpha). "
+                "Enable display compositing for smooth edges, or force this mode with MYCAT_SHAPE_MASK=1."
+            )
+
         # Store images
         self.png_pixmap = png_pixmap
         self.gif_movie = gif_movie
@@ -473,39 +493,45 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.reminder_controller = reminder.ReminderController(self)
     
     def _load_position(self) -> None:
-        """Load window position from config, clamping to the current screen layout."""
-        screen = QtWidgets.QApplication.primaryScreen().geometry()
-        screen_width = screen.width()
-        screen_height = screen.height()
+        """Load window position from config; default to the bottom-right corner."""
+        rect = usable_screen_rect()
         window_width = self.width()
         window_height = self.height()
 
-        config = load_config(screen_width, screen_height, window_width, window_height)
-        x = config.get("x", screen_width - window_width - DEFAULT_POSITION_OFFSET_X)
-        y = config.get("y", screen_height - window_height - DEFAULT_POSITION_OFFSET_Y)
+        config = load_config(rect.width(), rect.height(), window_width, window_height)
+        default_x, default_y = self.bottom_right_position(window_width, window_height)
+        x = config.get("x", default_x)
+        y = config.get("y", default_y)
         x, y = self._clamp_to_screens(x, y, window_width, window_height)
         self.move(x, y)
 
+    def bottom_right_position(self, width: int, height: int) -> tuple[int, int]:
+        """Bottom-right corner of the usable screen area (robust to a 0x0 Qt screen)."""
+        rect = usable_screen_rect()
+        x = rect.x() + rect.width() - width - DEFAULT_POSITION_OFFSET_X
+        y = rect.y() + rect.height() - height - DEFAULT_POSITION_OFFSET_Y
+        return x, y
+
     def _clamp_to_screens(self, x: int, y: int, width: int, height: int) -> tuple[int, int]:
-        """Ensure (x, y) keeps the window visible on at least one connected screen."""
-        app = QtWidgets.QApplication.instance()
-        screens = app.screens() if app is not None else []
-        if not screens:
-            return x, y
+        """Keep the window visible; robust to Qt reporting empty screen geometry."""
+        rect = usable_screen_rect()
+        if rect.width() <= 0 or rect.height() <= 0:
+            return x, y  # screen size unknown — trust the requested position
 
         window_rect = QtCore.QRect(x, y, width, height)
-        union = QtCore.QRect()
-        for screen in screens:
-            union = union.united(screen.availableGeometry())
-            if screen.availableGeometry().intersects(window_rect):
-                return x, y
+        union = QtCore.QRect(rect)
+        app = QtWidgets.QApplication.instance()
+        for screen in (app.screens() if app is not None else []):
+            geo = screen.availableGeometry()
+            if geo.width() > 0 and geo.height() > 0:
+                union = union.united(geo)
+        if union.intersects(window_rect):
+            return x, y
 
-        # Off-screen: fall back to the primary screen's bottom-right corner.
-        primary = QtWidgets.QApplication.primaryScreen().availableGeometry()
-        fallback_x = primary.right() - width - DEFAULT_POSITION_OFFSET_X
-        fallback_y = primary.bottom() - height - DEFAULT_POSITION_OFFSET_Y
+        fallback_x = rect.x() + rect.width() - width - DEFAULT_POSITION_OFFSET_X
+        fallback_y = rect.y() + rect.height() - height - DEFAULT_POSITION_OFFSET_Y
         logger.warning(
-            "Saved position (%d, %d) is off-screen (union=%s); resetting to (%d, %d)",
+            "Saved position (%d, %d) is off-screen (usable=%s); resetting to (%d, %d)",
             x, y, union, fallback_x, fallback_y,
         )
         return fallback_x, fallback_y
@@ -728,7 +754,7 @@ class PixelCatWindow(QtWidgets.QWidget):
 
         global STATIC_PNG_PATH
         gif_size = self.gif_movie.scaledSize()
-        logger.info(
+        logger.debug(
             f"Playing {self.file_name}.zip {self.original_size.width()}x{self.original_size.height()} > "
             f"{gif_size.width()}x{gif_size.height()} (animation, {self.gif_duration:.2f}s)"
         )
@@ -762,7 +788,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         # Check if we've completed the animation
         if self.current_frame >= frame_count:
             self.animation_timer.stop()
-            logger.info(f"Animation complete for {self.file_name} ({frame_count} frames)")
+            logger.debug(f"Animation complete for {self.file_name} ({frame_count} frames)")
             QtCore.QTimer.singleShot(50, self._complete_switch_to_png)
             return
 
@@ -797,7 +823,7 @@ class PixelCatWindow(QtWidgets.QWidget):
                 self.png_pixmap = static_pixmap
                 self.first_frame_pixmap = static_pixmap
 
-            logger.info(
+            logger.debug(
                 f"Playing {self.file_name}.zip {self.original_size.width()}x{self.original_size.height()} > "
                 f"{self.png_pixmap.width()}x{self.png_pixmap.height()} (first_frame, {self.wait_time:.1f}s static)"
             )
@@ -808,26 +834,51 @@ class PixelCatWindow(QtWidgets.QWidget):
         """Paint the current pixmap."""
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
-        
+
         # Draw pixmap centered in widget
         widget_rect = self.rect()
         pixmap_rect = self.current_pixmap.rect()
         x = (widget_rect.width() - pixmap_rect.width()) // 2
         y = (widget_rect.height() - pixmap_rect.height()) // 2
         painter.drawPixmap(x, y, self.current_pixmap)
-    
+        painter.end()
+
+        if self.shape_mask_enabled:
+            self.refresh_shape_mask(x, y)
+
+    def refresh_shape_mask(self, x: int, y: int) -> None:
+        """Clip the window to the current pixmap's alpha silhouette (no-compositor path).
+
+        Recomputed only when the frame/position actually changes (cache key guard),
+        so the setMask never triggers a repaint loop.
+        """
+        pixmap = self.current_pixmap
+        key = (pixmap.cacheKey(), x, y, self.width(), self.height())
+        if key == self.shape_mask_key:
+            return
+        self.shape_mask_key = key
+
+        bitmap = pixmap.mask()
+        if bitmap.isNull():
+            self.clearMask()
+            return
+        region = QtGui.QRegion(bitmap)
+        if x or y:
+            region.translate(x, y)
+        self.setMask(region)
+
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
         """Handle mouse press for dragging."""
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
             self.dragging = True
             self.drag_start_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-    
+
     def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
         """Handle mouse move for dragging."""
         if self.dragging and event.buttons() == QtCore.Qt.MouseButton.LeftButton:
             new_pos = event.globalPosition().toPoint() - self.drag_start_pos
             self.move(new_pos)
-    
+
     def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
         """Handle mouse release to stop dragging and save position."""
         if event.button() == QtCore.Qt.MouseButton.LeftButton and self.dragging:
@@ -859,12 +910,177 @@ def parse_args() -> argparse.Namespace:
         metavar=("X", "Y"),
         help="Start position (overrides remembered position)",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable verbose DEBUG logging (per-frame animation cycle, GIF timing, etc.)",
+    )
     llm.add_arguments(parser)
     return parser.parse_args()
+
+def x11_compositor_active() -> Optional[bool]:
+    """Return True/False when an X11 compositing manager is running, None if undetermined.
+
+    Every EWMH-compliant compositor (picom, xfwm4, mutter, kwin, ...) owns the
+    `_NET_WM_CM_Sn` selection while active. We query that owner via libX11 so the
+    check works on any X11 desktop, not just XFCE. Returns None on non-X11
+    platforms or when libX11 / the display is unavailable.
+    """
+    if sys.platform.startswith("win") or sys.platform == "darwin":
+        return None
+    if not os.environ.get("DISPLAY"):
+        return None
+    try:
+        import ctypes
+
+        x11 = ctypes.CDLL("libX11.so.6")
+    except OSError:
+        return None
+
+    x11.XOpenDisplay.restype = ctypes.c_void_p
+    x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+    x11.XDefaultScreen.restype = ctypes.c_int
+    x11.XDefaultScreen.argtypes = [ctypes.c_void_p]
+    x11.XInternAtom.restype = ctypes.c_ulong
+    x11.XInternAtom.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+    x11.XGetSelectionOwner.restype = ctypes.c_ulong
+    x11.XGetSelectionOwner.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+    x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
+
+    display = x11.XOpenDisplay(None)
+    if not display:
+        return None
+    try:
+        screen = x11.XDefaultScreen(display)
+        atom = x11.XInternAtom(display, f"_NET_WM_CM_S{screen}".encode(), False)
+        return x11.XGetSelectionOwner(display, atom) != 0
+    finally:
+        x11.XCloseDisplay(display)
+
+
+def x11_screen_size() -> Optional[tuple]:
+    """Root window size straight from the X server, for when Qt reports a 0x0 screen.
+
+    Some X setups (nested or remote servers without RANDR) leave QScreen geometry
+    empty even though the display has a real size. libX11's XDisplayWidth/Height
+    still return the true dimensions. Returns None off X11 or when unavailable.
+    """
+    if sys.platform.startswith("win") or sys.platform == "darwin":
+        return None
+    if not os.environ.get("DISPLAY"):
+        return None
+    try:
+        import ctypes
+
+        x11 = ctypes.CDLL("libX11.so.6")
+    except OSError:
+        return None
+
+    x11.XOpenDisplay.restype = ctypes.c_void_p
+    x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+    x11.XDefaultScreen.restype = ctypes.c_int
+    x11.XDefaultScreen.argtypes = [ctypes.c_void_p]
+    x11.XDisplayWidth.restype = ctypes.c_int
+    x11.XDisplayWidth.argtypes = [ctypes.c_void_p, ctypes.c_int]
+    x11.XDisplayHeight.restype = ctypes.c_int
+    x11.XDisplayHeight.argtypes = [ctypes.c_void_p, ctypes.c_int]
+    x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
+
+    display = x11.XOpenDisplay(None)
+    if not display:
+        return None
+    try:
+        screen = x11.XDefaultScreen(display)
+        width = x11.XDisplayWidth(display, screen)
+        height = x11.XDisplayHeight(display, screen)
+        if width > 0 and height > 0:
+            return width, height
+        return None
+    finally:
+        x11.XCloseDisplay(display)
+
+
+def usable_screen_rect() -> "QtCore.QRect":
+    """Best-effort usable screen rectangle, robust to Qt reporting a 0x0 screen.
+
+    Prefers Qt's panel-aware availableGeometry, then full geometry, then the X
+    server's root size (XDisplayWidth/Height). Returns an empty rect only when
+    nothing is determinable.
+    """
+    screen = QtWidgets.QApplication.primaryScreen()
+    if screen is not None:
+        for rect in (screen.availableGeometry(), screen.geometry()):
+            if rect.width() > 0 and rect.height() > 0:
+                return rect
+    size = x11_screen_size()
+    if size is not None:
+        return QtCore.QRect(0, 0, size[0], size[1])
+    return QtCore.QRect(0, 0, 0, 0)
+
+
+def randr_monitor_count() -> Optional[int]:
+    """Number of active RANDR monitors via `xrandr --listmonitors`, or None if unknown."""
+    xrandr = shutil.which("xrandr")
+    if not xrandr:
+        return None
+    try:
+        result = subprocess.run(
+            [xrandr, "--listmonitors"], capture_output=True, text=True, timeout=5
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in result.stdout.splitlines():
+        head, sep, rest = line.partition("Monitors:")
+        if sep:
+            try:
+                return int(rest.strip())
+            except ValueError:
+                return None
+    return None
+
+
+def ensure_virtual_monitor() -> None:
+    """Register a virtual RANDR monitor when a headless/VNC X server exposes none.
+
+    Such servers have a real framebuffer but zero active RANDR monitors, so Qt
+    reports a 0x0 screen and window positioning plus menu/dialog popups break.
+    Adding a monitor spanning the framebuffer makes Qt see the real screen size.
+    Must run before the QApplication is created. No-op when a monitor already
+    exists, on non-X11 platforms, or when xrandr is unavailable.
+    """
+    if sys.platform.startswith("win") or sys.platform == "darwin":
+        return
+    if not os.environ.get("DISPLAY") or os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+        return
+    count = randr_monitor_count()
+    if count is None or count > 0:
+        return
+    size = x11_screen_size()
+    if size is None:
+        return
+    width, height = size
+    mm_width = round(width / 96 * 25.4)
+    mm_height = round(height / 96 * 25.4)
+    geometry = f"{width}/{mm_width}x{height}/{mm_height}+0+0"
+    xrandr = shutil.which("xrandr")
+    if not xrandr:
+        return
+    try:
+        subprocess.run(
+            [xrandr, "--setmonitor", "mycat-virtual", geometry, "none"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return
+    logger.info("No active RANDR monitor — registered virtual monitor %s so Qt sees the screen.", geometry)
+
 
 def main() -> None:
     """Main entry point."""
     args = parse_args()
+
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
 
     llm_context = llm.initialize(args)
     
@@ -875,7 +1091,12 @@ def main() -> None:
 
     # Suppress additional Qt warnings
     warnings.filterwarnings("ignore", category=DeprecationWarning)
-    
+
+    # Headless/VNC X servers may expose a framebuffer with no RANDR monitor,
+    # which makes Qt see a 0x0 screen (breaks positioning and menu popups).
+    # Register a virtual monitor before the QApplication reads screen geometry.
+    ensure_virtual_monitor()
+
     # Initialize Qt application with error handling
     try:
         app = QtWidgets.QApplication(sys.argv)
@@ -926,13 +1147,13 @@ def main() -> None:
     
     if args.pos:
         window.move(args.pos[0], args.pos[1])
-    
+
     if platform_name == "offscreen":
         logger.info("Offscreen platform detected: skipping window display.")
         QtCore.QTimer.singleShot(0, app.quit)
     else:
         window.show()
-    
+
     try:
         sys.exit(app.exec())
     except KeyboardInterrupt:
