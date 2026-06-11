@@ -54,3 +54,15 @@ def test_effective_key_uses_field_then_env(qapp, monkeypatch):
     dialog.key_edit.setText("")
     monkeypatch.setenv("OPENAI_API_KEY", "env-key")
     assert dialog.effective_key() == "env-key"
+
+
+def test_switching_vendor_clears_stale_models(qapp):
+    dialog = llm_settings_ui.LLMSettingsDialog(make_window())
+    dialog.vendor_combo.setCurrentIndex(dialog.vendor_combo.findData("ollama"))
+    dialog.on_models(["llama3.1", "qwen3:8b"])
+    assert dialog.model_combo.count() == 2
+
+    dialog.vendor_combo.setCurrentIndex(dialog.vendor_combo.findData("openai"))
+    items = [dialog.model_combo.itemText(i) for i in range(dialog.model_combo.count())]
+    assert "llama3.1" not in items
+    assert "qwen3:8b" not in items

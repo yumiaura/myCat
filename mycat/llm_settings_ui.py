@@ -222,7 +222,6 @@ class LLMSettingsDialog(QtWidgets.QDialog):
             self.key_edit.setText("")
             self.key_edit.setPlaceholderText("API key")
             self.current_api_key_env = ""
-            self.model_combo.clear()
         else:
             vendor = self.vendors[self.vendor_combo.currentData()]
             self.name_edit.setReadOnly(True)
@@ -235,7 +234,13 @@ class LLMSettingsDialog(QtWidgets.QDialog):
             self.key_edit.setPlaceholderText(
                 f"leave empty to use ${vendor.api_key_env}" if vendor.api_key_env else "API key"
             )
+        # Drop the previous vendor's model list so stale entries (e.g. Ollama
+        # models) don't linger if the new vendor's load fails or hasn't run yet.
+        self.model_combo.blockSignals(True)
+        self.model_combo.clear()
+        if not custom and vendor.model:
             self.model_combo.setCurrentText(vendor.model)
+        self.model_combo.blockSignals(False)
         self.refresh_key_visibility()
         self.on_model_changed()
         # Auto-load models when the endpoint is reachable without typing a key.
