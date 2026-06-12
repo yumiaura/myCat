@@ -6,7 +6,7 @@ import argparse
 import logging
 import os
 from dataclasses import dataclass
-from typing import Optional, Protocol
+from typing import Protocol
 
 from PySide6 import QtWidgets
 
@@ -49,9 +49,9 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def initialize(args) -> Optional[LLMContext]:
+def initialize(args) -> LLMContext | None:
     """Configure the selected backend (OpenAI or Ollama)."""
-    backend_name: Optional[str] = None
+    backend_name: str | None = None
     if getattr(args, "openai", False):
         backend_name = "openai"
     elif getattr(args, "ollama", False):

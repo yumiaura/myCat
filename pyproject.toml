@@ -28,6 +28,10 @@ dev = [
     "pytest>=8.0",
 ]
 
+# Optional: store API keys in the OS keyring instead of plaintext config.
+[project.optional-dependencies]
+secure = ["keyring>=24"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

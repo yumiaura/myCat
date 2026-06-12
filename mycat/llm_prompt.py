@@ -10,7 +10,8 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Tuple
+
+from . import secret_store
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,7 @@ Recent conversation (latest {{history_count}} messages):
 Stay warm, playful, and loving when you reply."""
 
 _ENV_LOADED = False
-_PROMPT_TEMPLATE_CACHE: Optional[str] = None
+_PROMPT_TEMPLATE_CACHE: str | None = None
 
 HISTORY_HEADER_RE = re.compile(r"^\[(?P<timestamp>.+?)\]\s+(?P<label>REQUEST|RESPONSE):$")
 
@@ -38,7 +39,7 @@ HISTORY_HEADER_RE = re.compile(r"^\[(?P<timestamp>.+?)\]\s+(?P<label>REQUEST|RES
 class LLMSettings:
     """Configuration bundle for all supported LLM backends."""
 
-    openai_api_key: Optional[str]
+    openai_api_key: str | None
     openai_model: str
     ollama_url: str
     ollama_model: str
@@ -73,7 +74,7 @@ def load_env_file() -> None:
         except OSError as exc:
             logger.debug("Unable to read env file %s: %s", path, exc)
 
-    candidates: List[Path] = []
+    candidates: list[Path] = []
     override_path = os.environ.get("MYCAT_ENV_FILE")
     if override_path:
         candidates.append(Path(override_path).expanduser())
@@ -92,7 +93,8 @@ def load_env_file() -> None:
 def load_llm_settings() -> LLMSettings:
     """Merge values from environment variables and config.ini into a single settings object."""
     settings = LLMSettings(
-        openai_api_key=os.getenv("OPENAI_API_KEY"),
+        # Prefer the OS keyring; fall back to the env var (and a config section below).
+        openai_api_key=secret_store.get_secret("openai_api_key") or os.getenv("OPENAI_API_KEY"),
         openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
         ollama_url=os.getenv("OLLAMA_URL", "http://127.0.0.1:11434"),
         ollama_model=os.getenv("OLLAMA_MODEL", "llama3.1"),
@@ -142,6 +144,7 @@ def save_ollama_settings(url: str, model: str) -> None:
     parser.set("ollama", "model", model)
     with open(CFG_FILE, "w") as handle:
         parser.write(handle)
+    secret_store.secure_file(CFG_FILE)
     logger.info("Saved Ollama settings: url=%s model=%s", url, model)
 
 
@@ -159,6 +162,7 @@ def save_llm_enabled(enabled: bool) -> None:
     parser.set("llm", "enabled", "true" if enabled else "false")
     with open(CFG_FILE, "w") as handle:
         parser.write(handle)
+    secret_store.secure_file(CFG_FILE)
     logger.info("Saved LLM enabled=%s", enabled)
 
 
@@ -225,12 +229,12 @@ def rotate_history_if_needed(path: Path, max_bytes: int = HISTORY_MAX_BYTES) -> 
         logger.warning("Unable to rotate history file %s: %s", path, exc)
 
 
-def parse_history_file(path: Path) -> List[Tuple[str, str, str]]:
+def parse_history_file(path: Path) -> list[tuple[str, str, str]]:
     """Parse history file into structured messages."""
-    entries: List[Tuple[str, str, str]] = []
-    role: Optional[str] = None
-    timestamp: Optional[str] = None
-    buffer: List[str] = []
+    entries: list[tuple[str, str, str]] = []
+    role: str | None = None
+    timestamp: str | None = None
+    buffer: list[str] = []
 
     def flush() -> None:
         nonlocal role, timestamp, buffer
@@ -272,7 +276,7 @@ def append_history_entry(path: Path, role: str, text: str, timestamp: str) -> No
         logger.debug("Unable to write history entry: %s", exc)
 
 
-def get_history_tail(history_path: Path, limit: int) -> List[str]:
+def get_history_tail(history_path: Path, limit: int) -> list[str]:
     """Return the last `limit` messages serialised back to history-file lines.
 
     Operates on message boundaries (not text lines), so multi-line replies
@@ -284,7 +288,7 @@ def get_history_tail(history_path: Path, limit: int) -> List[str]:
     if not entries:
         return []
     tail = entries[-limit:]
-    out: List[str] = []
+    out: list[str] = []
     for role, text, ts in tail:
         label = "REQUEST" if role == "user" else "RESPONSE"
         out.append(f"[{ts}] {label}:")
@@ -295,7 +299,7 @@ def get_history_tail(history_path: Path, limit: int) -> List[str]:
 _PLACEHOLDER_RE = re.compile(r"\{\{\s*(date|history|history_count)\s*\}\}")
 
 
-def render_prompt(history_lines: List[str], history_limit: int) -> str:
+def render_prompt(history_lines: list[str], history_limit: int) -> str:
     """Produce the final system prompt text using the stored template.
 
     Supports both `{{key}}` and `{{ key }}` placeholder forms so the file may

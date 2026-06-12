@@ -21,6 +21,8 @@ from pathlib import Path
 
 from PySide6 import QtCore
 
+from . import secret_store
+
 logger = logging.getLogger(__name__)
 
 # Same config file the rest of the app uses (see main.py). Derived locally to
@@ -123,6 +125,7 @@ def save_reminder(reminder: Reminder) -> None:
         section["in_minutes"] = str(reminder.in_minutes)
         with open(CFG_FILE, "w") as fh:
             config.write(fh)
+        secret_store.secure_file(CFG_FILE)
     except Exception as exc:  # noqa: BLE001
         logger.error("Failed to save reminder to config: %s", exc)
 
@@ -137,6 +140,7 @@ def clear_reminder() -> None:
         if config.remove_section("reminder"):
             with open(CFG_FILE, "w") as fh:
                 config.write(fh)
+            secret_store.secure_file(CFG_FILE)
     except Exception as exc:  # noqa: BLE001
         logger.error("Failed to clear reminder in config: %s", exc)
 
