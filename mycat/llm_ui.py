@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from datetime import datetime
@@ -389,10 +390,13 @@ class ChatDialog(QtWidgets.QDialog):
         if self._pending_request_started is None or self._pending_request_text is None:
             return
         duration = time.monotonic() - self._pending_request_started
-        status = "success" if success else "error"
-        logger.info("Request: %s", self._pending_request_text)
-        logger.info("LLM request %s in %.2fs", status, duration)
-        logger.info("Response: %s", response)
+        # One line. The request itself is already logged when it is sent.
+        if success:
+            # Readable text, newlines collapsed so it stays on one line.
+            logger.info("Response: %s (%.2fs)", response.replace("\n", " ").strip(), duration)
+        else:
+            # On failure: ERROR level, with the serialized error and the time.
+            logger.error("error: %s (%.2fs)", json.dumps(response, ensure_ascii=False), duration)
 
 
 class _LLMWorkerSignals(QtCore.QObject):
