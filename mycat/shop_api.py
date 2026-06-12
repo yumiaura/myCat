@@ -16,9 +16,9 @@ import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ class SkinEntry:
     license: str = ""
 
     @classmethod
-    def from_dict(cls, data: dict) -> "SkinEntry":
+    def from_dict(cls, data: dict) -> SkinEntry:
         return cls(
             id=str(data["id"]),
             name=str(data.get("name", data["id"])),
@@ -74,7 +74,7 @@ class Catalog:
     skins: list[SkinEntry]
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Catalog":
+    def from_dict(cls, data: dict) -> Catalog:
         return cls(
             schema_version=int(data.get("schema_version", 1)),
             generated_at=str(data.get("generated_at", "")),
@@ -86,7 +86,7 @@ class ShopError(RuntimeError):
     """Raised for any shop-API failure that should surface to the user."""
 
 
-def resolve_base_url(config_path: Optional[Path] = None) -> str:
+def resolve_base_url(config_path: Path | None = None) -> str:
     """Resolve the shop base URL via env > config.ini > default."""
     env_url = (os.environ.get("MYCAT_SHOP_URL") or "").strip()
     if env_url:
@@ -119,7 +119,7 @@ class ShopClient:
         *,
         catalog_timeout: float = DEFAULT_CATALOG_TIMEOUT,
         download_timeout: float = DEFAULT_DOWNLOAD_TIMEOUT,
-        cache_dir: Optional[Path] = None,
+        cache_dir: Path | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.catalog_timeout = catalog_timeout
@@ -140,7 +140,7 @@ class ShopClient:
         cache_file = self.cache_dir / "catalog.json"
         etag_file = self.cache_dir / "catalog.etag"
 
-        cached_etag: Optional[str] = None
+        cached_etag: str | None = None
         if etag_file.exists() and cache_file.exists() and not force_refresh:
             try:
                 cached_etag = etag_file.read_text(encoding="utf-8").strip() or None
@@ -189,7 +189,7 @@ class ShopClient:
 
         return self._load_cached_catalog(cache_file)
 
-    def _maybe_load_cached_catalog(self, cache_file: Path) -> Optional[Catalog]:
+    def _maybe_load_cached_catalog(self, cache_file: Path) -> Catalog | None:
         if not cache_file.exists():
             return None
         try:
@@ -205,7 +205,7 @@ class ShopClient:
 
     # ---- preview -----------------------------------------------------------
 
-    def fetch_preview(self, skin: SkinEntry) -> Optional[Path]:
+    def fetch_preview(self, skin: SkinEntry) -> Path | None:
         """Download a skin's preview into the cache, return local path or None on failure."""
         if not skin.preview_url:
             return None
@@ -242,8 +242,8 @@ class ShopClient:
         skin: SkinEntry,
         dest_dir: Path,
         *,
-        progress_cb: Optional[Callable[[int, int], None]] = None,
-        auth_token: Optional[str] = None,
+        progress_cb: Callable[[int, int], None] | None = None,
+        auth_token: str | None = None,
     ) -> Path:
         """Download `skin` into `dest_dir/<id>.zip`, verifying SHA-256.
 

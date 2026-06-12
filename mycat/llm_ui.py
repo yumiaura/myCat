@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import html
 import json
 import logging
 import time
 from datetime import datetime
-from typing import List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -19,7 +18,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def attach_chat(window: QtWidgets.QWidget, context: "LLMContext", enabled: bool = True) -> None:
+def attach_chat(window: QtWidgets.QWidget, context: LLMContext, enabled: bool = True) -> None:
     controller = _LLMController(window, context, enabled=enabled)
     setattr(window, "_llm_controller", controller)
     setattr(window, "_toggle_llm_chat", controller.toggle_chat)
@@ -31,12 +30,12 @@ def attach_chat(window: QtWidgets.QWidget, context: "LLMContext", enabled: bool 
 class _LLMController(QtCore.QObject):
     """Owns the chat dialog lifecycle and keeps it anchored to the cat window."""
 
-    def __init__(self, window: QtWidgets.QWidget, context: "LLMContext", enabled: bool = True) -> None:
+    def __init__(self, window: QtWidgets.QWidget, context: LLMContext, enabled: bool = True) -> None:
         super().__init__(window)
         self.window = window
         self.context = context
         self.enabled = enabled
-        self.chat_dialog: Optional[ChatDialog] = None
+        self.chat_dialog: ChatDialog | None = None
         self.history_file = llm_prompt.ensure_history_file()
 
         window.installEventFilter(self)
@@ -135,11 +134,11 @@ class ChatDialog(QtWidgets.QDialog):
         self.message_count = 0
         self._waiting_for_response = False
         self._thread_pool = QtCore.QThreadPool.globalInstance()
-        self._pending_worker: Optional[_LLMWorker] = None
-        self._pending_request_started: Optional[float] = None
-        self._pending_request_text: Optional[str] = None
+        self._pending_worker: _LLMWorker | None = None
+        self._pending_request_started: float | None = None
+        self._pending_request_text: str | None = None
         self._suspend_anchor = False
-        self._messages: List[tuple[str, str, str]] = []
+        self._messages: list[tuple[str, str, str]] = []
 
         self.setWindowFlags(
             QtCore.Qt.WindowType.Window
@@ -232,7 +231,7 @@ class ChatDialog(QtWidgets.QDialog):
 
         main_layout.addLayout(input_layout)
         self.input_field.returnPressed.connect(self._send_message)
-        self._typing_indicator: Optional[TypingIndicator] = None
+        self._typing_indicator: TypingIndicator | None = None
 
     def _load_history(self) -> None:
         entries = llm_prompt.parse_history_file(self.history_file)
@@ -320,7 +319,7 @@ class ChatDialog(QtWidgets.QDialog):
         self,
         role: str,
         text: str,
-        timestamp: Optional[str] = None,
+        timestamp: str | None = None,
         persist: bool = True,
     ) -> None:
         timestamp = timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S")

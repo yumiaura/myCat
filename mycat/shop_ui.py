@@ -9,14 +9,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from . import skin_catalog
 from .shop_api import (
     Catalog,
-    DEFAULT_BASE_URL,
     ShopClient,
     ShopError,
     SkinEntry,
@@ -63,7 +61,7 @@ class _DownloadWorker(QtCore.QRunnable):
         signals: _Signals,
         skin: SkinEntry,
         dest_dir: Path,
-        auth_token: Optional[str] = None,
+        auth_token: str | None = None,
     ) -> None:
         super().__init__()
         self._client = client
@@ -240,10 +238,10 @@ class ShopDialog(QtWidgets.QDialog):
 
     def __init__(
         self,
-        parent: Optional[QtWidgets.QWidget] = None,
+        parent: QtWidgets.QWidget | None = None,
         *,
-        base_url: Optional[str] = None,
-        config_path: Optional[Path] = None,
+        base_url: str | None = None,
+        config_path: Path | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Mycat Shop")
@@ -262,7 +260,7 @@ class ShopDialog(QtWidgets.QDialog):
         self._signals = _Signals()
         self._pool = QtCore.QThreadPool.globalInstance()
         self._cards: dict[str, _SkinCard] = {}
-        self._catalog: Optional[Catalog] = None
+        self._catalog: Catalog | None = None
         self._user_skins_dir = skin_catalog.ensure_user_skins_dir()
 
         self._build_ui()
