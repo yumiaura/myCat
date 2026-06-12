@@ -393,7 +393,7 @@ class ChatDialog(QtWidgets.QDialog):
         # One line. The request itself is already logged when it is sent.
         if success:
             # Readable text, newlines collapsed so it stays on one line.
-            logger.info("response: %s (%.2fs)", response.replace("\n", " ").strip(), duration)
+            logger.info("Response: %s (%.2fs)", response.replace("\n", " ").strip(), duration)
         else:
             # On failure: ERROR level, with the serialized error and the time.
             logger.error("error: %s (%.2fs)", json.dumps(response, ensure_ascii=False), duration)
