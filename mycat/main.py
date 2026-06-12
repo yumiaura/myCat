@@ -688,7 +688,7 @@ class PixelCatWindow(QtWidgets.QWidget):
             menu.addSeparator()
 
         if autostart.is_supported():
-            login_action = menu.addAction("Start on login")
+            login_action = menu.addAction("Autostart")
             login_action.setCheckable(True)
             login_action.setChecked(autostart.is_enabled())
             login_action.toggled.connect(autostart.set_enabled)
@@ -1122,7 +1122,7 @@ def setup_tray(app, window, icon_pixmap):
     menu.addAction("LLM…", window.open_llm_settings)
     if autostart.is_supported():
         menu.addSeparator()
-        login_action = menu.addAction("Start on login")
+        login_action = menu.addAction("Autostart")
         login_action.setCheckable(True)
         login_action.setChecked(autostart.is_enabled())
         login_action.toggled.connect(autostart.set_enabled)
