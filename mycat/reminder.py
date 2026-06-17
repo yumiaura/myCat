@@ -167,6 +167,7 @@ class ReminderController(QtCore.QObject):
         self._window = window
         self._reminder = load_reminder()
         self._flyby = None  # keep a ref so the window isn't garbage-collected mid-flight
+        self.settings_dialog = None  # non-modal dialog ref (kept alive while open)
 
         self._normalize_on_start()
 
@@ -197,7 +198,17 @@ class ReminderController(QtCore.QObject):
         self.show_flyby(reminder)
 
     def open_dialog(self) -> None:
-        """Lazily build and show the settings dialog."""
+        """Build and show the settings dialog NON-modally.
+
+        Non-modal on purpose: a modal ``exec()`` grabs all input, so the Test
+        flyby launched from the dialog could not be clicked or dragged while the
+        dialog stayed open. With ``show()`` the user can fire Test, then grab and
+        park the plane, and keep tweaking settings — all at once.
+        """
+        if self.settings_dialog is not None and self.settings_dialog.isVisible():
+            self.settings_dialog.raise_()
+            self.settings_dialog.activateWindow()
+            return
         try:
             if __package__:
                 from .reminder_ui import ReminderDialog
@@ -210,7 +221,12 @@ class ReminderController(QtCore.QObject):
             return
 
         dialog = ReminderDialog(self, self._reminder, parent=self._window)
-        dialog.exec()
+        dialog.setModal(False)
+        dialog.finished.connect(lambda result: setattr(self, "settings_dialog", None))
+        self.settings_dialog = dialog
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
 
     def show_flyby(self, reminder: Reminder) -> None:
         """Create and launch a flyby for ``reminder`` (no-op on headless platforms)."""
