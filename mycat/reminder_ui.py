@@ -87,6 +87,27 @@ def _resolve_plane_color(name: str) -> QtGui.QColor:
     return PLANE_COLORS["pink"]
 
 
+# How far to grow the plane/cat hit-region when the window is clipped to its
+# silhouette (no-compositor X11). The bare silhouette of a moving plane is a
+# painfully thin target — only the exact opaque pixels absorb clicks, so the
+# user keeps missing. Growing it by a few pixels turns it into an easy target
+# at the cost of a thin dark outline (the only thing that can show without a
+# compositor). Has no effect in the normal bounding-box path.
+GRAB_GROW_PX = 5
+
+
+def grow_region(region: QtGui.QRegion, radius: int) -> QtGui.QRegion:
+    """Dilate ``region`` by ``radius`` px (8-neighbour translate + union)."""
+    if radius <= 0 or region.isEmpty():
+        return region
+    grown = QtGui.QRegion(region)
+    for dx in (-radius, 0, radius):
+        for dy in (-radius, 0, radius):
+            if dx or dy:
+                grown = grown.united(region.translated(dx, dy))
+    return grown
+
+
 def _tinted_pixmap(base: QtGui.QPixmap, tint: QtGui.QColor) -> QtGui.QPixmap:
     """Multiply-blend ``base`` by ``tint``, then restore the alpha mask.
 
@@ -153,6 +174,14 @@ class FlybyWindow(QtWidgets.QWidget):
         platform_name = (app.platformName() or "").lower() if app is not None else ""
         if platform_name != "offscreen":
             flags |= QtCore.Qt.WindowType.WindowStaysOnTopHint
+        # On X11, let the window manager NOT manage this overlay. Without this,
+        # many WMs (a) shift the frameless window down by the panel height and
+        # (b) hijack a body click-drag as "move the whole window" — so pressing
+        # the plane only changes the cursor and the plane never follows the drag
+        # (the WM ate the motion). Bypassing the WM makes the X server deliver
+        # the drag straight to us, and keeps the overlay glued to (0, 0).
+        if platform_name == "xcb":
+            flags |= QtCore.Qt.WindowType.X11BypassWindowManagerHint
         super().__init__(parent, flags)
 
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -416,9 +445,12 @@ class FlybyWindow(QtWidgets.QWidget):
             pixmap, bx, by = blit
             bitmap = pixmap.mask()
             if bitmap.isNull():
-                region += QtGui.QRegion(int(bx), int(by), pixmap.width(), pixmap.height())
+                blit_region = QtGui.QRegion(int(bx), int(by), pixmap.width(), pixmap.height())
             else:
-                region += QtGui.QRegion(bitmap).translated(int(bx), int(by))
+                blit_region = QtGui.QRegion(bitmap).translated(int(bx), int(by))
+            # Grow the plane/cat so they are easy to grab mid-flight; the flag,
+            # pole and rope stay crisp (the flag is already a solid target).
+            region += grow_region(blit_region, GRAB_GROW_PX)
 
         # A window mask that is entirely off-screen stops the window from
         # receiving paint events, which would freeze the mask there forever and

@@ -15,6 +15,9 @@ All notable changes to this project are documented in this file.
 ### Removed
 - `/tmp/mycat` temp-file extraction and the `TEMP_DIR` / `STATIC_PNG_PATH` / `ANIMATION_GIF_PATH` globals plus `get_temp_dir()` (branch `feat/in-memory-skins`).
 
+### Fixed
+- The reminder flyby plane could not be dragged during flight on X11: the window manager shifted the frameless overlay down by the panel height and hijacked a body click-drag as a "move window" gesture, so pressing the plane only changed the cursor while the plane stayed put. The overlay now bypasses the window manager on X11 (`X11BypassWindowManagerHint`), and its grab region is grown a few pixels so the moving plane/cat is an easy target on no-compositor sessions (branch `fix/flyby-grab-region`).
+
 ## 0.1.6
 
 ### Added
