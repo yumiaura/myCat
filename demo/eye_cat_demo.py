@@ -73,6 +73,16 @@ def pil_to_pixmap(image: Image.Image) -> QtGui.QPixmap:
     return QtGui.QPixmap.fromImage(qimage.copy())
 
 
+def harden_alpha(image: Image.Image, threshold: int = 128) -> Image.Image:
+    """Make the alpha binary (0/255). Downscaling anti-aliases the silhouette to
+    partial alpha; without a compositor those pixels render as a muddy dark
+    fringe. Snapping alpha to 0/255 gives a crisp edge that matches the 1-bit
+    window mask exactly."""
+    image = image.convert("RGBA")
+    image.putalpha(image.getchannel("A").point(lambda value: 255 if value >= threshold else 0))
+    return image
+
+
 def no_compositor() -> bool:
     try:
         from mycat.main import x11_compositor_active
@@ -91,17 +101,22 @@ class EyeCat(QtWidgets.QWidget):
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
 
+        self.shape_mask = no_compositor()
         source = Image.open(image_path).convert("RGBA")
         scaled = source.resize(
             (round(source.width * TARGET_HEIGHT / source.height), TARGET_HEIGHT), Image.LANCZOS
         )
+        # No compositor → 1-bit window mask; snap the anti-aliased edge to binary
+        # alpha so it doesn't render as a muddy fringe. With a compositor we keep
+        # the smooth alpha (it blends nicely).
+        if self.shape_mask:
+            scaled = harden_alpha(scaled)
         self.pixmap = pil_to_pixmap(scaled)
         self.eyes = detect_eyes(scaled)
         self.setFixedSize(self.pixmap.size())
 
         self.test_cursor = None       # set in tests to fake the cursor
         self.drag_offset = None
-        self.shape_mask = no_compositor()
 
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.update)
