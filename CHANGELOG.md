@@ -5,9 +5,12 @@ All notable changes to this project are documented in this file.
 ## Unreleased
 
 ### Added
+- **First-run prompt to start on login.** On the first launch (where autostart is supported and not already on), mycat asks once whether to start every login — the autostart toggle was otherwise buried in the right-click menu. The answer is remembered in `[settings] autostart_prompted` so it is never asked twice (branch `feat/persistence-hardening`).
+- **Single-instance guard.** A second launch no longer spawns a second cat — it detects the running instance via a `QLockFile` and exits (a lock left by a crashed instance is reclaimed automatically) (branch `feat/persistence-hardening`).
 - **Multiple chat vendors.** The LLM settings dialog (right-click → LLM…) now lets you pick a vendor — Ollama (default, local), OpenAI, Grok (xAI), Groq, DeepSeek, OpenRouter — or define a **custom** OpenAI-compatible endpoint (name + base URL + key + model). One adapter covers every OpenAI-compatible provider. API keys are hybrid: typed into the dialog (saved to config) or read from the vendor's environment variable.
 
 ### Changed
+- mycat now **lives in the system tray**: closing or hiding its windows no longer quits the app — only the explicit Quit action does (when a tray is available, so the user is never left with an invisible process). Keeps the cat persistent across the session (branch `feat/persistence-hardening`).
 - The reminder settings dialog is now **non-modal**, so the flyby launched by its **Test** button can be grabbed and dragged while the dialog stays open (a modal dialog grabbed all input, leaving the test plane unclickable). Reopening while already open just raises the existing dialog (branch `fix/reminder-dialog-nonmodal`).
 - The OpenAI/cloud backend is now a dependency-free `urllib` client (no `openai` package required) that supports any `base_url`.
 - Renamed the "Start on login" item to "Autostart" in the context and tray menus (branch `chore/autostart-label`).
