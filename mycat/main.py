@@ -360,12 +360,18 @@ def save_image_to_ini(image_name: str) -> None:
 def harden_pixmap(pixmap: QtGui.QPixmap, threshold: int = 128) -> QtGui.QPixmap:
     """Snap alpha to 0/255 so a smooth-scaled silhouette has a crisp edge that
     matches the 1-bit shape mask — otherwise the anti-aliased edge renders as a
-    muddy fringe on X11 without a compositor."""
+    muddy fringe on X11 without a compositor.
+
+    Uses Pillow's C-speed ``point`` on the alpha channel — a Python per-pixel
+    loop here froze loads of large multi-frame characters (e.g. girl*, 120
+    frames at 281×500)."""
+    from PIL import Image
+
     image = pixmap.toImage().convertToFormat(QtGui.QImage.Format.Format_RGBA8888)
-    data = bytearray(image.constBits().tobytes())
-    for index in range(3, len(data), 4):
-        data[index] = 255 if data[index] >= threshold else 0
-    hardened = QtGui.QImage(bytes(data), image.width(), image.height(),
+    width, height = image.width(), image.height()
+    pil = Image.frombytes("RGBA", (width, height), image.constBits().tobytes())
+    pil.putalpha(pil.getchannel("A").point(lambda value: 255 if value >= threshold else 0))
+    hardened = QtGui.QImage(pil.tobytes("raw", "RGBA"), width, height,
                             QtGui.QImage.Format.Format_RGBA8888)
     return QtGui.QPixmap.fromImage(hardened.copy())
 
@@ -515,13 +521,29 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.next_blink = random.uniform(*pack.blink_every) if pack.blink_enabled else float("inf")
         self.anim_next = [random.uniform(*anim.every) for anim in pack.anims]
         self.active_anim = None
+        self._pack_mode = "open"
+        self._last_cursor = QtGui.QCursor.pos()
+        self._mask_cache: dict = {}
         self.pack_timer = QtCore.QTimer(self)
-        self.pack_timer.timeout.connect(self.update)
-        self.pack_timer.start(16)
+        self.pack_timer.timeout.connect(self._pack_tick)
+        self.pack_timer.start(33)     # ~30 fps; only repaints when something changed
         logger.info(
             f"Loaded interactive char '{pack.name}' ({pack.static.width()}x{pack.static.height()}, "
             f"eyes={pack.eyes is not None}, blink={pack.blink_enabled}, anims={len(pack.anims)})"
         )
+
+    def _pack_tick(self) -> None:
+        """Advance pack state; repaint only when the shown frame or gaze changes."""
+        previous = self.current_pixmap
+        self._pack_mode = self._update_pack_frame()
+        changed = self.current_pixmap is not previous
+        if self._pack_mode == "open" and self.char_pack.eyes is not None:
+            cursor = QtGui.QCursor.pos()
+            if cursor != self._last_cursor:
+                self._last_cursor = cursor
+                changed = True
+        if changed:
+            self.update()
 
     def _update_pack_frame(self) -> str:
         """Pick the current frame (anim > blink > open) and set current_pixmap."""
@@ -970,7 +992,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
 
-        mode = self._update_pack_frame() if self.char_pack is not None else None
+        mode = getattr(self, "_pack_mode", None) if self.char_pack is not None else None
 
         # Draw pixmap centered in widget
         widget_rect = self.rect()
@@ -998,14 +1020,19 @@ class PixelCatWindow(QtWidgets.QWidget):
             return
         self.shape_mask_key = key
 
-        bitmap = pixmap.mask()
-        if bitmap.isNull():
-            self.clearMask()
-            return
-        region = QtGui.QRegion(bitmap)
-        if x or y:
-            region.translate(x, y)
-        self.setMask(region)
+        # Reuse the silhouette region per frame — building QRegion from a big
+        # bitmap each paint is what made multi-frame characters lag.
+        cache = getattr(self, "_mask_cache", None)
+        region = cache.get(pixmap.cacheKey()) if cache is not None else None
+        if region is None:
+            bitmap = pixmap.mask()
+            if bitmap.isNull():
+                self.clearMask()
+                return
+            region = QtGui.QRegion(bitmap)
+            if cache is not None:
+                cache[pixmap.cacheKey()] = region
+        self.setMask(region.translated(x, y) if (x or y) else region)
 
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
         """Handle mouse press for dragging (+ scrunch eyes shut on interactive characters)."""
