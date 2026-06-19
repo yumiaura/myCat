@@ -1,9 +1,10 @@
 """Local skin discovery.
 
+A skin is either a **folder** or a **`.zip`** (read in memory) named by its id.
 Skins live in two locations:
-- **Bundled:** `mycat/images/*.zip` — packaged with the wheel.
+- **Bundled:** `mycat/skins/` — packaged with the wheel.
 - **User:** platform-specific writable directory — receives downloads from the
-  shop and user-imported ZIPs.
+  shop and user-imported skins.
 
 The user directory takes precedence: if both a bundled and a user copy of a
 skin with the same id exist, the user one wins (so users can replace bundled
@@ -25,8 +26,20 @@ INSTALLED_JSON_NAME = "installed.json"
 INSTALLED_SCHEMA_VERSION = 1
 
 
+SKIN_MARKERS = ("config.json", "static.png")
+
+
 def bundled_skins_dir() -> Path:
-    return Path(__file__).resolve().parent / "images"
+    return Path(__file__).resolve().parent / "skins"
+
+
+def is_skin_folder(path: Path) -> bool:
+    """A directory counts as a skin if it holds a marker or a GIF."""
+    if not path.is_dir():
+        return False
+    if any((path / marker).is_file() for marker in SKIN_MARKERS):
+        return True
+    return any(path.glob("*.gif"))
 
 
 def user_skins_dir() -> Path:
@@ -51,11 +64,10 @@ def ensure_user_skins_dir() -> Path:
 
 
 def scan_all() -> list[str]:
-    """Return sorted, deduplicated list of skin ids available locally.
+    """Return sorted, deduplicated skin ids available locally.
 
-    A skin id is the filename stem of a `.zip` archive. The same id in user dir
-    shadows the bundled one — both contribute their id to the list, but
-    `find_skin_zip` resolves it to the user version.
+    A skin id is the name of a `<id>.zip` archive or an `<id>/` folder. The same
+    id in the user dir shadows the bundled one (resolved by `find_skin`).
     """
     seen: set[str] = set()
     for directory in (user_skins_dir(), bundled_skins_dir()):
@@ -63,16 +75,30 @@ def scan_all() -> list[str]:
             continue
         for zip_path in directory.glob("*.zip"):
             seen.add(zip_path.stem)
+        for child in directory.iterdir():
+            if is_skin_folder(child):
+                seen.add(child.name)
     return sorted(seen)
 
 
-def find_skin_zip(skin_id: str) -> Path | None:
-    """Resolve `skin_id` to an existing ZIP path. User dir takes precedence."""
+def find_skin(skin_id: str) -> Path | None:
+    """Resolve `skin_id` to an existing skin path (folder or .zip).
+
+    User dir wins over bundled; within a dir an unpacked folder wins over a zip.
+    """
     for directory in (user_skins_dir(), bundled_skins_dir()):
+        folder = directory / skin_id
+        if is_skin_folder(folder):
+            return folder
         candidate = directory / f"{skin_id}.zip"
         if candidate.exists():
             return candidate
     return None
+
+
+def find_skin_zip(skin_id: str) -> Path | None:
+    """Back-compat alias — now returns a folder or zip path (see `find_skin`)."""
+    return find_skin(skin_id)
 
 
 def installed_metadata_path() -> Path:
@@ -140,7 +166,9 @@ __all__ = [
     "bundled_skins_dir",
     "user_skins_dir",
     "ensure_user_skins_dir",
+    "is_skin_folder",
     "scan_all",
+    "find_skin",
     "find_skin_zip",
     "installed_metadata_path",
     "load_installed_metadata",

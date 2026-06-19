@@ -199,61 +199,47 @@ def load_packaged_images(
     Returns: (first_frame_pixmap, gif_movie, base_name, gif_bytes)
     """
     if image_path:
-        # User provided ZIP path
-        zip_path = Path(image_path)
-        if not zip_path.exists():
-            raise FileNotFoundError(f"ZIP not found: {zip_path}")
-        base_name = zip_path.stem
+        skin_path = Path(image_path)
+        if not skin_path.exists():
+            raise FileNotFoundError(f"Skin not found: {skin_path}")
     else:
-        # Use default_image if provided, otherwise default to "cat"
-        if default_image:
-            base_name = default_image
-        else:
-            base_name = "cat"
-
-        resolved = skin_catalog.find_skin_zip(base_name)
+        base_name = default_image or "cat"
+        resolved = skin_catalog.find_skin(base_name)
         if resolved is None:
-            raise FileNotFoundError(
-                f"ZIP not found for skin '{base_name}' in bundled or user skins dir"
-            )
-        zip_path = resolved
+            raise FileNotFoundError(f"Skin '{base_name}' not found in bundled or user skins dir")
+        skin_path = resolved
+    base_name = skin_path.stem
 
-    if not zip_path.exists():
-        raise FileNotFoundError(f"ZIP not found: {zip_path}")
-    
-    # Extract first GIF from ZIP
+    # Read the first GIF from the skin (folder or zip, in memory).
     try:
-        with zipfile.ZipFile(zip_path, 'r') as zip_file:
-            # Find first GIF file in the archive
-            gif_files = [f for f in zip_file.namelist() if f.lower().endswith('.gif')]
+        with skin_pack.SkinSource(skin_path) as source:
+            gif_files = sorted(n for n in source.names() if n.lower().endswith(".gif"))
             if not gif_files:
-                raise ValueError(f"No GIF file found in ZIP: {zip_path}")
-            
-            # Get first GIF file
+                raise ValueError(f"No GIF file found in skin: {skin_path}")
             gif_file_name = gif_files[0]
-            gif_data = zip_file.read(gif_file_name)
-            logger.info(f"Extracted {gif_file_name} from {zip_path.name}")
+            gif_data = source.read(gif_file_name)
+            logger.info(f"Extracted {gif_file_name} from {skin_path.name}")
     except zipfile.BadZipFile as exc:
-        raise ValueError(f"Invalid ZIP file: {zip_path}") from exc
+        raise ValueError(f"Invalid skin archive: {skin_path}") from exc
     
     # Build the animated movie straight from the GIF bytes in memory.
     movie = movie_from_gif_bytes(gif_data)
     movie.jumpToFrame(0)
     first_frame = movie.currentPixmap()
     if first_frame.isNull():
-        raise ValueError(f"Failed to extract first frame from GIF in ZIP: {zip_path}")
+        raise ValueError(f"Failed to extract first frame from GIF in skin: {skin_path}")
 
     # Scale if needed
     original_size = first_frame.size()
     pixmap = scale_pixmap_if_needed(first_frame, IMAGE_WIDTH_MAX, IMAGE_HEIGHT_MAX)
     if original_size != pixmap.size():
         logger.info(
-            f"Resized {Path(zip_path).name}: "
+            f"Resized {skin_path.name}: "
             f"{original_size.width()}x{original_size.height()} -> "
             f"{pixmap.width()}x{pixmap.height()}"
         )
     if pixmap.isNull():
-        raise ValueError(f"Failed to render first frame from GIF in ZIP: {zip_path}")
+        raise ValueError(f"Failed to render first frame from GIF in skin: {skin_path}")
 
     # Scale GIF movie to same size as the first frame
     movie.setScaledSize(pixmap.size())
@@ -651,15 +637,14 @@ class PixelCatWindow(QtWidgets.QWidget):
         if self.skin_pack is not None:
             self._teardown_pack_mode()
         try:
-            # Extract first GIF from ZIP
-            with zipfile.ZipFile(zip_path, 'r') as zip_file:
-                gif_files = [f for f in zip_file.namelist() if f.lower().endswith('.gif')]
+            # Read the first GIF from the skin (folder or zip, in memory).
+            with skin_pack.SkinSource(zip_path) as source:
+                gif_files = sorted(n for n in source.names() if n.lower().endswith(".gif"))
                 if not gif_files:
-                    logger.error(f"No GIF file found in ZIP: {image_name}.zip")
+                    logger.error(f"No GIF found in skin: {image_name}")
                     return
-                
-                gif_data = zip_file.read(gif_files[0])
-                logger.info(f"Extracted {gif_files[0]} from {zip_path.name}")
+                gif_data = source.read(gif_files[0])
+                logger.info(f"Extracted {gif_files[0]} from {Path(zip_path).name}")
             
             # Build the new movie from the GIF bytes in memory (no temp files).
             new_movie = movie_from_gif_bytes(gif_data)

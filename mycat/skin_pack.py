@@ -37,6 +37,44 @@ from PySide6 import QtCore, QtGui
 CONFIG_NAME = "config.json"
 
 
+class SkinSource:
+    """Read a skin's files whether it is an unpacked folder or a .zip.
+
+    A zip is opened in memory (no temp extraction); a folder is read from disk.
+    Both expose the same ``names()`` / ``read()`` / ``has()`` interface.
+    """
+
+    def __init__(self, path):
+        self.path = Path(path)
+        self.is_folder = self.path.is_dir()
+        self.zip = None if self.is_folder else zipfile.ZipFile(self.path)
+
+    def names(self) -> set:
+        if self.is_folder:
+            return {p.relative_to(self.path).as_posix() for p in self.path.rglob("*") if p.is_file()}
+        return set(self.zip.namelist())
+
+    def has(self, name: str) -> bool:
+        if self.is_folder:
+            return (self.path / name).is_file()
+        return name in self.zip.namelist()
+
+    def read(self, name: str) -> bytes:
+        if self.is_folder:
+            return (self.path / name).read_bytes()
+        return self.zip.read(name)
+
+    def close(self) -> None:
+        if self.zip is not None:
+            self.zip.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+
 @dataclass
 class EyeConfig:
     travel_radius: float
@@ -66,11 +104,11 @@ class SkinPack:
     anims: list = field(default_factory=list)
 
 
-def is_new_pack(zip_path) -> bool:
-    """True if the ZIP is the new interactive format (has config.json)."""
+def is_new_pack(path) -> bool:
+    """True if the skin (folder or .zip) is the new interactive format."""
     try:
-        with zipfile.ZipFile(zip_path) as archive:
-            return CONFIG_NAME in archive.namelist()
+        with SkinSource(path) as source:
+            return source.has(CONFIG_NAME)
     except (zipfile.BadZipFile, OSError):
         return False
 
@@ -99,10 +137,10 @@ def gif_frames(data: bytes, scale: float):
     return frames, delays
 
 
-def load_pack(zip_path, render_height: int = 200) -> SkinPack:
-    """Read a new-format skin ZIP into an in-memory, render-height-scaled SkinPack."""
-    with zipfile.ZipFile(zip_path) as archive:
-        names = set(archive.namelist())
+def load_pack(path, render_height: int = 200) -> SkinPack:
+    """Read a new-format skin (folder or .zip) into a render-height-scaled SkinPack."""
+    with SkinSource(path) as archive:
+        names = archive.names()
         config = json.loads(archive.read(CONFIG_NAME))
 
         static_raw = pixmap_from_bytes(archive.read("static.png"))
@@ -153,7 +191,7 @@ def load_pack(zip_path, render_height: int = 200) -> SkinPack:
             anims.append(Anim(frames=frames, delays=delays, every=every))
 
         return SkinPack(
-            name=config.get("name") or Path(str(zip_path)).stem,
+            name=config.get("name") or Path(str(path)).stem,
             static=static,
             blink=blink,
             eye_left=eye_left,
