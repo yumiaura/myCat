@@ -13,7 +13,9 @@ import argparse
 import configparser
 import io
 import logging
+import math
 import os
+import random
 import shutil
 import signal
 import subprocess
@@ -24,7 +26,7 @@ from pathlib import Path
 
 # Allow running both as `python -m mycat` and `python mycat/main.py`
 if __package__:
-    from . import autostart, llm, reminder, secret_store, skin_catalog
+    from . import autostart, llm, reminder, secret_store, skin_catalog, skin_pack
 else:
     import importlib
     repo_root = Path(__file__).resolve().parent.parent
@@ -35,6 +37,7 @@ else:
     reminder = importlib.import_module("mycat.reminder")
     secret_store = importlib.import_module("mycat.secret_store")
     autostart = importlib.import_module("mycat.autostart")
+    skin_pack = importlib.import_module("mycat.skin_pack")
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -379,6 +382,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         file_name: str = "cat",
         available_images: list[str] = None,
         gif_data: bytes = b"",
+        pack: "skin_pack.SkinPack | None" = None,
     ) -> None:
         platform_name = ""
         app_instance = QtWidgets.QApplication.instance()
@@ -420,73 +424,35 @@ class PixelCatWindow(QtWidgets.QWidget):
                 "Enable display compositing for smooth edges, or force this mode with MYCAT_SHAPE_MASK=1."
             )
 
-        # Store images
-        self.png_pixmap = png_pixmap
-        self.gif_movie = gif_movie
-        self.gif_data = gif_data  # raw GIF bytes, used to rebuild the movie in memory
-        self.current_pixmap = self.png_pixmap
+        # Common content fields
         self.wait_time = wait_time
         self.file_name = file_name
         self.available_images = available_images or []
+        self.skin_pack = pack
 
-        # Get original size before scaling
-        self.gif_movie.jumpToFrame(0)
-        original_size = self.gif_movie.currentPixmap().size()
-        self.original_size = original_size
-
-        # Calculate GIF duration from the in-memory GIF and get frame delays
-        self.gif_duration, self.frame_delays = get_gif_duration(self.gif_movie, self.gif_data)
-        
-        # Fallback if no delays
-        if not self.frame_delays:
-            frame_count = self.gif_movie.frameCount()
-            if frame_count > 0 and self.gif_duration > 0:
-                self.frame_delays = [int((self.gif_duration / frame_count) * 1000)] * frame_count
-            else:
-                self.frame_delays = [100]  # Default 100ms per frame
-        
-        # Save first frame permanently (use the already scaled png_pixmap)
-        self.first_frame_pixmap = self.png_pixmap.copy()
-        
-        # Animation state: 'png' -> show PNG, 'gif' -> play GIF
-        self.state = 'png'
-
-        # Setup GIF movie - play once (no looping)
-        self.gif_movie.setCacheMode(QtGui.QMovie.CacheMode.CacheAll)
-        # Set speed to normal (100%) - uses native GIF frame delays
-        self.gif_movie.setSpeed(100)
-
-        # Manual frame timing
-        self.animation_timer = QtCore.QTimer(self)
-        self.animation_timer.timeout.connect(self._on_animation_frame)
-        self.current_frame = 0
-
-        # Log GIF info
-        frame_count = self.gif_movie.frameCount()
-        gif_size = self.gif_movie.scaledSize()
-        logger.debug(f"GIF info: {frame_count} frames, duration: {self.gif_duration:.2f}s")
-        logger.info(
-            f"Playing {self.file_name}.zip {original_size.width()}x{original_size.height()} > "
-            f"{gif_size.width()}x{gif_size.height()} (first_frame, {self.wait_time:.1f}s static)"
-        )
+        # Content setup branches by skin type; the chrome below is shared.
+        if self.skin_pack is not None:
+            self._setup_pack_content()
+        else:
+            self._setup_gif_content(png_pixmap, gif_movie, gif_data)
 
         # Dragging state
         self.dragging = False
         self.drag_start_pos = QtCore.QPoint()
 
         # Set window size to pixmap size
-        pixmap_size = self.current_pixmap.size()
-        self.resize(pixmap_size)
+        self.resize(self.current_pixmap.size())
 
-        # Position window - defaults to top-left area
+        # Position window - defaults to bottom-right
         self._load_position()
 
         # Setup context menu
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
 
-        # Schedule first animation pass
-        self._schedule_next_animation()
+        # Schedule first animation pass (GIF skins only)
+        if self.skin_pack is None:
+            self._schedule_next_animation()
 
         # Save current image to INI on startup
         save_image_to_ini(self.file_name)
@@ -494,7 +460,113 @@ class PixelCatWindow(QtWidgets.QWidget):
         # Reminder scheduler (cat-on-a-plane flyby). Loads any saved reminder
         # and re-arms it; the flyby UI is imported lazily on first use.
         self.reminder_controller = reminder.ReminderController(self)
-    
+
+    def _setup_gif_content(self, png_pixmap, gif_movie, gif_data) -> None:
+        """Legacy single-GIF skin: static first frame + play-once animation."""
+        self.png_pixmap = png_pixmap
+        self.gif_movie = gif_movie
+        self.gif_data = gif_data
+        self.current_pixmap = self.png_pixmap
+        self.gif_movie.jumpToFrame(0)
+        original_size = self.gif_movie.currentPixmap().size()
+        self.original_size = original_size
+        self.gif_duration, self.frame_delays = get_gif_duration(self.gif_movie, self.gif_data)
+        if not self.frame_delays:
+            frame_count = self.gif_movie.frameCount()
+            if frame_count > 0 and self.gif_duration > 0:
+                self.frame_delays = [int((self.gif_duration / frame_count) * 1000)] * frame_count
+            else:
+                self.frame_delays = [100]
+        self.first_frame_pixmap = self.png_pixmap.copy()
+        self.state = 'png'
+        self.gif_movie.setCacheMode(QtGui.QMovie.CacheMode.CacheAll)
+        self.gif_movie.setSpeed(100)
+        self.animation_timer = QtCore.QTimer(self)
+        self.animation_timer.timeout.connect(self._on_animation_frame)
+        self.current_frame = 0
+        gif_size = self.gif_movie.scaledSize()
+        logger.info(
+            f"Playing {self.file_name}.zip {original_size.width()}x{original_size.height()} > "
+            f"{gif_size.width()}x{gif_size.height()} (first_frame, {self.wait_time:.1f}s static)"
+        )
+
+    def _setup_pack_content(self) -> None:
+        """Interactive skin pack: static/blink frames, tracking pupils, periodic anims."""
+        pack = self.skin_pack
+        self.png_pixmap = pack.static
+        self.gif_movie = None
+        self.gif_data = b""
+        self.current_pixmap = pack.static
+        self.first_frame_pixmap = pack.static.copy()
+        self.original_size = pack.static.size()
+        self.state = 'png'
+        self.gif_duration, self.frame_delays = 0.0, []
+        self.eye_clock = QtCore.QElapsedTimer()
+        self.eye_clock.start()
+        self.squint_until = -10.0
+        self.next_blink = random.uniform(*pack.blink_every) if pack.blink_enabled else float("inf")
+        self.anim_next = [random.uniform(*anim.every) for anim in pack.anims]
+        self.active_anim = None
+        self.pack_timer = QtCore.QTimer(self)
+        self.pack_timer.timeout.connect(self.update)
+        self.pack_timer.start(16)
+        logger.info(
+            f"Loaded interactive skin '{pack.name}' ({pack.static.width()}x{pack.static.height()}, "
+            f"eyes={pack.eyes is not None}, blink={pack.blink_enabled}, anims={len(pack.anims)})"
+        )
+
+    def _update_pack_frame(self) -> str:
+        """Pick the current frame (anim > blink > open) and set current_pixmap."""
+        pack = self.skin_pack
+        now = self.eye_clock.elapsed() / 1000.0
+        if self.active_anim is None:
+            for index, anim in enumerate(pack.anims):
+                if now >= self.anim_next[index]:
+                    self.active_anim = (anim, now)
+                    self.anim_next[index] = now + sum(anim.delays) / 1000.0 + random.uniform(*anim.every)
+                    break
+        if self.active_anim is not None:
+            anim, start = self.active_anim
+            elapsed_ms = (now - start) * 1000.0
+            if not anim.frames or elapsed_ms >= sum(anim.delays):
+                self.active_anim = None
+            else:
+                acc = 0
+                frame = anim.frames[0]
+                for candidate, delay in zip(anim.frames, anim.delays):
+                    acc += delay
+                    if elapsed_ms < acc:
+                        frame = candidate
+                        break
+                self.current_pixmap = frame
+                return "anim"
+        if pack.blink_enabled and now >= self.next_blink:
+            self.squint_until = now + pack.blink_duration
+            self.next_blink = now + random.uniform(*pack.blink_every)
+        squinting = now < self.squint_until
+        self.current_pixmap = pack.blink if (squinting and pack.blink is not None) else pack.static
+        return "blink" if squinting else "open"
+
+    def _draw_pupils(self, painter, x: int, y: int) -> None:
+        """Draw the L/R pupil sprites, offset toward the cursor within travel_radius."""
+        pack = self.skin_pack
+        if not pack.eyes or pack.eye_left is None or pack.eye_right is None:
+            return
+        cursor = QtGui.QCursor.pos()
+        travel = pack.eyes.travel_radius
+        for center, sprite in ((pack.eyes.left, pack.eye_left), (pack.eyes.right, pack.eye_right)):
+            socket = self.mapToGlobal(QtCore.QPoint(round(x + center.x()), round(y + center.y())))
+            dx, dy = cursor.x() - socket.x(), cursor.y() - socket.y()
+            dist = math.hypot(dx, dy)
+            ox, oy = (dx / dist * travel, dy / dist * travel) if dist > 1 else (0.0, 0.0)
+            px = x + center.x() + ox - sprite.width() / 2.0
+            py = y + center.y() + oy - sprite.height() / 2.0
+            painter.drawPixmap(QtCore.QPointF(px, py), sprite)
+
+    def _trigger_squint(self) -> None:
+        if self.skin_pack is not None:
+            self.squint_until = self.eye_clock.elapsed() / 1000.0 + self.skin_pack.click_squint
+
     def _load_position(self) -> None:
         """Load window position from config; default to the bottom-right corner."""
         rect = usable_screen_rect()
@@ -546,13 +618,17 @@ class PixelCatWindow(QtWidgets.QWidget):
         save_config(config)
     
     def _load_image(self, image_name: str) -> None:
-        """Load a different GIF from ZIP and extract first frame."""
+        """Switch skins — a new interactive pack or a legacy single-GIF."""
+        zip_path = skin_catalog.find_skin_zip(image_name)
+        if zip_path is None:
+            logger.error(f"ZIP file not found for skin: {image_name}")
+            return
+        if skin_pack.is_new_pack(zip_path):
+            self._switch_to_pack(image_name, zip_path)
+            return
+        if self.skin_pack is not None:
+            self._teardown_pack_mode()
         try:
-            zip_path = skin_catalog.find_skin_zip(image_name)
-            if zip_path is None:
-                logger.error(f"ZIP file not found for skin: {image_name}")
-                return
-            
             # Extract first GIF from ZIP
             with zipfile.ZipFile(zip_path, 'r') as zip_file:
                 gif_files = [f for f in zip_file.namelist() if f.lower().endswith('.gif')]
@@ -645,7 +721,46 @@ class PixelCatWindow(QtWidgets.QWidget):
             
         except Exception as e:
             logger.error(f"Error loading {image_name}: {e}")
-    
+
+    def _teardown_pack_mode(self) -> None:
+        """Leave interactive-pack mode so the legacy GIF path can take over."""
+        if getattr(self, "pack_timer", None) is not None:
+            self.pack_timer.stop()
+            self.pack_timer = None
+        self.skin_pack = None
+        if getattr(self, "animation_timer", None) is None:
+            self.animation_timer = QtCore.QTimer(self)
+            self.animation_timer.timeout.connect(self._on_animation_frame)
+        self.current_frame = 0
+
+    def _switch_to_pack(self, image_name: str, zip_path) -> None:
+        """Switch to a new interactive skin pack, preserving the bottom-right corner."""
+        try:
+            pack = skin_pack.load_pack(zip_path)
+        except Exception as exc:
+            logger.error(f"Error loading pack {image_name}: {exc}")
+            return
+        if getattr(self, "animation_timer", None) is not None:
+            self.animation_timer.stop()
+        if getattr(self, "pack_timer", None) is not None:
+            self.pack_timer.stop()
+        old_size = self.size()
+        top_left = self.pos()
+        bottom_right_x = top_left.x() + old_size.width()
+        bottom_right_y = top_left.y() + old_size.height()
+
+        self.skin_pack = pack
+        self.file_name = image_name
+        self._setup_pack_content()
+
+        self.resize(self.current_pixmap.size())
+        new_size = self.current_pixmap.size()
+        self.move(bottom_right_x - new_size.width(), bottom_right_y - new_size.height())
+        save_image_to_ini(image_name)
+        self._save_position()
+        self.update()
+        logger.info(f"Switched to interactive skin {image_name}")
+
     def _show_context_menu(self, pos: QtCore.QPoint) -> None:
         """Show context menu at the given position."""
         menu = QtWidgets.QMenu(self)
@@ -844,9 +959,11 @@ class PixelCatWindow(QtWidgets.QWidget):
             self._schedule_next_animation()
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        """Paint the current pixmap."""
+        """Paint the current pixmap (+ tracking pupils for interactive skins)."""
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+
+        mode = self._update_pack_frame() if self.skin_pack is not None else None
 
         # Draw pixmap centered in widget
         widget_rect = self.rect()
@@ -854,6 +971,9 @@ class PixelCatWindow(QtWidgets.QWidget):
         x = (widget_rect.width() - pixmap_rect.width()) // 2
         y = (widget_rect.height() - pixmap_rect.height()) // 2
         painter.drawPixmap(x, y, self.current_pixmap)
+
+        if mode == "open":
+            self._draw_pupils(painter, x, y)
         painter.end()
 
         if self.shape_mask_enabled:
@@ -881,8 +1001,9 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.setMask(region)
 
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
-        """Handle mouse press for dragging."""
+        """Handle mouse press for dragging (+ scrunch eyes shut on interactive skins)."""
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self._trigger_squint()
             self.dragging = True
             self.drag_start_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
 
@@ -1207,19 +1328,28 @@ def main() -> None:
             logger.warning(f"Image '{default_image}' from INI not found in available images, using default: cat")
             default_image = None
     
-    # Load images
+    # Resolve the chosen skin's ZIP, then branch on format: a new interactive
+    # pack (static/blink/eyes/config) or a legacy single-GIF skin.
     try:
-        png_pixmap, gif_movie, file_name, gif_data = load_packaged_images(args.image, default_image)
-        logger.info(
-            f"Playing {file_name}.zip (first frame) "
-            f"{png_pixmap.width()}x{png_pixmap.height()} for {args.wait:.1f}s"
-        )
+        if args.image:
+            zip_path = Path(args.image)
+        else:
+            zip_path = (skin_catalog.find_skin_zip(default_image or "cat")
+                        or skin_catalog.find_skin_zip("cat"))
+        if zip_path and skin_pack.is_new_pack(zip_path):
+            pack = skin_pack.load_pack(zip_path)
+            window = PixelCatWindow(pack.static, None, args.wait, Path(zip_path).stem,
+                                    available_images, b"", pack=pack)
+        else:
+            png_pixmap, gif_movie, file_name, gif_data = load_packaged_images(args.image, default_image)
+            logger.info(
+                f"Playing {file_name}.zip (first frame) "
+                f"{png_pixmap.width()}x{png_pixmap.height()} for {args.wait:.1f}s"
+            )
+            window = PixelCatWindow(png_pixmap, gif_movie, args.wait, file_name, available_images, gif_data)
     except Exception as e:
-        logger.error(f"Error loading images: {e}")
+        logger.error(f"Error loading skin: {e}")
         sys.exit(2)
-
-    # Create and show window
-    window = PixelCatWindow(png_pixmap, gif_movie, args.wait, file_name, available_images, gif_data)
     if llm_context:
         llm.attach(window, llm_context)
     
@@ -1232,7 +1362,7 @@ def main() -> None:
     else:
         window.show()
         # Persistent cat tray icon (kept on the window so it isn't GC'd).
-        window.tray_icon = setup_tray(app, window, png_pixmap)
+        window.tray_icon = setup_tray(app, window, window.png_pixmap)
 
     try:
         sys.exit(app.exec())
