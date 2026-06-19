@@ -11,9 +11,10 @@ always-on-top, draggable.
 """
 
 import argparse
+import random
 import sys
 from collections import deque
-from math import hypot
+from math import hypot, sqrt
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -83,6 +84,20 @@ def harden_alpha(image: Image.Image, threshold: int = 128) -> Image.Image:
     return image
 
 
+def dominant_fur(image: Image.Image) -> QtGui.QColor:
+    """Most common body colour (ignore white eyes, dark outline, transparent)."""
+    counts: dict = {}
+    for r, g, b, a in image.convert("RGBA").getdata():
+        if a < 200 or (r > 225 and g > 225 and b > 225) or (r < 60 and g < 60 and b < 60):
+            continue
+        key = (r // 16, g // 16, b // 16)
+        counts[key] = counts.get(key, 0) + 1
+    if not counts:
+        return QtGui.QColor(240, 170, 90)
+    r, g, b = max(counts, key=counts.get)
+    return QtGui.QColor(r * 16 + 8, g * 16 + 8, b * 16 + 8)
+
+
 def no_compositor() -> bool:
     try:
         from mycat.main import x11_compositor_active
@@ -115,8 +130,17 @@ class EyeCat(QtWidgets.QWidget):
         self.eyes = detect_eyes(scaled)
         self.setFixedSize(self.pixmap.size())
 
+        self.fur_color = dominant_fur(scaled)
         self.test_cursor = None       # set in tests to fake the cursor
+        self.test_blink = None        # set in tests to force a blink amount
         self.drag_offset = None
+
+        # Blink: a quick lid close/open every few seconds.
+        self.blink_dur = 0.16
+        self.clock = QtCore.QElapsedTimer()
+        self.clock.start()
+        self.blink_start = -10.0
+        self.next_blink = random.uniform(2.5, 6.0)
 
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.update)
@@ -124,6 +148,19 @@ class EyeCat(QtWidgets.QWidget):
 
     def cursor_global(self) -> QtCore.QPoint:
         return self.test_cursor if self.test_cursor is not None else QtGui.QCursor.pos()
+
+    def blink_amount(self) -> float:
+        """0 = open, 1 = fully closed; triangular over the blink duration."""
+        if self.test_blink is not None:
+            return self.test_blink
+        now = self.clock.elapsed() / 1000.0
+        if now >= self.next_blink:
+            self.blink_start = now
+            self.next_blink = now + self.blink_dur + random.uniform(2.5, 6.0)
+        progress = (now - self.blink_start) / self.blink_dur
+        if 0.0 <= progress <= 1.0:
+            return 1.0 - abs(2.0 * progress - 1.0)
+        return 0.0
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -135,6 +172,7 @@ class EyeCat(QtWidgets.QWidget):
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
         painter.drawPixmap(0, 0, self.pixmap)
         cursor = self.cursor_global()
+        blink = self.blink_amount()
         for cx, cy, radius in self.eyes:
             pupil_r = max(2.5, radius * 0.45)
             max_offset = max(0.0, radius - pupil_r * 0.6)
@@ -149,6 +187,24 @@ class EyeCat(QtWidgets.QWidget):
             painter.setBrush(QtGui.QColor(255, 255, 255, 220))
             painter.drawEllipse(QtCore.QPointF(px - pupil_r * 0.3, py - pupil_r * 0.3),
                                 pupil_r * 0.3, pupil_r * 0.3)
+
+            if blink > 0.0:
+                lid_r = radius + 4.0                       # also hide the socket outline
+                lid_bottom = (cy - lid_r) + blink * 2.0 * lid_r
+                painter.save()
+                painter.setClipRect(QtCore.QRectF(cx - lid_r - 1, cy - lid_r - 1,
+                                                  2 * lid_r + 2, lid_bottom - (cy - lid_r) + 1))
+                painter.setPen(QtCore.Qt.PenStyle.NoPen)
+                painter.setBrush(self.fur_color)
+                painter.drawEllipse(QtCore.QPointF(cx, cy), lid_r, lid_r)
+                painter.restore()
+                # eyelid crease at the lid's edge
+                gap = abs(lid_bottom - cy)
+                half = sqrt(max(0.0, lid_r * lid_r - gap * gap))
+                pen = QtGui.QPen(QtGui.QColor(40, 30, 25), 1.4)
+                pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
+                painter.setPen(pen)
+                painter.drawLine(QtCore.QPointF(cx - half, lid_bottom), QtCore.QPointF(cx + half, lid_bottom))
         painter.end()
 
     def mousePressEvent(self, event):
