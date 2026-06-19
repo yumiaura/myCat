@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from PIL import Image  # noqa: E402
 from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 
-DEFAULT_IMAGE = Path.home() / "Pictures" / "mycat.png"
+DEFAULT_IMAGE = Path(__file__).resolve().parent / "assets" / "mycat.png"
 TARGET_HEIGHT = 200
 
 
