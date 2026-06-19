@@ -141,6 +141,7 @@ class EyeCat(QtWidgets.QWidget):
         self.clock.start()
         self.blink_start = -10.0
         self.next_blink = random.uniform(2.5, 6.0)
+        self.squint_start = -10.0      # set on click: a held "scrunch" close
 
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.update)
@@ -162,6 +163,20 @@ class EyeCat(QtWidgets.QWidget):
             return 1.0 - abs(2.0 * progress - 1.0)
         return 0.0
 
+    def squint_amount(self) -> float:
+        """Click reaction: snap shut, hold, then open (a held scrunch)."""
+        elapsed = self.clock.elapsed() / 1000.0 - self.squint_start
+        close, hold_end, total = 0.07, 0.45, 0.62
+        if elapsed < 0.0:
+            return 0.0
+        if elapsed < close:
+            return elapsed / close
+        if elapsed < hold_end:
+            return 1.0
+        if elapsed < total:
+            return 1.0 - (elapsed - hold_end) / (total - hold_end)
+        return 0.0
+
     def showEvent(self, event):
         super().showEvent(event)
         if self.shape_mask and not self.pixmap.mask().isNull():
@@ -172,7 +187,7 @@ class EyeCat(QtWidgets.QWidget):
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
         painter.drawPixmap(0, 0, self.pixmap)
         cursor = self.cursor_global()
-        blink = self.blink_amount()
+        blink = max(self.blink_amount(), self.squint_amount())
         for cx, cy, radius in self.eyes:
             pupil_r = max(2.5, radius * 0.45)
             max_offset = max(0.0, radius - pupil_r * 0.6)
@@ -198,8 +213,11 @@ class EyeCat(QtWidgets.QWidget):
                 painter.setBrush(self.fur_color)
                 painter.drawEllipse(QtCore.QPointF(cx, cy), lid_r, lid_r)
                 painter.restore()
-                # eyelid crease at the lid's edge
-                gap = abs(lid_bottom - cy)
+                # eyelid crease — rides the lid edge, settling to a full-width
+                # closed-eye line across the socket centre when fully shut.
+                crease_y = min(lid_bottom, cy)
+                gap = abs(crease_y - cy)
+                lid_bottom = crease_y
                 half = sqrt(max(0.0, lid_r * lid_r - gap * gap))
                 pen = QtGui.QPen(QtGui.QColor(40, 30, 25), 1.4)
                 pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
@@ -209,6 +227,7 @@ class EyeCat(QtWidgets.QWidget):
 
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.squint_start = self.clock.elapsed() / 1000.0   # scrunch shut on click
             self.drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             event.accept()
 
