@@ -2,7 +2,7 @@
 """Visual flyby + settings dialog for reminders.
 
 ``FlybyWindow`` is a frameless, always-on-top, click-through overlay spanning the
-screen width. It paints a cartoon plane (with the current cat skin riding it)
+screen width. It paints a cartoon plane (with the current cat char riding it)
 towing a banner that carries the reminder text, then animates the whole group
 across the screen once and closes itself.
 
