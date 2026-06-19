@@ -2,7 +2,7 @@
 
 A skin is either a **folder** or a **`.zip`** (read in memory) named by its id.
 Skins live in two locations:
-- **Bundled:** `mycat/skins/` — packaged with the wheel.
+- **Bundled:** `mycat/characters/` — packaged with the wheel.
 - **User:** platform-specific writable directory — receives downloads from the
   shop and user-imported skins.
 
@@ -30,7 +30,7 @@ SKIN_MARKERS = ("config.json", "static.png")
 
 
 def bundled_skins_dir() -> Path:
-    return Path(__file__).resolve().parent / "skins"
+    return Path(__file__).resolve().parent / "characters"
 
 
 def is_skin_folder(path: Path) -> bool:
@@ -46,12 +46,12 @@ def user_skins_dir() -> Path:
     """Platform-specific writable directory for downloaded/user-added skins."""
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-        return Path(base) / "mycat" / "skins"
+        return Path(base) / "mycat" / "characters"
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "mycat" / "skins"
+        return Path.home() / "Library" / "Application Support" / "mycat" / "characters"
     xdg = os.environ.get("XDG_DATA_HOME")
     base = Path(xdg) if xdg else Path.home() / ".local" / "share"
-    return base / "mycat" / "skins"
+    return base / "mycat" / "characters"
 
 
 def ensure_user_skins_dir() -> Path:
