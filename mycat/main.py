@@ -371,6 +371,19 @@ def save_image_to_ini(image_name: str) -> None:
         logger.error(f"Error saving to INI file: {e}")
 
 
+def harden_pixmap(pixmap: QtGui.QPixmap, threshold: int = 128) -> QtGui.QPixmap:
+    """Snap alpha to 0/255 so a smooth-scaled silhouette has a crisp edge that
+    matches the 1-bit shape mask — otherwise the anti-aliased edge renders as a
+    muddy fringe on X11 without a compositor."""
+    image = pixmap.toImage().convertToFormat(QtGui.QImage.Format.Format_RGBA8888)
+    data = bytearray(image.constBits().tobytes())
+    for index in range(3, len(data), 4):
+        data[index] = 255 if data[index] >= threshold else 0
+    hardened = QtGui.QImage(bytes(data), image.width(), image.height(),
+                            QtGui.QImage.Format.Format_RGBA8888)
+    return QtGui.QPixmap.fromImage(hardened.copy())
+
+
 class PixelCatWindow(QtWidgets.QWidget):
     """Main cat window widget with PNG/GIF animation and dragging."""
     
@@ -493,6 +506,15 @@ class PixelCatWindow(QtWidgets.QWidget):
     def _setup_pack_content(self) -> None:
         """Interactive skin pack: static/blink frames, tracking pupils, periodic anims."""
         pack = self.skin_pack
+        # No compositor → snap body-frame edges to binary alpha (crisp, no fringe).
+        # Pupil sprites stay smooth: they're drawn over the opaque face, not over
+        # transparency, so they never fringe.
+        if self.shape_mask_enabled:
+            pack.static = harden_pixmap(pack.static)
+            if pack.blink is not None:
+                pack.blink = harden_pixmap(pack.blink)
+            for anim in pack.anims:
+                anim.frames = [harden_pixmap(frame) for frame in anim.frames]
         self.png_pixmap = pack.static
         self.gif_movie = None
         self.gif_data = b""
