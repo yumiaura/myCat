@@ -26,18 +26,18 @@ from pathlib import Path
 
 # Allow running both as `python -m mycat` and `python mycat/main.py`
 if __package__:
-    from . import autostart, llm, reminder, secret_store, skin_catalog, skin_pack
+    from . import autostart, char_catalog, char_pack, llm, reminder, secret_store
 else:
     import importlib
     repo_root = Path(__file__).resolve().parent.parent
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
     llm = importlib.import_module("mycat.llm")
-    skin_catalog = importlib.import_module("mycat.skin_catalog")
+    char_catalog = importlib.import_module("mycat.char_catalog")
     reminder = importlib.import_module("mycat.reminder")
     secret_store = importlib.import_module("mycat.secret_store")
     autostart = importlib.import_module("mycat.autostart")
-    skin_pack = importlib.import_module("mycat.skin_pack")
+    char_pack = importlib.import_module("mycat.char_pack")
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -75,9 +75,9 @@ DEFAULT_POSITION_OFFSET_X = 10  # Offset from right edge of screen
 DEFAULT_POSITION_OFFSET_Y = 10  # Offset from bottom edge of screen
 
 
-def scan_images_directory() -> list[str]:
-    """Return sorted unique skin ids from bundled + user-installed locations."""
-    return skin_catalog.scan_all()
+def scan_chars() -> list[str]:
+    """Return sorted unique char ids from bundled + user-installed locations."""
+    return char_catalog.scan_all()
 
 
 def movie_from_gif_bytes(gif_data: bytes) -> QtGui.QMovie:
@@ -199,47 +199,47 @@ def load_packaged_images(
     Returns: (first_frame_pixmap, gif_movie, base_name, gif_bytes)
     """
     if image_path:
-        skin_path = Path(image_path)
-        if not skin_path.exists():
-            raise FileNotFoundError(f"Skin not found: {skin_path}")
+        char_path = Path(image_path)
+        if not char_path.exists():
+            raise FileNotFoundError(f"Char not found: {char_path}")
     else:
         base_name = default_image or "cat"
-        resolved = skin_catalog.find_skin(base_name)
+        resolved = char_catalog.find_char(base_name)
         if resolved is None:
-            raise FileNotFoundError(f"Skin '{base_name}' not found in bundled or user skins dir")
-        skin_path = resolved
-    base_name = skin_path.stem
+            raise FileNotFoundError(f"Char '{base_name}' not found in bundled or user characters dir")
+        char_path = resolved
+    base_name = char_path.stem
 
-    # Read the first GIF from the skin (folder or zip, in memory).
+    # Read the first GIF from the char (folder or zip, in memory).
     try:
-        with skin_pack.SkinSource(skin_path) as source:
+        with char_pack.CharSource(char_path) as source:
             gif_files = sorted(n for n in source.names() if n.lower().endswith(".gif"))
             if not gif_files:
-                raise ValueError(f"No GIF file found in skin: {skin_path}")
+                raise ValueError(f"No GIF file found in char: {char_path}")
             gif_file_name = gif_files[0]
             gif_data = source.read(gif_file_name)
-            logger.info(f"Extracted {gif_file_name} from {skin_path.name}")
+            logger.info(f"Extracted {gif_file_name} from {char_path.name}")
     except zipfile.BadZipFile as exc:
-        raise ValueError(f"Invalid skin archive: {skin_path}") from exc
+        raise ValueError(f"Invalid char archive: {char_path}") from exc
     
     # Build the animated movie straight from the GIF bytes in memory.
     movie = movie_from_gif_bytes(gif_data)
     movie.jumpToFrame(0)
     first_frame = movie.currentPixmap()
     if first_frame.isNull():
-        raise ValueError(f"Failed to extract first frame from GIF in skin: {skin_path}")
+        raise ValueError(f"Failed to extract first frame from GIF in char: {char_path}")
 
     # Scale if needed
     original_size = first_frame.size()
     pixmap = scale_pixmap_if_needed(first_frame, IMAGE_WIDTH_MAX, IMAGE_HEIGHT_MAX)
     if original_size != pixmap.size():
         logger.info(
-            f"Resized {skin_path.name}: "
+            f"Resized {char_path.name}: "
             f"{original_size.width()}x{original_size.height()} -> "
             f"{pixmap.width()}x{pixmap.height()}"
         )
     if pixmap.isNull():
-        raise ValueError(f"Failed to render first frame from GIF in skin: {skin_path}")
+        raise ValueError(f"Failed to render first frame from GIF in char: {char_path}")
 
     # Scale GIF movie to same size as the first frame
     movie.setScaledSize(pixmap.size())
@@ -381,7 +381,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         file_name: str = "cat",
         available_images: list[str] = None,
         gif_data: bytes = b"",
-        pack: "skin_pack.SkinPack | None" = None,
+        pack: "char_pack.CharPack | None" = None,
     ) -> None:
         platform_name = ""
         app_instance = QtWidgets.QApplication.instance()
@@ -427,10 +427,10 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.wait_time = wait_time
         self.file_name = file_name
         self.available_images = available_images or []
-        self.skin_pack = pack
+        self.char_pack = pack
 
-        # Content setup branches by skin type; the chrome below is shared.
-        if self.skin_pack is not None:
+        # Content setup branches by char type; the chrome below is shared.
+        if self.char_pack is not None:
             self._setup_pack_content()
         else:
             self._setup_gif_content(png_pixmap, gif_movie, gif_data)
@@ -449,8 +449,8 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
 
-        # Schedule first animation pass (GIF skins only)
-        if self.skin_pack is None:
+        # Schedule first animation pass (GIF characters only)
+        if self.char_pack is None:
             self._schedule_next_animation()
 
         # Save current image to INI on startup
@@ -461,7 +461,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.reminder_controller = reminder.ReminderController(self)
 
     def _setup_gif_content(self, png_pixmap, gif_movie, gif_data) -> None:
-        """Legacy single-GIF skin: static first frame + play-once animation."""
+        """Legacy single-GIF char: static first frame + play-once animation."""
         self.png_pixmap = png_pixmap
         self.gif_movie = gif_movie
         self.gif_data = gif_data
@@ -490,8 +490,8 @@ class PixelCatWindow(QtWidgets.QWidget):
         )
 
     def _setup_pack_content(self) -> None:
-        """Interactive skin pack: static/blink frames, tracking pupils, periodic anims."""
-        pack = self.skin_pack
+        """Interactive char pack: static/blink frames, tracking pupils, periodic anims."""
+        pack = self.char_pack
         # No compositor → snap body-frame edges to binary alpha (crisp, no fringe).
         # Pupil sprites stay smooth: they're drawn over the opaque face, not over
         # transparency, so they never fringe.
@@ -519,13 +519,13 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.pack_timer.timeout.connect(self.update)
         self.pack_timer.start(16)
         logger.info(
-            f"Loaded interactive skin '{pack.name}' ({pack.static.width()}x{pack.static.height()}, "
+            f"Loaded interactive char '{pack.name}' ({pack.static.width()}x{pack.static.height()}, "
             f"eyes={pack.eyes is not None}, blink={pack.blink_enabled}, anims={len(pack.anims)})"
         )
 
     def _update_pack_frame(self) -> str:
         """Pick the current frame (anim > blink > open) and set current_pixmap."""
-        pack = self.skin_pack
+        pack = self.char_pack
         now = self.eye_clock.elapsed() / 1000.0
         if self.active_anim is None:
             for index, anim in enumerate(pack.anims):
@@ -557,7 +557,7 @@ class PixelCatWindow(QtWidgets.QWidget):
 
     def _draw_pupils(self, painter, x: int, y: int) -> None:
         """Draw the L/R pupil sprites, offset toward the cursor within travel_radius."""
-        pack = self.skin_pack
+        pack = self.char_pack
         if not pack.eyes or pack.eye_left is None or pack.eye_right is None:
             return
         cursor = QtGui.QCursor.pos()
@@ -572,8 +572,8 @@ class PixelCatWindow(QtWidgets.QWidget):
             painter.drawPixmap(QtCore.QPointF(px, py), sprite)
 
     def _trigger_squint(self) -> None:
-        if self.skin_pack is not None:
-            self.squint_until = self.eye_clock.elapsed() / 1000.0 + self.skin_pack.click_squint
+        if self.char_pack is not None:
+            self.squint_until = self.eye_clock.elapsed() / 1000.0 + self.char_pack.click_squint
 
     def _load_position(self) -> None:
         """Load window position from config; default to the bottom-right corner."""
@@ -626,22 +626,22 @@ class PixelCatWindow(QtWidgets.QWidget):
         save_config(config)
     
     def _load_image(self, image_name: str) -> None:
-        """Switch skins — a new interactive pack or a legacy single-GIF."""
-        zip_path = skin_catalog.find_skin_zip(image_name)
+        """Switch characters — a new interactive pack or a legacy single-GIF."""
+        zip_path = char_catalog.find_char(image_name)
         if zip_path is None:
-            logger.error(f"ZIP file not found for skin: {image_name}")
+            logger.error(f"ZIP file not found for char: {image_name}")
             return
-        if skin_pack.is_new_pack(zip_path):
+        if char_pack.is_new_pack(zip_path):
             self._switch_to_pack(image_name, zip_path)
             return
-        if self.skin_pack is not None:
+        if self.char_pack is not None:
             self._teardown_pack_mode()
         try:
-            # Read the first GIF from the skin (folder or zip, in memory).
-            with skin_pack.SkinSource(zip_path) as source:
+            # Read the first GIF from the char (folder or zip, in memory).
+            with char_pack.CharSource(zip_path) as source:
                 gif_files = sorted(n for n in source.names() if n.lower().endswith(".gif"))
                 if not gif_files:
-                    logger.error(f"No GIF found in skin: {image_name}")
+                    logger.error(f"No GIF found in char: {image_name}")
                     return
                 gif_data = source.read(gif_files[0])
                 logger.info(f"Extracted {gif_files[0]} from {Path(zip_path).name}")
@@ -734,16 +734,16 @@ class PixelCatWindow(QtWidgets.QWidget):
         if getattr(self, "pack_timer", None) is not None:
             self.pack_timer.stop()
             self.pack_timer = None
-        self.skin_pack = None
+        self.char_pack = None
         if getattr(self, "animation_timer", None) is None:
             self.animation_timer = QtCore.QTimer(self)
             self.animation_timer.timeout.connect(self._on_animation_frame)
         self.current_frame = 0
 
     def _switch_to_pack(self, image_name: str, zip_path) -> None:
-        """Switch to a new interactive skin pack, preserving the bottom-right corner."""
+        """Switch to a new interactive char pack, preserving the bottom-right corner."""
         try:
-            pack = skin_pack.load_pack(zip_path)
+            pack = char_pack.load_pack(zip_path)
         except Exception as exc:
             logger.error(f"Error loading pack {image_name}: {exc}")
             return
@@ -756,7 +756,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         bottom_right_x = top_left.x() + old_size.width()
         bottom_right_y = top_left.y() + old_size.height()
 
-        self.skin_pack = pack
+        self.char_pack = pack
         self.file_name = image_name
         self._setup_pack_content()
 
@@ -766,7 +766,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         save_image_to_ini(image_name)
         self._save_position()
         self.update()
-        logger.info(f"Switched to interactive skin {image_name}")
+        logger.info(f"Switched to interactive char {image_name}")
 
     def _show_context_menu(self, pos: QtCore.QPoint) -> None:
         """Show context menu at the given position."""
@@ -797,8 +797,8 @@ class PixelCatWindow(QtWidgets.QWidget):
         reminder_action.triggered.connect(self._open_reminder)
         menu.addSeparator()
 
-        # Rebuild the list every time so freshly-installed skins appear without restart.
-        self.available_images = skin_catalog.scan_all()
+        # Rebuild the list every time so freshly-installed characters appear without restart.
+        self.available_images = char_catalog.scan_all()
         if len(self.available_images) > 0:
             images_menu = menu.addMenu("Images")
             for img_name in self.available_images:
@@ -861,8 +861,8 @@ class PixelCatWindow(QtWidgets.QWidget):
         dialog = ShopDialog(self, config_path=CFG_FILE)
         dialog.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)
         dialog.destroyed.connect(lambda _=None: setattr(self, "_shop_dialog", None))
-        dialog.skin_installed.connect(self._on_skin_installed)
-        dialog.skin_uninstalled.connect(self._on_skin_uninstalled)
+        dialog.char_installed.connect(self._on_char_installed)
+        dialog.char_uninstalled.connect(self._on_char_uninstalled)
         self._shop_dialog = dialog
         dialog.show()
         dialog.raise_()
@@ -874,12 +874,12 @@ class PixelCatWindow(QtWidgets.QWidget):
         if controller is not None:
             controller.open_dialog()
 
-    def _on_skin_installed(self, _skin_id: str) -> None:
-        self.available_images = skin_catalog.scan_all()
+    def _on_char_installed(self, _char_id: str) -> None:
+        self.available_images = char_catalog.scan_all()
 
-    def _on_skin_uninstalled(self, skin_id: str) -> None:
-        self.available_images = skin_catalog.scan_all()
-        if self.file_name == skin_id and self.available_images:
+    def _on_char_uninstalled(self, char_id: str) -> None:
+        self.available_images = char_catalog.scan_all()
+        if self.file_name == char_id and self.available_images:
             self._load_image(self.available_images[0])
     
     def _schedule_next_animation(self) -> None:
@@ -966,11 +966,11 @@ class PixelCatWindow(QtWidgets.QWidget):
             self._schedule_next_animation()
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        """Paint the current pixmap (+ tracking pupils for interactive skins)."""
+        """Paint the current pixmap (+ tracking pupils for interactive characters)."""
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
 
-        mode = self._update_pack_frame() if self.skin_pack is not None else None
+        mode = self._update_pack_frame() if self.char_pack is not None else None
 
         # Draw pixmap centered in widget
         widget_rect = self.rect()
@@ -1008,7 +1008,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.setMask(region)
 
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
-        """Handle mouse press for dragging (+ scrunch eyes shut on interactive skins)."""
+        """Handle mouse press for dragging (+ scrunch eyes shut on interactive characters)."""
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
             self._trigger_squint()
             self.dragging = True
@@ -1324,7 +1324,7 @@ def main() -> None:
     timer.start(100)  # Check every 100ms
     
     # Scan for available ZIP files
-    available_images = scan_images_directory()
+    available_images = scan_chars()
     logger.info(f"Found {len(available_images)} ZIP archive(s): {', '.join(available_images)}")
     
     # Load default image from INI if no image path provided
@@ -1335,16 +1335,16 @@ def main() -> None:
             logger.warning(f"Image '{default_image}' from INI not found in available images, using default: cat")
             default_image = None
     
-    # Resolve the chosen skin's ZIP, then branch on format: a new interactive
-    # pack (static/blink/eyes/config) or a legacy single-GIF skin.
+    # Resolve the chosen char's ZIP, then branch on format: a new interactive
+    # pack (static/blink/eyes/config) or a legacy single-GIF char.
     try:
         if args.image:
             zip_path = Path(args.image)
         else:
-            zip_path = (skin_catalog.find_skin_zip(default_image or "cat")
-                        or skin_catalog.find_skin_zip("cat"))
-        if zip_path and skin_pack.is_new_pack(zip_path):
-            pack = skin_pack.load_pack(zip_path)
+            zip_path = (char_catalog.find_char(default_image or "cat")
+                        or char_catalog.find_char("cat"))
+        if zip_path and char_pack.is_new_pack(zip_path):
+            pack = char_pack.load_pack(zip_path)
             window = PixelCatWindow(pack.static, None, args.wait, Path(zip_path).stem,
                                     available_images, b"", pack=pack)
         else:
@@ -1355,7 +1355,7 @@ def main() -> None:
             )
             window = PixelCatWindow(png_pixmap, gif_movie, args.wait, file_name, available_images, gif_data)
     except Exception as e:
-        logger.error(f"Error loading skin: {e}")
+        logger.error(f"Error loading char: {e}")
         sys.exit(2)
     if llm_context:
         llm.attach(window, llm_context)

@@ -1,13 +1,13 @@
-"""Local skin discovery.
+"""Local char discovery.
 
-A skin is either a **folder** or a **`.zip`** (read in memory) named by its id.
+A char is either a **folder** or a **`.zip`** (read in memory) named by its id.
 Skins live in two locations:
 - **Bundled:** `mycat/characters/` — packaged with the wheel.
 - **User:** platform-specific writable directory — receives downloads from the
   shop and user-imported skins.
 
 The user directory takes precedence: if both a bundled and a user copy of a
-skin with the same id exist, the user one wins (so users can replace bundled
+char with the same id exist, the user one wins (so users can replace bundled
 defaults with newer downloads from the shop).
 """
 
@@ -26,23 +26,23 @@ INSTALLED_JSON_NAME = "installed.json"
 INSTALLED_SCHEMA_VERSION = 1
 
 
-SKIN_MARKERS = ("config.json", "static.png")
+CHAR_MARKERS = ("config.json", "static.png")
 
 
-def bundled_skins_dir() -> Path:
+def bundled_chars_dir() -> Path:
     return Path(__file__).resolve().parent / "characters"
 
 
-def is_skin_folder(path: Path) -> bool:
-    """A directory counts as a skin if it holds a marker or a GIF."""
+def is_char_folder(path: Path) -> bool:
+    """A directory counts as a char if it holds a marker or a GIF."""
     if not path.is_dir():
         return False
-    if any((path / marker).is_file() for marker in SKIN_MARKERS):
+    if any((path / marker).is_file() for marker in CHAR_MARKERS):
         return True
     return any(path.glob("*.gif"))
 
 
-def user_skins_dir() -> Path:
+def user_chars_dir() -> Path:
     """Platform-specific writable directory for downloaded/user-added skins."""
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
@@ -54,8 +54,8 @@ def user_skins_dir() -> Path:
     return base / "mycat" / "characters"
 
 
-def ensure_user_skins_dir() -> Path:
-    path = user_skins_dir()
+def ensure_user_chars_dir() -> Path:
+    path = user_chars_dir()
     try:
         path.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
@@ -64,45 +64,40 @@ def ensure_user_skins_dir() -> Path:
 
 
 def scan_all() -> list[str]:
-    """Return sorted, deduplicated skin ids available locally.
+    """Return sorted, deduplicated char ids available locally.
 
-    A skin id is the name of a `<id>.zip` archive or an `<id>/` folder. The same
-    id in the user dir shadows the bundled one (resolved by `find_skin`).
+    A char id is the name of a `<id>.zip` archive or an `<id>/` folder. The same
+    id in the user dir shadows the bundled one (resolved by `find_char`).
     """
     seen: set[str] = set()
-    for directory in (user_skins_dir(), bundled_skins_dir()):
+    for directory in (user_chars_dir(), bundled_chars_dir()):
         if not directory.exists():
             continue
         for zip_path in directory.glob("*.zip"):
             seen.add(zip_path.stem)
         for child in directory.iterdir():
-            if is_skin_folder(child):
+            if is_char_folder(child):
                 seen.add(child.name)
     return sorted(seen)
 
 
-def find_skin(skin_id: str) -> Path | None:
-    """Resolve `skin_id` to an existing skin path (folder or .zip).
+def find_char(char_id: str) -> Path | None:
+    """Resolve `char_id` to an existing char path (folder or .zip).
 
     User dir wins over bundled; within a dir an unpacked folder wins over a zip.
     """
-    for directory in (user_skins_dir(), bundled_skins_dir()):
-        folder = directory / skin_id
-        if is_skin_folder(folder):
+    for directory in (user_chars_dir(), bundled_chars_dir()):
+        folder = directory / char_id
+        if is_char_folder(folder):
             return folder
-        candidate = directory / f"{skin_id}.zip"
+        candidate = directory / f"{char_id}.zip"
         if candidate.exists():
             return candidate
     return None
 
 
-def find_skin_zip(skin_id: str) -> Path | None:
-    """Back-compat alias — now returns a folder or zip path (see `find_skin`)."""
-    return find_skin(skin_id)
-
-
 def installed_metadata_path() -> Path:
-    return ensure_user_skins_dir() / INSTALLED_JSON_NAME
+    return ensure_user_chars_dir() / INSTALLED_JSON_NAME
 
 
 def load_installed_metadata() -> dict:
@@ -116,13 +111,13 @@ def load_installed_metadata() -> dict:
         return {"schema_version": INSTALLED_SCHEMA_VERSION, "skins": []}
 
 
-def record_installed(skin_id: str, *, version: str, source: str, sha256: str, size_bytes: int) -> None:
+def record_installed(char_id: str, *, version: str, source: str, sha256: str, size_bytes: int) -> None:
     data = load_installed_metadata()
     data.setdefault("schema_version", INSTALLED_SCHEMA_VERSION)
-    skins = [s for s in data.get("skins", []) if s.get("id") != skin_id]
+    skins = [s for s in data.get("skins", []) if s.get("id") != char_id]
     skins.append(
         {
-            "id": skin_id,
+            "id": char_id,
             "version": version,
             "source": source,
             "installed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -138,9 +133,9 @@ def record_installed(skin_id: str, *, version: str, source: str, sha256: str, si
         logger.warning("Could not write installed.json: %s", exc)
 
 
-def remove_installed(skin_id: str) -> bool:
-    """Remove a user-installed skin (does NOT touch bundled). Returns True on success."""
-    user_zip = user_skins_dir() / f"{skin_id}.zip"
+def remove_installed(char_id: str) -> bool:
+    """Remove a user-installed char (does NOT touch bundled). Returns True on success."""
+    user_zip = user_chars_dir() / f"{char_id}.zip"
     if not user_zip.exists():
         return False
     try:
@@ -149,7 +144,7 @@ def remove_installed(skin_id: str) -> bool:
         logger.warning("Could not delete %s: %s", user_zip, exc)
         return False
     data = load_installed_metadata()
-    data["skins"] = [s for s in data.get("skins", []) if s.get("id") != skin_id]
+    data["skins"] = [s for s in data.get("skins", []) if s.get("id") != char_id]
     try:
         installed_metadata_path().write_text(json.dumps(data, indent=2), encoding="utf-8")
     except OSError as exc:
@@ -157,19 +152,18 @@ def remove_installed(skin_id: str) -> bool:
     return True
 
 
-def is_user_installed(skin_id: str) -> bool:
-    return (user_skins_dir() / f"{skin_id}.zip").exists()
+def is_user_installed(char_id: str) -> bool:
+    return (user_chars_dir() / f"{char_id}.zip").exists()
 
 
 __all__ = [
     "INSTALLED_JSON_NAME",
-    "bundled_skins_dir",
-    "user_skins_dir",
-    "ensure_user_skins_dir",
-    "is_skin_folder",
+    "bundled_chars_dir",
+    "user_chars_dir",
+    "ensure_user_chars_dir",
+    "is_char_folder",
     "scan_all",
-    "find_skin",
-    "find_skin_zip",
+    "find_char",
     "installed_metadata_path",
     "load_installed_metadata",
     "record_installed",

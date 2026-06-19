@@ -1,6 +1,6 @@
-"""New interactive skin-pack format (loaded fully in memory, no temp files).
+"""New interactive char-pack format (loaded fully in memory, no temp files).
 
-A skin ``<name>.zip`` contains:
+A char ``<name>.zip`` contains:
   static.png      body, eyes open (empty sockets where the pupils show)
   blink.png       (optional) body, eyes closed / squint
   eye_left.png    (optional) left pupil sprite (drawn over the open socket)
@@ -37,8 +37,8 @@ from PySide6 import QtCore, QtGui
 CONFIG_NAME = "config.json"
 
 
-class SkinSource:
-    """Read a skin's files whether it is an unpacked folder or a .zip.
+class CharSource:
+    """Read a char's files whether it is an unpacked folder or a .zip.
 
     A zip is opened in memory (no temp extraction); a folder is read from disk.
     Both expose the same ``names()`` / ``read()`` / ``has()`` interface.
@@ -90,7 +90,7 @@ class Anim:
 
 
 @dataclass
-class SkinPack:
+class CharPack:
     name: str
     static: QtGui.QPixmap
     blink: QtGui.QPixmap | None = None
@@ -105,9 +105,9 @@ class SkinPack:
 
 
 def is_new_pack(path) -> bool:
-    """True if the skin (folder or .zip) is the new interactive format."""
+    """True if the char (folder or .zip) is the new interactive format."""
     try:
-        with SkinSource(path) as source:
+        with CharSource(path) as source:
             return source.has(CONFIG_NAME)
     except (zipfile.BadZipFile, OSError):
         return False
@@ -137,9 +137,9 @@ def gif_frames(data: bytes, scale: float):
     return frames, delays
 
 
-def load_pack(path, render_height: int = 200) -> SkinPack:
-    """Read a new-format skin (folder or .zip) into a render-height-scaled SkinPack."""
-    with SkinSource(path) as archive:
+def load_pack(path, render_height: int = 200) -> CharPack:
+    """Read a new-format char (folder or .zip) into a render-height-scaled CharPack."""
+    with CharSource(path) as archive:
         names = archive.names()
         config = json.loads(archive.read(CONFIG_NAME))
 
@@ -190,7 +190,7 @@ def load_pack(path, render_height: int = 200) -> SkinPack:
             every = tuple(entry.get("every", [20, 40]))
             anims.append(Anim(frames=frames, delays=delays, every=every))
 
-        return SkinPack(
+        return CharPack(
             name=config.get("name") or Path(str(path)).stem,
             static=static,
             blink=blink,

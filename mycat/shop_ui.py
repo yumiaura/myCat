@@ -1,8 +1,8 @@
-"""Qt UI for the skin shop.
+"""Qt UI for the char shop.
 
 Pattern is copied from `llm_ui.py`: workers go through QThreadPool, results
 arrive via Qt signals on the main thread. The dialog is intentionally minimal
-for the MVP — two tabs (Catalog / My Skins) and a small status footer.
+for the MVP — two tabs (Catalog / My Characters) and a small status footer.
 """
 
 from __future__ import annotations
@@ -12,12 +12,12 @@ from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from . import skin_catalog
+from . import char_catalog
 from .shop_api import (
     Catalog,
+    CharEntry,
     ShopClient,
     ShopError,
-    SkinEntry,
     resolve_base_url,
 )
 
@@ -30,10 +30,10 @@ logger = logging.getLogger(__name__)
 class _Signals(QtCore.QObject):
     catalog_ready = QtCore.Signal(object)               # Catalog
     catalog_failed = QtCore.Signal(str)
-    download_progress = QtCore.Signal(str, int, int)    # skin_id, done, total
-    download_finished = QtCore.Signal(str, str)         # skin_id, path
-    download_failed = QtCore.Signal(str, str)           # skin_id, message
-    preview_ready = QtCore.Signal(str, str)             # skin_id, local_path
+    download_progress = QtCore.Signal(str, int, int)    # char_id, done, total
+    download_finished = QtCore.Signal(str, str)         # char_id, path
+    download_failed = QtCore.Signal(str, str)           # char_id, message
+    preview_ready = QtCore.Signal(str, str)             # char_id, local_path
 
 
 class _CatalogWorker(QtCore.QRunnable):
@@ -59,68 +59,68 @@ class _DownloadWorker(QtCore.QRunnable):
         self,
         client: ShopClient,
         signals: _Signals,
-        skin: SkinEntry,
+        char: CharEntry,
         dest_dir: Path,
         auth_token: str | None = None,
     ) -> None:
         super().__init__()
         self._client = client
         self._signals = signals
-        self._skin = skin
+        self._char = char
         self._dest_dir = dest_dir
         self._auth_token = auth_token
 
     def run(self) -> None:
-        skin_id = self._skin.id
+        char_id = self._char.id
 
         def progress(done: int, total: int) -> None:
-            self._signals.download_progress.emit(skin_id, done, total)
+            self._signals.download_progress.emit(char_id, done, total)
 
         try:
-            path = self._client.download_skin(
-                self._skin,
+            path = self._client.download_char(
+                self._char,
                 self._dest_dir,
                 progress_cb=progress,
                 auth_token=self._auth_token,
             )
-            skin_catalog.record_installed(
-                skin_id,
-                version=self._skin.version,
-                source=f"server-{self._skin.tier}",
-                sha256=self._skin.sha256,
-                size_bytes=self._skin.size_bytes,
+            char_catalog.record_installed(
+                char_id,
+                version=self._char.version,
+                source=f"server-{self._char.tier}",
+                sha256=self._char.sha256,
+                size_bytes=self._char.size_bytes,
             )
-            self._signals.download_finished.emit(skin_id, str(path))
+            self._signals.download_finished.emit(char_id, str(path))
         except ShopError as exc:
-            self._signals.download_failed.emit(skin_id, str(exc))
+            self._signals.download_failed.emit(char_id, str(exc))
         except Exception as exc:
-            logger.exception("Unexpected error downloading %s", skin_id)
-            self._signals.download_failed.emit(skin_id, f"Unexpected error: {exc}")
+            logger.exception("Unexpected error downloading %s", char_id)
+            self._signals.download_failed.emit(char_id, f"Unexpected error: {exc}")
 
 
 class _PreviewWorker(QtCore.QRunnable):
-    def __init__(self, client: ShopClient, signals: _Signals, skin: SkinEntry) -> None:
+    def __init__(self, client: ShopClient, signals: _Signals, char: CharEntry) -> None:
         super().__init__()
         self._client = client
         self._signals = signals
-        self._skin = skin
+        self._char = char
 
     def run(self) -> None:
-        path = self._client.fetch_preview(self._skin)
+        path = self._client.fetch_preview(self._char)
         if path is not None:
-            self._signals.preview_ready.emit(self._skin.id, str(path))
+            self._signals.preview_ready.emit(self._char.id, str(path))
 
 
 # --- cards --------------------------------------------------------------------
 
 
-class _SkinCard(QtWidgets.QFrame):
+class _CharCard(QtWidgets.QFrame):
     install_requested = QtCore.Signal(str)
     uninstall_requested = QtCore.Signal(str)
 
-    def __init__(self, skin: SkinEntry, *, installed: bool, parent: QtWidgets.QWidget | None = None) -> None:
+    def __init__(self, char: CharEntry, *, installed: bool, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
-        self.skin = skin
+        self.char = char
         self.installed = installed
         self.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
         self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Fixed)
@@ -137,15 +137,15 @@ class _SkinCard(QtWidgets.QFrame):
         self.preview_label.setStyleSheet("background:#f0f0f0; border:1px solid #d0d0d0; color:#888;")
         layout.addWidget(self.preview_label)
 
-        name = QtWidgets.QLabel(f"<b>{skin.name}</b>")
+        name = QtWidgets.QLabel(f"<b>{char.name}</b>")
         name.setWordWrap(True)
         layout.addWidget(name)
 
-        author = QtWidgets.QLabel(f"by {skin.author or 'unknown'}")
+        author = QtWidgets.QLabel(f"by {char.author or 'unknown'}")
         author.setStyleSheet("color:#666; font-size:11px;")
         layout.addWidget(author)
 
-        tier_label = QtWidgets.QLabel(skin.tier.upper())
+        tier_label = QtWidgets.QLabel(char.tier.upper())
         tier_label.setStyleSheet(
             "background:#dfe9f5; border:1px solid #b0bccf; color:#234;"
             " padding:1px 6px; font-size:11px;"
@@ -153,8 +153,8 @@ class _SkinCard(QtWidgets.QFrame):
         tier_label.setSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Fixed)
         layout.addWidget(tier_label)
 
-        size_kb = max(1, skin.size_bytes // 1024)
-        meta = QtWidgets.QLabel(f"v{skin.version} • {size_kb} KB")
+        size_kb = max(1, char.size_bytes // 1024)
+        meta = QtWidgets.QLabel(f"v{char.version} • {size_kb} KB")
         meta.setStyleSheet("color:#888; font-size:11px;")
         layout.addWidget(meta)
 
@@ -174,9 +174,9 @@ class _SkinCard(QtWidgets.QFrame):
 
     def _on_button(self) -> None:
         if self.installed:
-            self.uninstall_requested.emit(self.skin.id)
+            self.uninstall_requested.emit(self.char.id)
         else:
-            self.install_requested.emit(self.skin.id)
+            self.install_requested.emit(self.char.id)
 
     def set_installed(self, installed: bool) -> None:
         self.installed = installed
@@ -233,8 +233,8 @@ class _SkinCard(QtWidgets.QFrame):
 class ShopDialog(QtWidgets.QDialog):
     """Shop window. Lifecycle: created on demand, destroyed when closed."""
 
-    skin_installed = QtCore.Signal(str)
-    skin_uninstalled = QtCore.Signal(str)
+    char_installed = QtCore.Signal(str)
+    char_uninstalled = QtCore.Signal(str)
 
     def __init__(
         self,
@@ -259,9 +259,9 @@ class ShopDialog(QtWidgets.QDialog):
         self._client = ShopClient(base_url)
         self._signals = _Signals()
         self._pool = QtCore.QThreadPool.globalInstance()
-        self._cards: dict[str, _SkinCard] = {}
+        self._cards: dict[str, _CharCard] = {}
         self._catalog: Catalog | None = None
-        self._user_skins_dir = skin_catalog.ensure_user_skins_dir()
+        self._user_chars_dir = char_catalog.ensure_user_chars_dir()
 
         self._build_ui()
         self._wire_signals()
@@ -303,19 +303,19 @@ class ShopDialog(QtWidgets.QDialog):
         self.catalog_scroll.setWidget(self.catalog_content)
         self.tabs.addTab(self.catalog_scroll, "Catalog")
 
-        # My Skins tab
-        my_skins_widget = QtWidgets.QWidget()
-        my_skins_layout = QtWidgets.QVBoxLayout(my_skins_widget)
-        my_skins_layout.setContentsMargins(8, 8, 8, 8)
-        self.my_skins_list = QtWidgets.QListWidget()
-        my_skins_layout.addWidget(self.my_skins_list, 1)
+        # My Characters tab
+        my_chars_widget = QtWidgets.QWidget()
+        my_chars_layout = QtWidgets.QVBoxLayout(my_chars_widget)
+        my_chars_layout.setContentsMargins(8, 8, 8, 8)
+        self.my_chars_list = QtWidgets.QListWidget()
+        my_chars_layout.addWidget(self.my_chars_list, 1)
         buttons = QtWidgets.QHBoxLayout()
         self.uninstall_button = QtWidgets.QPushButton("Uninstall selected")
         self.uninstall_button.clicked.connect(self._uninstall_selected)
         buttons.addWidget(self.uninstall_button)
         buttons.addStretch(1)
-        my_skins_layout.addLayout(buttons)
-        self.tabs.addTab(my_skins_widget, "My Skins")
+        my_chars_layout.addLayout(buttons)
+        self.tabs.addTab(my_chars_widget, "My Characters")
 
         # Footer
         self.status_label = QtWidgets.QLabel("")
@@ -342,7 +342,7 @@ class ShopDialog(QtWidgets.QDialog):
         self._catalog = catalog
         self.refresh_button.setEnabled(True)
         self._render_catalog()
-        self._refresh_my_skins()
+        self._refresh_my_chars()
         self.status_label.setText(f"{len(catalog.skins)} skins available.")
 
     def _on_catalog_failed(self, message: str) -> None:
@@ -365,81 +365,81 @@ class ShopDialog(QtWidgets.QDialog):
             return
 
         columns = 3
-        for index, skin in enumerate(self._catalog.skins):
+        for index, char in enumerate(self._catalog.skins):
             row, col = divmod(index, columns)
-            installed = skin_catalog.is_user_installed(skin.id)
-            card = _SkinCard(skin, installed=installed, parent=self.catalog_content)
-            card.install_requested.connect(self._install_skin)
-            card.uninstall_requested.connect(self._uninstall_skin)
-            self._cards[skin.id] = card
+            installed = char_catalog.is_user_installed(char.id)
+            card = _CharCard(char, installed=installed, parent=self.catalog_content)
+            card.install_requested.connect(self._install_char)
+            card.uninstall_requested.connect(self._uninstall_char)
+            self._cards[char.id] = card
             self.catalog_grid.addWidget(card, row, col)
-            self._pool.start(_PreviewWorker(self._client, self._signals, skin))
+            self._pool.start(_PreviewWorker(self._client, self._signals, char))
 
     # ---- install / uninstall ----------------------------------------------
 
-    def _install_skin(self, skin_id: str) -> None:
+    def _install_char(self, char_id: str) -> None:
         if not self._catalog:
             return
-        skin = next((s for s in self._catalog.skins if s.id == skin_id), None)
-        if skin is None:
+        char = next((s for s in self._catalog.skins if s.id == char_id), None)
+        if char is None:
             return
-        if skin.tier != "free":
+        if char.tier != "free":
             # Premium tiers require entitlements; not in MVP.
-            self.status_label.setText(f"⚠ Premium skin '{skin.name}' requires a subscription (coming soon).")
+            self.status_label.setText(f"⚠ Premium char '{char.name}' requires a subscription (coming soon).")
             return
-        worker = _DownloadWorker(self._client, self._signals, skin, self._user_skins_dir)
+        worker = _DownloadWorker(self._client, self._signals, char, self._user_chars_dir)
         self._pool.start(worker)
-        self.status_label.setText(f"Downloading {skin.name}…")
+        self.status_label.setText(f"Downloading {char.name}…")
 
-    def _on_download_progress(self, skin_id: str, done: int, total: int) -> None:
-        card = self._cards.get(skin_id)
+    def _on_download_progress(self, char_id: str, done: int, total: int) -> None:
+        card = self._cards.get(char_id)
         if card is not None:
             card.set_progress(done, total)
 
-    def _on_download_finished(self, skin_id: str, path: str) -> None:
-        card = self._cards.get(skin_id)
+    def _on_download_finished(self, char_id: str, path: str) -> None:
+        card = self._cards.get(char_id)
         if card is not None:
             card.set_installed(True)
-        self.status_label.setText(f"Installed: {skin_id}")
-        self._refresh_my_skins()
-        self.skin_installed.emit(skin_id)
+        self.status_label.setText(f"Installed: {char_id}")
+        self._refresh_my_chars()
+        self.char_installed.emit(char_id)
 
-    def _on_download_failed(self, skin_id: str, message: str) -> None:
-        card = self._cards.get(skin_id)
+    def _on_download_failed(self, char_id: str, message: str) -> None:
+        card = self._cards.get(char_id)
         if card is not None:
             card.set_failed(message)
-        self.status_label.setText(f"⚠ Failed: {skin_id} — {message}")
+        self.status_label.setText(f"⚠ Failed: {char_id} — {message}")
 
-    def _uninstall_skin(self, skin_id: str) -> None:
-        if skin_catalog.remove_installed(skin_id):
-            card = self._cards.get(skin_id)
+    def _uninstall_char(self, char_id: str) -> None:
+        if char_catalog.remove_installed(char_id):
+            card = self._cards.get(char_id)
             if card is not None:
                 card.set_installed(False)
-            self.status_label.setText(f"Uninstalled: {skin_id}")
-            self._refresh_my_skins()
-            self.skin_uninstalled.emit(skin_id)
+            self.status_label.setText(f"Uninstalled: {char_id}")
+            self._refresh_my_chars()
+            self.char_uninstalled.emit(char_id)
         else:
-            self.status_label.setText(f"⚠ Could not uninstall {skin_id}")
+            self.status_label.setText(f"⚠ Could not uninstall {char_id}")
 
     def _uninstall_selected(self) -> None:
-        item = self.my_skins_list.currentItem()
+        item = self.my_chars_list.currentItem()
         if item is None:
             return
-        skin_id = item.data(QtCore.Qt.ItemDataRole.UserRole)
-        if skin_id:
-            self._uninstall_skin(skin_id)
+        char_id = item.data(QtCore.Qt.ItemDataRole.UserRole)
+        if char_id:
+            self._uninstall_char(char_id)
 
-    def _refresh_my_skins(self) -> None:
-        self.my_skins_list.clear()
-        meta = skin_catalog.load_installed_metadata()
+    def _refresh_my_chars(self) -> None:
+        self.my_chars_list.clear()
+        meta = char_catalog.load_installed_metadata()
         for entry in meta.get("skins", []):
             label = f"{entry.get('id')} (v{entry.get('version', '?')}, {entry.get('source', '?')})"
             item = QtWidgets.QListWidgetItem(label)
             item.setData(QtCore.Qt.ItemDataRole.UserRole, entry.get("id"))
-            self.my_skins_list.addItem(item)
+            self.my_chars_list.addItem(item)
 
-    def _on_preview_ready(self, skin_id: str, local_path: str) -> None:
-        card = self._cards.get(skin_id)
+    def _on_preview_ready(self, char_id: str, local_path: str) -> None:
+        card = self._cards.get(char_id)
         if card is not None:
             card.set_preview(local_path)
 

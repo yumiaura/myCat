@@ -1,12 +1,12 @@
-# mycat interactive skin-pack format
+# mycat interactive char-pack format
 
-A skin is a single `<name>.zip`. The cat is a small **state machine**: a base
+A character is a single `<name>.zip`. The cat is a small **state machine**: a base
 "awake" pose whose pupils follow the cursor, plus optional expressions and
 animations that play on idle, on click, on wake/sleep, and on low battery.
 
 Everything is **convention over configuration**: you drop files with the
 reserved names below into the zip and they are picked up automatically. Anything
-missing simply disables that behaviour — so a skin can be as small as one PNG and
+missing simply disables that behaviour — so a character can be as small as one PNG and
 grow incrementally. `config.json` only carries *parameters* (timings, pupil
 geometry, thresholds), never file paths.
 
@@ -169,7 +169,7 @@ cat.zip
 
 - **Live now:** `static.png`, `blink.png`, `eye_left/right.png`, `config.json`
   (`eyes`, `blink`, `click_squint`) — cursor-tracking pupils, periodic blink,
-  click squint. (`mycat/skin_pack.py` + `PixelCatWindow`.)
+  click squint. (`mycat/char_pack.py` + `PixelCatWindow`.)
 - **Planned (this spec):** the sleep / yawn / idle-random / click-random /
   hungry states and their transition GIFs, plus the `idle` and `battery` config
   sections. Files are decoded but not yet wired to the state machine.

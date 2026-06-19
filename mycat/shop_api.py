@@ -1,7 +1,7 @@
-"""HTTP client for the mycat skin shop.
+"""HTTP client for the mycat char shop.
 
 Talks to a mycat-server (FastAPI) instance: fetches the catalog and downloads
-skin ZIPs. No third-party dependencies — `urllib` only (consistent with
+char ZIPs. No third-party dependencies — `urllib` only (consistent with
 `llm_ollama.py`).
 """
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = "http://127.0.0.1:18000"
 CATALOG_PATH = "/api/v1/catalog"
-SKIN_DOWNLOAD_PATH = "/api/v1/skin/{id}/download"
+CHAR_DOWNLOAD_PATH = "/api/v1/char/{id}/download"
 
 CATALOG_CACHE_TTL_SECONDS = 3600
 DEFAULT_CATALOG_TIMEOUT = 10.0
@@ -33,7 +33,7 @@ MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024  # safety net
 
 
 @dataclass
-class SkinEntry:
+class CharEntry:
     id: str
     name: str
     author: str
@@ -49,7 +49,7 @@ class SkinEntry:
     license: str = ""
 
     @classmethod
-    def from_dict(cls, data: dict) -> SkinEntry:
+    def from_dict(cls, data: dict) -> CharEntry:
         return cls(
             id=str(data["id"]),
             name=str(data.get("name", data["id"])),
@@ -71,14 +71,14 @@ class SkinEntry:
 class Catalog:
     schema_version: int
     generated_at: str
-    skins: list[SkinEntry]
+    skins: list[CharEntry]
 
     @classmethod
     def from_dict(cls, data: dict) -> Catalog:
         return cls(
             schema_version=int(data.get("schema_version", 1)),
             generated_at=str(data.get("generated_at", "")),
-            skins=[SkinEntry.from_dict(s) for s in data.get("skins", [])],
+            skins=[CharEntry.from_dict(s) for s in data.get("skins", [])],
         )
 
 
@@ -205,9 +205,9 @@ class ShopClient:
 
     # ---- preview -----------------------------------------------------------
 
-    def fetch_preview(self, skin: SkinEntry) -> Path | None:
-        """Download a skin's preview into the cache, return local path or None on failure."""
-        if not skin.preview_url:
+    def fetch_preview(self, char: CharEntry) -> Path | None:
+        """Download a char's preview into the cache, return local path or None on failure."""
+        if not char.preview_url:
             return None
         previews_dir = self.cache_dir / "previews"
         try:
@@ -215,13 +215,13 @@ class ShopClient:
         except OSError:
             return None
         # Extension follows the URL suffix (.gif / .png).
-        suffix = Path(urllib.parse.urlparse(skin.preview_url).path).suffix.lower() or ".gif"
-        dest = previews_dir / f"{skin.id}-{skin.version}{suffix}"
+        suffix = Path(urllib.parse.urlparse(char.preview_url).path).suffix.lower() or ".gif"
+        dest = previews_dir / f"{char.id}-{char.version}{suffix}"
         if dest.exists() and dest.stat().st_size > 0:
             return dest
         try:
             request = urllib.request.Request(
-                skin.preview_url,
+                char.preview_url,
                 headers={"User-Agent": "mycat-client"},
                 method="GET",
             )
@@ -232,20 +232,20 @@ class ShopClient:
             os.replace(tmp, dest)
             return dest
         except (urllib.error.URLError, urllib.error.HTTPError, OSError) as exc:
-            logger.debug("Preview fetch failed for %s: %s", skin.id, exc)
+            logger.debug("Preview fetch failed for %s: %s", char.id, exc)
             return None
 
     # ---- download ----------------------------------------------------------
 
-    def download_skin(
+    def download_char(
         self,
-        skin: SkinEntry,
+        char: CharEntry,
         dest_dir: Path,
         *,
         progress_cb: Callable[[int, int], None] | None = None,
         auth_token: str | None = None,
     ) -> Path:
-        """Download `skin` into `dest_dir/<id>.zip`, verifying SHA-256.
+        """Download `char` into `dest_dir/<id>.zip`, verifying SHA-256.
 
         - Follows the server's 302 redirect to the CDN (urllib does this transparently).
         - Atomic: writes to a temp file in the same dir, then `os.replace`.
@@ -253,8 +253,8 @@ class ShopClient:
         - `progress_cb(downloaded, total)` is invoked periodically (best-effort).
         """
         dest_dir.mkdir(parents=True, exist_ok=True)
-        final_path = dest_dir / f"{skin.id}.zip"
-        url = self._resolve_download_url(skin)
+        final_path = dest_dir / f"{char.id}.zip"
+        url = self._resolve_download_url(char)
 
         headers = {"User-Agent": "mycat-client", "Accept": "application/zip, */*"}
         if auth_token:
@@ -263,7 +263,7 @@ class ShopClient:
         request = urllib.request.Request(url, headers=headers, method="GET")
         sha = hashlib.sha256()
         downloaded = 0
-        expected = skin.size_bytes or 0
+        expected = char.size_bytes or 0
 
         # Use a NamedTemporaryFile in dest_dir for atomic replace on same FS.
         tmp = tempfile.NamedTemporaryFile(
@@ -280,7 +280,7 @@ class ShopClient:
                         pass
                 if expected and expected > MAX_DOWNLOAD_BYTES:
                     raise ShopError(
-                        f"Skin {skin.id} reports {expected} bytes which exceeds the "
+                        f"Char {char.id} reports {expected} bytes which exceeds the "
                         f"{MAX_DOWNLOAD_BYTES}-byte safety limit"
                     )
 
@@ -291,7 +291,7 @@ class ShopClient:
                     downloaded += len(chunk)
                     if downloaded > MAX_DOWNLOAD_BYTES:
                         raise ShopError(
-                            f"Aborting {skin.id}: exceeded {MAX_DOWNLOAD_BYTES}-byte safety limit"
+                            f"Aborting {char.id}: exceeded {MAX_DOWNLOAD_BYTES}-byte safety limit"
                         )
                     sha.update(chunk)
                     tmp.write(chunk)
@@ -305,32 +305,32 @@ class ShopClient:
             tmp.close()
 
             digest = sha.hexdigest()
-            if skin.sha256 and digest != skin.sha256.lower():
+            if char.sha256 and digest != char.sha256.lower():
                 raise ShopError(
-                    f"SHA-256 mismatch for {skin.id}: server says {skin.sha256}, got {digest}"
+                    f"SHA-256 mismatch for {char.id}: server says {char.sha256}, got {digest}"
                 )
 
             os.replace(tmp_path, final_path)
-            logger.info("Downloaded %s (%d bytes) -> %s", skin.id, downloaded, final_path)
+            logger.info("Downloaded %s (%d bytes) -> %s", char.id, downloaded, final_path)
             return final_path
         except urllib.error.HTTPError as exc:
             self._cleanup(tmp, tmp_path)
-            raise ShopError(f"HTTP {exc.code} downloading {skin.id}: {exc.reason}") from exc
+            raise ShopError(f"HTTP {exc.code} downloading {char.id}: {exc.reason}") from exc
         except urllib.error.URLError as exc:
             self._cleanup(tmp, tmp_path)
-            raise ShopError(f"Network error downloading {skin.id}: {exc.reason}") from exc
+            raise ShopError(f"Network error downloading {char.id}: {exc.reason}") from exc
         except OSError as exc:
             self._cleanup(tmp, tmp_path)
-            raise ShopError(f"I/O error downloading {skin.id}: {exc}") from exc
+            raise ShopError(f"I/O error downloading {char.id}: {exc}") from exc
         except ShopError:
             self._cleanup(tmp, tmp_path)
             raise
         except Exception as exc:
             self._cleanup(tmp, tmp_path)
-            raise ShopError(f"Unexpected error downloading {skin.id}: {exc}") from exc
+            raise ShopError(f"Unexpected error downloading {char.id}: {exc}") from exc
 
-    def _resolve_download_url(self, skin: SkinEntry) -> str:
-        url = skin.download_url
+    def _resolve_download_url(self, char: CharEntry) -> str:
+        url = char.download_url
         if url.startswith("http://") or url.startswith("https://"):
             return url
         if not url.startswith("/"):
@@ -356,7 +356,7 @@ __all__ = [
     "MAX_DOWNLOAD_BYTES",
     "ShopClient",
     "ShopError",
-    "SkinEntry",
+    "CharEntry",
     "default_cache_dir",
     "resolve_base_url",
 ]
