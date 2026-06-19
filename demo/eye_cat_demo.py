@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
-"""LOCAL demo — a cat whose eyes follow the mouse cursor.
+"""LOCAL demo — a cat whose eyes follow the mouse cursor, and squints.
 
-Uses ~/Pictures/mycat2.png (an orange cat drawn WITHOUT pupils), scales it to
-200 px tall, auto-detects the two white eye sockets, and draws pupils that track
-the global cursor (clamped inside each socket). Frameless, transparent,
-always-on-top, draggable.
+- Normal frame: assets/mycat.png (white eye sockets); pupils track the global
+  cursor, clamped inside each socket.
+- Squint frame: assets/mycat2.png (eyes scrunched shut). Shown on click and
+  periodically on a timer (a little idle "blink/squint" animation).
+
+Frameless, transparent, always-on-top, draggable.
 
     python demo/eye_cat_demo.py
-    python demo/eye_cat_demo.py --image /path/to/cat.png
+    python demo/eye_cat_demo.py --image cat.png --squint-image cat_squint.png
 """
 
 import argparse
 import random
 import sys
 from collections import deque
-from math import hypot, sqrt
+from math import hypot
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -22,8 +24,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from PIL import Image  # noqa: E402
 from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 
-DEFAULT_IMAGE = Path(__file__).resolve().parent / "assets" / "mycat.png"
+ASSETS = Path(__file__).resolve().parent / "assets"
+DEFAULT_IMAGE = ASSETS / "mycat.png"
+SQUINT_IMAGE = ASSETS / "mycat2.png"
 TARGET_HEIGHT = 200
+CLICK_SQUINT = 0.5            # seconds the squint is held after a click
+PERIODIC_SQUINT = 0.28        # seconds of a spontaneous squint
+PERIODIC_EVERY = (3.0, 7.0)   # random gap between spontaneous squints
 
 
 def is_white(pixel):
@@ -67,35 +74,19 @@ def detect_eyes(image: Image.Image):
     return eyes
 
 
-def pil_to_pixmap(image: Image.Image) -> QtGui.QPixmap:
-    image = image.convert("RGBA")
-    data = image.tobytes("raw", "RGBA")
-    qimage = QtGui.QImage(data, image.width, image.height, QtGui.QImage.Format.Format_RGBA8888)
-    return QtGui.QPixmap.fromImage(qimage.copy())
-
-
 def harden_alpha(image: Image.Image, threshold: int = 128) -> Image.Image:
-    """Make the alpha binary (0/255). Downscaling anti-aliases the silhouette to
-    partial alpha; without a compositor those pixels render as a muddy dark
-    fringe. Snapping alpha to 0/255 gives a crisp edge that matches the 1-bit
-    window mask exactly."""
+    """Snap alpha to 0/255 so the downscaled silhouette has a crisp edge that
+    matches the 1-bit window mask (no muddy fringe without a compositor)."""
     image = image.convert("RGBA")
     image.putalpha(image.getchannel("A").point(lambda value: 255 if value >= threshold else 0))
     return image
 
 
-def dominant_fur(image: Image.Image) -> QtGui.QColor:
-    """Most common body colour (ignore white eyes, dark outline, transparent)."""
-    counts: dict = {}
-    for r, g, b, a in image.convert("RGBA").getdata():
-        if a < 200 or (r > 225 and g > 225 and b > 225) or (r < 60 and g < 60 and b < 60):
-            continue
-        key = (r // 16, g // 16, b // 16)
-        counts[key] = counts.get(key, 0) + 1
-    if not counts:
-        return QtGui.QColor(240, 170, 90)
-    r, g, b = max(counts, key=counts.get)
-    return QtGui.QColor(r * 16 + 8, g * 16 + 8, b * 16 + 8)
+def pil_to_pixmap(image: Image.Image) -> QtGui.QPixmap:
+    image = image.convert("RGBA")
+    data = image.tobytes("raw", "RGBA")
+    qimage = QtGui.QImage(data, image.width, image.height, QtGui.QImage.Format.Format_RGBA8888)
+    return QtGui.QPixmap.fromImage(qimage.copy())
 
 
 def no_compositor() -> bool:
@@ -107,7 +98,7 @@ def no_compositor() -> bool:
 
 
 class EyeCat(QtWidgets.QWidget):
-    def __init__(self, image_path: Path):
+    def __init__(self, image_path: Path, squint_path: Path):
         flags = QtCore.Qt.WindowType.FramelessWindowHint | QtCore.Qt.WindowType.Tool
         app = QtWidgets.QApplication.instance()
         if (app.platformName() or "").lower() != "offscreen":
@@ -117,77 +108,62 @@ class EyeCat(QtWidgets.QWidget):
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
 
         self.shape_mask = no_compositor()
-        source = Image.open(image_path).convert("RGBA")
-        scaled = source.resize(
-            (round(source.width * TARGET_HEIGHT / source.height), TARGET_HEIGHT), Image.LANCZOS
-        )
-        # No compositor → 1-bit window mask; snap the anti-aliased edge to binary
-        # alpha so it doesn't render as a muddy fringe. With a compositor we keep
-        # the smooth alpha (it blends nicely).
-        if self.shape_mask:
-            scaled = harden_alpha(scaled)
-        self.pixmap = pil_to_pixmap(scaled)
-        self.eyes = detect_eyes(scaled)
-        self.setFixedSize(self.pixmap.size())
+        open_image = self.prepare(image_path)
+        squint_image = self.prepare(squint_path)
+        self.open_pixmap = pil_to_pixmap(open_image)
+        self.squint_pixmap = pil_to_pixmap(squint_image)
+        self.eyes = detect_eyes(open_image)
+        self.setFixedSize(self.open_pixmap.size())
 
-        self.fur_color = dominant_fur(scaled)
-        self.test_cursor = None       # set in tests to fake the cursor
-        self.test_blink = None        # set in tests to force a blink amount
+        self.test_cursor = None       # tests: fake cursor
+        self.force_squint = None      # tests: force the squint frame on/off
         self.drag_offset = None
 
-        # Blink: a quick lid close/open every few seconds.
-        self.blink_dur = 0.16
         self.clock = QtCore.QElapsedTimer()
         self.clock.start()
-        self.blink_start = -10.0
-        self.next_blink = random.uniform(2.5, 6.0)
-        self.squint_start = -10.0      # set on click: a held "scrunch" close
+        self.squint_until = -10.0
+        self.next_periodic = random.uniform(*PERIODIC_EVERY)
 
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.update)
         self.timer.start(16)          # ~60 fps
 
+    def prepare(self, path: Path) -> Image.Image:
+        image = Image.open(path).convert("RGBA")
+        image = image.resize(
+            (round(image.width * TARGET_HEIGHT / image.height), TARGET_HEIGHT), Image.LANCZOS
+        )
+        return harden_alpha(image) if self.shape_mask else image
+
     def cursor_global(self) -> QtCore.QPoint:
         return self.test_cursor if self.test_cursor is not None else QtGui.QCursor.pos()
 
-    def blink_amount(self) -> float:
-        """0 = open, 1 = fully closed; triangular over the blink duration."""
-        if self.test_blink is not None:
-            return self.test_blink
+    def is_squinting(self) -> bool:
+        if self.force_squint is not None:
+            return self.force_squint
         now = self.clock.elapsed() / 1000.0
-        if now >= self.next_blink:
-            self.blink_start = now
-            self.next_blink = now + self.blink_dur + random.uniform(2.5, 6.0)
-        progress = (now - self.blink_start) / self.blink_dur
-        if 0.0 <= progress <= 1.0:
-            return 1.0 - abs(2.0 * progress - 1.0)
-        return 0.0
-
-    def squint_amount(self) -> float:
-        """Click reaction: snap shut, hold, then open (a held scrunch)."""
-        elapsed = self.clock.elapsed() / 1000.0 - self.squint_start
-        close, hold_end, total = 0.07, 0.45, 0.62
-        if elapsed < 0.0:
-            return 0.0
-        if elapsed < close:
-            return elapsed / close
-        if elapsed < hold_end:
-            return 1.0
-        if elapsed < total:
-            return 1.0 - (elapsed - hold_end) / (total - hold_end)
-        return 0.0
+        if now >= self.next_periodic:               # spontaneous squint
+            self.squint_until = now + PERIODIC_SQUINT
+            self.next_periodic = now + random.uniform(*PERIODIC_EVERY)
+        return now < self.squint_until
 
     def showEvent(self, event):
         super().showEvent(event)
-        if self.shape_mask and not self.pixmap.mask().isNull():
-            self.setMask(self.pixmap.mask())
+        if self.shape_mask:
+            region = QtGui.QRegion(self.open_pixmap.mask())
+            region = region.united(QtGui.QRegion(self.squint_pixmap.mask()))
+            if not region.isEmpty():
+                self.setMask(region)
 
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
-        painter.drawPixmap(0, 0, self.pixmap)
+        if self.is_squinting():
+            painter.drawPixmap(0, 0, self.squint_pixmap)
+            painter.end()
+            return
+        painter.drawPixmap(0, 0, self.open_pixmap)
         cursor = self.cursor_global()
-        blink = max(self.blink_amount(), self.squint_amount())
         for cx, cy, radius in self.eyes:
             pupil_r = max(2.5, radius * 0.45)
             max_offset = max(0.0, radius - pupil_r * 0.9)
@@ -202,32 +178,11 @@ class EyeCat(QtWidgets.QWidget):
             painter.setBrush(QtGui.QColor(255, 255, 255, 220))
             painter.drawEllipse(QtCore.QPointF(px - pupil_r * 0.3, py - pupil_r * 0.3),
                                 pupil_r * 0.3, pupil_r * 0.3)
-
-            if blink > 0.0:
-                lid_r = radius + 4.0                       # also hide the socket outline
-                lid_bottom = (cy - lid_r) + blink * 2.0 * lid_r
-                painter.save()
-                painter.setClipRect(QtCore.QRectF(cx - lid_r - 1, cy - lid_r - 1,
-                                                  2 * lid_r + 2, lid_bottom - (cy - lid_r) + 1))
-                painter.setPen(QtCore.Qt.PenStyle.NoPen)
-                painter.setBrush(self.fur_color)
-                painter.drawEllipse(QtCore.QPointF(cx, cy), lid_r, lid_r)
-                painter.restore()
-                # eyelid crease — rides the lid edge, settling to a full-width
-                # closed-eye line across the socket centre when fully shut.
-                crease_y = min(lid_bottom, cy)
-                gap = abs(crease_y - cy)
-                lid_bottom = crease_y
-                half = sqrt(max(0.0, lid_r * lid_r - gap * gap))
-                pen = QtGui.QPen(QtGui.QColor(40, 30, 25), 1.4)
-                pen.setCapStyle(QtCore.Qt.PenCapStyle.RoundCap)
-                painter.setPen(pen)
-                painter.drawLine(QtCore.QPointF(cx - half, lid_bottom), QtCore.QPointF(cx + half, lid_bottom))
         painter.end()
 
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
-            self.squint_start = self.clock.elapsed() / 1000.0   # scrunch shut on click
+            self.squint_until = self.clock.elapsed() / 1000.0 + CLICK_SQUINT   # scrunch on click
             self.drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             event.accept()
 
@@ -248,14 +203,16 @@ class EyeCat(QtWidgets.QWidget):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--image", default=str(DEFAULT_IMAGE))
+    parser.add_argument("--squint-image", default=str(SQUINT_IMAGE))
     args = parser.parse_args()
-    if not Path(args.image).exists():
-        sys.exit(f"image not found: {args.image}")
+    for path in (args.image, args.squint_image):
+        if not Path(path).exists():
+            sys.exit(f"image not found: {path}")
     app = QtWidgets.QApplication(sys.argv)
-    cat = EyeCat(Path(args.image))
+    cat = EyeCat(Path(args.image), Path(args.squint_image))
     cat.show()
-    print(f"[eye-cat] {len(cat.eyes)} eyes detected; following the cursor. Right-click → Quit.",
-          flush=True)
+    print(f"[eye-cat] {len(cat.eyes)} eyes; tracking cursor, squints on click and on a timer. "
+          "Right-click → Quit.", flush=True)
     sys.exit(app.exec())
 
 
