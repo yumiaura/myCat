@@ -137,7 +137,7 @@ class EyeCat(QtWidgets.QWidget):
         cursor = self.cursor_global()
         for cx, cy, radius in self.eyes:
             pupil_r = max(2.5, radius * 0.45)
-            max_offset = max(0.0, radius - pupil_r - 1.0)
+            max_offset = max(0.0, radius - pupil_r * 0.6)
             socket = self.mapToGlobal(QtCore.QPoint(round(cx), round(cy)))
             dx, dy = cursor.x() - socket.x(), cursor.y() - socket.y()
             dist = hypot(dx, dy)
