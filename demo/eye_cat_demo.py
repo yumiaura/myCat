@@ -190,7 +190,7 @@ class EyeCat(QtWidgets.QWidget):
         blink = max(self.blink_amount(), self.squint_amount())
         for cx, cy, radius in self.eyes:
             pupil_r = max(2.5, radius * 0.45)
-            max_offset = max(0.0, radius - pupil_r * 0.6)
+            max_offset = max(0.0, radius - pupil_r * 0.9)
             socket = self.mapToGlobal(QtCore.QPoint(round(cx), round(cy)))
             dx, dy = cursor.x() - socket.x(), cursor.y() - socket.y()
             dist = hypot(dx, dy)
