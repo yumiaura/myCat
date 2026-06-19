@@ -11,7 +11,8 @@ A char ``<name>.zip`` contains:
 config.json (coordinates are in static.png native pixels):
   {
     "name": "cat",
-    "render_height": 200,
+    "max_width": 200,
+    "max_height": 400,
     "eyes": { "travel_radius": 34,
               "left":  {"x": 558, "y": 433},
               "right": {"x": 693, "y": 433} },
@@ -20,8 +21,8 @@ config.json (coordinates are in static.png native pixels):
     "animations": [ {"file": "anim/stretch.gif", "enabled": true, "every": [20, 40]} ]
   }
 
-Everything is scaled to ``render_height`` on load, so the renderer works in
-render-space pixels.
+The character is scaled proportionally to fit within max_width × max_height
+(default 200×400, shrink-only); the renderer works in those scaled pixels.
 """
 
 from __future__ import annotations
@@ -35,6 +36,8 @@ from pathlib import Path
 from PySide6 import QtCore, QtGui
 
 CONFIG_NAME = "config.json"
+DEFAULT_MAX_WIDTH = 200
+DEFAULT_MAX_HEIGHT = 400
 
 
 class CharSource:
@@ -137,36 +140,37 @@ def gif_frames(data: bytes, scale: float):
     return frames, delays
 
 
-def load_pack(path, render_height: int = 200) -> CharPack:
-    """Read a new-format char (folder or .zip) into a render-height-scaled CharPack."""
+def load_pack(path, max_width: int = DEFAULT_MAX_WIDTH, max_height: int = DEFAULT_MAX_HEIGHT) -> CharPack:
+    """Read a new-format char (folder or .zip), scaled to fit a max box.
+
+    The character is scaled proportionally to fit within ``max_width`` ×
+    ``max_height`` (config ``max_width``/``max_height``, default 200×400); only
+    downscaled, never enlarged. Everything (frames, sprites, eye coords) uses the
+    same fit-scale.
+    """
     with CharSource(path) as archive:
         names = archive.names()
         config = json.loads(archive.read(CONFIG_NAME))
-        render_height = int(config.get("render_height") or render_height)
+        max_w = int(config.get("max_width") or max_width)
+        max_h = int(config.get("max_height") or max_height)
 
         static_raw = pixmap_from_bytes(archive.read("static.png"))
-        native_h = static_raw.height() or render_height
-        scale = render_height / native_h
+        native_w = static_raw.width() or max_w
+        native_h = static_raw.height() or max_h
+        scale = min(max_w / native_w, max_h / native_h, 1.0)   # shrink-to-fit only
 
-        def load_scaled(name: str):
-            if name not in names:
-                return None
-            return pixmap_from_bytes(archive.read(name)).scaledToHeight(
-                render_height, QtCore.Qt.TransformationMode.SmoothTransformation
-            )
-
-        def load_sprite(name: str):
-            if name not in names:
-                return None
-            raw = pixmap_from_bytes(archive.read(name))
+        def by_scale(raw):
             return raw.scaled(
                 max(1, round(raw.width() * scale)), max(1, round(raw.height() * scale)),
                 QtCore.Qt.AspectRatioMode.IgnoreAspectRatio,
                 QtCore.Qt.TransformationMode.SmoothTransformation,
             )
 
-        static = static_raw.scaledToHeight(render_height, QtCore.Qt.TransformationMode.SmoothTransformation)
-        blink = load_scaled("blink.png")
+        def load_sprite(name: str):
+            return by_scale(pixmap_from_bytes(archive.read(name))) if name in names else None
+
+        static = by_scale(static_raw)
+        blink = load_sprite("blink.png")
         eye_left = load_sprite("eye_left.png")
         eye_right = load_sprite("eye_right.png")
 

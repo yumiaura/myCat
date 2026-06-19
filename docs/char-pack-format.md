@@ -11,8 +11,9 @@ grow incrementally. `config.json` only carries *parameters* (timings, pupil
 geometry, thresholds), never file paths.
 
 All images are RGBA with a transparent background. Coordinates in `config.json`
-are in **`static.png` native pixels**; the runtime scales everything to
-`render_height`.
+are in **`static.png` native pixels**; the runtime scales the character
+proportionally to fit within `max_width` × `max_height` (default 200×400,
+downscale-only) and scales everything else by the same factor.
 
 ---
 
@@ -67,7 +68,8 @@ Every section is optional. Coordinates are in `static.png` native pixels.
 ```jsonc
 {
   "name": "cat",
-  "render_height": 200,
+  "max_width": 200,                  // scale to fit this box, proportionally,
+  "max_height": 400,                 // downscale-only (default 200x400)
 
   "eyes": {
     "travel_radius": 28,             // how far a pupil moves from its centre
@@ -148,7 +150,7 @@ cat.zip
 ├── blink.png
 ├── eye_left.png
 ├── eye_right.png
-└── config.json        # name, render_height, eyes, blink, click_squint
+└── config.json        # name, max_width, max_height, eyes, blink, click_squint
 ```
 
 **Full**:
