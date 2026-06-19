@@ -142,6 +142,7 @@ def load_pack(path, render_height: int = 200) -> CharPack:
     with CharSource(path) as archive:
         names = archive.names()
         config = json.loads(archive.read(CONFIG_NAME))
+        render_height = int(config.get("render_height") or render_height)
 
         static_raw = pixmap_from_bytes(archive.read("static.png"))
         native_h = static_raw.height() or render_height
