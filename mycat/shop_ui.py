@@ -343,7 +343,7 @@ class ShopDialog(QtWidgets.QDialog):
         self.refresh_button.setEnabled(True)
         self._render_catalog()
         self._refresh_my_chars()
-        self.status_label.setText(f"{len(catalog.skins)} skins available.")
+        self.status_label.setText(f"{len(catalog.characters)} characters available.")
 
     def _on_catalog_failed(self, message: str) -> None:
         self.refresh_button.setEnabled(True)
@@ -358,14 +358,14 @@ class ShopDialog(QtWidgets.QDialog):
                 widget.deleteLater()
         self._cards.clear()
 
-        if not self._catalog or not self._catalog.skins:
-            empty = QtWidgets.QLabel("No skins available.")
+        if not self._catalog or not self._catalog.characters:
+            empty = QtWidgets.QLabel("No characters available.")
             empty.setStyleSheet("color:#888;")
             self.catalog_grid.addWidget(empty, 0, 0)
             return
 
         columns = 3
-        for index, char in enumerate(self._catalog.skins):
+        for index, char in enumerate(self._catalog.characters):
             row, col = divmod(index, columns)
             installed = char_catalog.is_user_installed(char.id)
             card = _CharCard(char, installed=installed, parent=self.catalog_content)
@@ -380,7 +380,7 @@ class ShopDialog(QtWidgets.QDialog):
     def _install_char(self, char_id: str) -> None:
         if not self._catalog:
             return
-        char = next((s for s in self._catalog.skins if s.id == char_id), None)
+        char = next((s for s in self._catalog.characters if s.id == char_id), None)
         if char is None:
             return
         if char.tier != "free":
@@ -432,7 +432,7 @@ class ShopDialog(QtWidgets.QDialog):
     def _refresh_my_chars(self) -> None:
         self.my_chars_list.clear()
         meta = char_catalog.load_installed_metadata()
-        for entry in meta.get("skins", []):
+        for entry in meta.get("characters", []):
             label = f"{entry.get('id')} (v{entry.get('version', '?')}, {entry.get('source', '?')})"
             item = QtWidgets.QListWidgetItem(label)
             item.setData(QtCore.Qt.ItemDataRole.UserRole, entry.get("id"))

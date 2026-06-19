@@ -63,7 +63,7 @@ mycat                 # or, without installing:  python3 mycat/main.py
 
 ## ✨ Features
 
-- **Animated overlay** 🐱 — a frameless, always-on-top, draggable cat. Right-click for the menu (switch skin, quit).
+- **Animated overlay** 🐱 — a frameless, always-on-top, draggable cat. Right-click for the menu (switch character, quit).
 - **Reminder** 🛩️ — set a message and a time (one-shot or daily) and the cat flies a little banner plane across the top of your screen. Right-click → *Reminder…* to set the message, direction, plane and color.
 - **Chat (Ollama)** 💬 — talk to the cat through a **local [Ollama](https://ollama.com) model**, no account or API key needed (see below).
 
@@ -89,7 +89,7 @@ Run `mycat` (or `python3 mycat/main.py` from source) and customise it with comma
 mycat --image ~/my-custom-cat.zip
 ```
 
-A skin **ZIP** must contain exactly one `.gif`: its first frame is the static pose, then the GIF plays once and returns to that frame. Images larger than 300×500 are scaled down automatically.
+A character **ZIP** must contain exactly one `.gif`: its first frame is the static pose, then the GIF plays once and returns to that frame. Images larger than 300×500 are scaled down automatically.
 
 **`--pos <x> <y>`** 📍 — start at a specific screen position (otherwise the cat appears bottom-right and remembers where you last dragged it):
 
@@ -104,10 +104,10 @@ mycat --pos 960 540        # center of a 1920x1080 screen
 ### Controls
 
 - **Left-drag** the cat to move it.
-- **Right-click** the cat for the menu (skins, Reminder…, Ollama…, Chat, Quit).
+- **Right-click** the cat for the menu (characters, Reminder…, Ollama…, Chat, Quit).
 - **Quit** from the menu or with Ctrl+C in the terminal.
 
-The cat remembers its position and selected skin between sessions in `~/.config/mycat/config.ini`.
+The cat remembers its position and selected character between sessions in `~/.config/mycat/config.ini`.
 
 ## 🎬 Make your own cat GIF
 
@@ -118,11 +118,11 @@ sudo apt install imagemagick
 # Build an animated GIF from a sprite sheet
 convert images/cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 images/cat.gif
 
-# Package it as a skin ZIP
+# Package it as a character ZIP
 zip images/cat.zip images/cat.gif
 ```
 
-Drop the resulting ZIP next to the others and pick it from the right-click **skins** menu.
+Drop the resulting ZIP next to the others and pick it from the right-click **characters** menu.
 
 ## 🐳 Docker
 
@@ -150,7 +150,7 @@ docker compose -f docker-compose.mac.yml up
 **Window doesn't stay on top / doesn't show in the taskbar** 📌
 - Some window managers override "always on top" — restart the desktop session or check the WM settings.
 
-**Custom skin doesn't load** ❌
+**Custom character doesn't load** ❌
 - The ZIP must contain exactly one valid `.gif`. Check the path and that the file isn't corrupted.
 
 **Position not saving** 💾

@@ -800,7 +800,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         # Rebuild the list every time so freshly-installed characters appear without restart.
         self.available_images = char_catalog.scan_all()
         if len(self.available_images) > 0:
-            images_menu = menu.addMenu("Images")
+            images_menu = menu.addMenu("Characters")
             for img_name in self.available_images:
                 action = images_menu.addAction(img_name)
                 if img_name == self.file_name:

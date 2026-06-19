@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = "http://127.0.0.1:18000"
 CATALOG_PATH = "/api/v1/catalog"
-CHAR_DOWNLOAD_PATH = "/api/v1/char/{id}/download"
+CHAR_DOWNLOAD_PATH = "/api/v1/characters/{id}/download"
 
 CATALOG_CACHE_TTL_SECONDS = 3600
 DEFAULT_CATALOG_TIMEOUT = 10.0
@@ -71,14 +71,14 @@ class CharEntry:
 class Catalog:
     schema_version: int
     generated_at: str
-    skins: list[CharEntry]
+    characters: list[CharEntry]
 
     @classmethod
     def from_dict(cls, data: dict) -> Catalog:
         return cls(
             schema_version=int(data.get("schema_version", 1)),
             generated_at=str(data.get("generated_at", "")),
-            skins=[CharEntry.from_dict(s) for s in data.get("skins", [])],
+            characters=[CharEntry.from_dict(s) for s in data.get("characters", [])],
         )
 
 

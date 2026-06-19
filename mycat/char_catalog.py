@@ -1,10 +1,10 @@
 """Local char discovery.
 
 A char is either a **folder** or a **`.zip`** (read in memory) named by its id.
-Skins live in two locations:
+Characters live in two locations:
 - **Bundled:** `mycat/characters/` — packaged with the wheel.
 - **User:** platform-specific writable directory — receives downloads from the
-  shop and user-imported skins.
+  shop and user-imported characters.
 
 The user directory takes precedence: if both a bundled and a user copy of a
 char with the same id exist, the user one wins (so users can replace bundled
@@ -43,7 +43,7 @@ def is_char_folder(path: Path) -> bool:
 
 
 def user_chars_dir() -> Path:
-    """Platform-specific writable directory for downloaded/user-added skins."""
+    """Platform-specific writable directory for downloaded/user-added characters."""
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
         return Path(base) / "mycat" / "characters"
@@ -59,7 +59,7 @@ def ensure_user_chars_dir() -> Path:
     try:
         path.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
-        logger.warning("Could not create user skins dir %s: %s", path, exc)
+        logger.warning("Could not create user characters dir %s: %s", path, exc)
     return path
 
 
@@ -103,19 +103,19 @@ def installed_metadata_path() -> Path:
 def load_installed_metadata() -> dict:
     path = installed_metadata_path()
     if not path.exists():
-        return {"schema_version": INSTALLED_SCHEMA_VERSION, "skins": []}
+        return {"schema_version": INSTALLED_SCHEMA_VERSION, "characters": []}
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning("Corrupt installed.json (%s); starting fresh", exc)
-        return {"schema_version": INSTALLED_SCHEMA_VERSION, "skins": []}
+        return {"schema_version": INSTALLED_SCHEMA_VERSION, "characters": []}
 
 
 def record_installed(char_id: str, *, version: str, source: str, sha256: str, size_bytes: int) -> None:
     data = load_installed_metadata()
     data.setdefault("schema_version", INSTALLED_SCHEMA_VERSION)
-    skins = [s for s in data.get("skins", []) if s.get("id") != char_id]
-    skins.append(
+    characters = [s for s in data.get("characters", []) if s.get("id") != char_id]
+    characters.append(
         {
             "id": char_id,
             "version": version,
@@ -125,7 +125,7 @@ def record_installed(char_id: str, *, version: str, source: str, sha256: str, si
             "size_bytes": size_bytes,
         }
     )
-    data["skins"] = skins
+    data["characters"] = characters
     path = installed_metadata_path()
     try:
         path.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -144,7 +144,7 @@ def remove_installed(char_id: str) -> bool:
         logger.warning("Could not delete %s: %s", user_zip, exc)
         return False
     data = load_installed_metadata()
-    data["skins"] = [s for s in data.get("skins", []) if s.get("id") != char_id]
+    data["characters"] = [s for s in data.get("characters", []) if s.get("id") != char_id]
     try:
         installed_metadata_path().write_text(json.dumps(data, indent=2), encoding="utf-8")
     except OSError as exc:
