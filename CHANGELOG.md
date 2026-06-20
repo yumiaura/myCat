@@ -16,6 +16,9 @@ All notable changes to this project are documented in this file.
 ### Removed
 - `/tmp/mycat` temp-file extraction and the `TEMP_DIR` / `STATIC_PNG_PATH` / `ANIMATION_GIF_PATH` globals plus `get_temp_dir()` (branch `feat/in-memory-skins`).
 
+### Fixed
+- **Black silhouette gap after switching characters (no-compositor shape-mask mode).** Switching from an animating character to another left part of the new character's body rendered black, frozen until the next animation played. On X11 without a compositor the shape mask was applied *after* the frame was blitted, so pixels newly revealed by a larger silhouette were never painted to screen (the server does not auto-expose a grown shape). The mask is now applied before painting, plus a one-shot follow-up repaint fills the revealed area; it settles in a single extra frame — no repaint loop (0 paints while idle, 30 fps while animating).
+
 ## 0.1.6
 
 ### Added

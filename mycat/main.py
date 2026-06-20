@@ -1124,24 +1124,28 @@ class PixelCatWindow(QtWidgets.QWidget):
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         """Paint the current pixmap (+ tracking pupils for interactive characters)."""
-        painter = QtGui.QPainter(self)
-        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
-
         mode = getattr(self, "_pack_mode", None) if self.char_pack is not None else None
 
-        # Draw pixmap centered in widget
+        # Centre the pixmap in the widget.
         widget_rect = self.rect()
         pixmap_rect = self.current_pixmap.rect()
         x = (widget_rect.width() - pixmap_rect.width()) // 2
         y = (widget_rect.height() - pixmap_rect.height()) // 2
-        painter.drawPixmap(x, y, self.current_pixmap)
 
+        # Update the silhouette mask BEFORE painting: the backing-store -> screen
+        # blit at the end of this paint is clipped to the *current* mask, so any
+        # pixels newly revealed by a shape change (e.g. switching to a character
+        # with a larger silhouette) must be inside the mask now, or they never
+        # get blitted and stay as stale/black framebuffer until the next repaint.
+        if self.shape_mask_enabled:
+            self.refresh_shape_mask(x, y)
+
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+        painter.drawPixmap(x, y, self.current_pixmap)
         if mode == "open":
             self._draw_pupils(painter, x, y)
         painter.end()
-
-        if self.shape_mask_enabled:
-            self.refresh_shape_mask(x, y)
 
     def refresh_shape_mask(self, x: int, y: int) -> None:
         """Clip the window to the current pixmap's alpha silhouette (no-compositor path).
@@ -1168,6 +1172,16 @@ class PixelCatWindow(QtWidgets.QWidget):
             if cache is not None:
                 cache[pixmap.cacheKey()] = region
         self.setMask(region.translated(x, y) if (x or y) else region)
+
+        # Growing the shape reveals window area the X server does not auto-expose
+        # (no compositor), so the just-painted backing store never reaches those
+        # newly-unmasked pixels — they linger as stale/black framebuffer. Schedule
+        # one more paint now that the new mask is in effect to fill them. The
+        # cache-key guard above makes that follow-up paint a no-op for the mask,
+        # so this settles in a single extra frame (no repaint loop). Without it a
+        # character switch onto a static frame freezes the gap as black until the
+        # next animation happens to repaint everything.
+        self.update()
 
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
         """Handle mouse press for dragging (+ click reaction / wake on interactive characters)."""
