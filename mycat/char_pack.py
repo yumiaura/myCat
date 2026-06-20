@@ -105,6 +105,20 @@ class CharPack:
     blink_duration: float = 0.28
     click_squint: float = 0.5
     anims: list = field(default_factory=list)
+    # state-machine assets (each optional; a state is only active if present)
+    sleep: QtGui.QPixmap | None = None          # held sleeping pose
+    sleep_in: Anim | None = None                # awake -> sleep transition
+    sleep_out: Anim | None = None               # sleep -> awake transition
+    yawn: Anim | None = None                    # idle yawn
+    idle_anims: list = field(default_factory=list)    # idleN.gif pool
+    click_anims: list = field(default_factory=list)   # clickN.gif pool
+    hungry_anims: list = field(default_factory=list)  # hungryN.gif pool (low battery)
+    # timings
+    yawn_after: float = 60.0
+    sleep_after: float = 300.0
+    idle_random_every: tuple = (25.0, 60.0)
+    hungry_below: float = 20.0
+    hungry_every: tuple = (30.0, 60.0)
 
 
 def is_new_pack(path) -> bool:
@@ -195,6 +209,24 @@ def load_pack(path, max_width: int = DEFAULT_MAX_WIDTH, max_height: int = DEFAUL
             every = tuple(entry.get("every", [20, 40]))
             anims.append(Anim(frames=frames, delays=delays, every=every))
 
+        def load_anim(name: str):
+            if name not in names:
+                return None
+            frames, delays = gif_frames(archive.read(name), scale)
+            return Anim(frames=frames, delays=delays, every=(0.0, 0.0))
+
+        def load_pool(prefix: str):
+            pool = []
+            for name in sorted(names):
+                base = name.rsplit("/", 1)[-1]
+                if base.startswith(prefix) and base.endswith(".gif"):
+                    frames, delays = gif_frames(archive.read(name), scale)
+                    pool.append(Anim(frames=frames, delays=delays, every=(0.0, 0.0)))
+            return pool
+
+        idle_cfg = config.get("idle", {})
+        battery_cfg = config.get("battery", {})
+
         return CharPack(
             name=config.get("name") or Path(str(path)).stem,
             static=static,
@@ -207,4 +239,16 @@ def load_pack(path, max_width: int = DEFAULT_MAX_WIDTH, max_height: int = DEFAUL
             blink_duration=float(blink_cfg.get("duration", 0.28)),
             click_squint=float(config.get("click_squint", 0.5)),
             anims=anims,
+            sleep=load_sprite("sleep.png"),
+            sleep_in=load_anim("sleep_in.gif"),
+            sleep_out=load_anim("sleep_out.gif"),
+            yawn=load_anim("yawn.gif"),
+            idle_anims=load_pool("idle"),
+            click_anims=load_pool("click"),
+            hungry_anims=load_pool("hungry"),
+            yawn_after=float(idle_cfg.get("yawn_after", 60.0)),
+            sleep_after=float(idle_cfg.get("sleep_after", 300.0)),
+            idle_random_every=tuple(idle_cfg.get("random_every", [25.0, 60.0])),
+            hungry_below=float(battery_cfg.get("hungry_below", 20.0)),
+            hungry_every=tuple(battery_cfg.get("every", [30.0, 60.0])),
         )

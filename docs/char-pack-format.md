@@ -169,9 +169,10 @@ cat.zip
 
 ## Implementation status
 
-- **Live now:** `static.png`, `blink.png`, `eye_left/right.png`, `config.json`
-  (`eyes`, `blink`, `click_squint`) — cursor-tracking pupils, periodic blink,
-  click squint. (`mycat/char_pack.py` + `PixelCatWindow`.)
-- **Planned (this spec):** the sleep / yawn / idle-random / click-random /
-  hungry states and their transition GIFs, plus the `idle` and `battery` config
-  sections. Files are decoded but not yet wired to the state machine.
+The full state machine is **live** (`mycat/char_pack.py` + `PixelCatWindow`):
+awake (cursor-tracking pupils), blink, click reaction (`clickN.gif` or squint),
+idle-random (`idleN.gif`), yawn, sleep (`sleep_in/out` + held `sleep.png`), and
+hungry (`hungryN.gif` on low battery), plus the `idle` and `battery` config
+sections. Every state is **gated on its assets** — a character only does what
+its files allow, so behaviour grows as you add GIFs. (No GIFs ship yet; the
+bundled characters use only static/blink/eyes/periodic-anim.)

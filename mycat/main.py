@@ -357,6 +357,31 @@ def save_image_to_ini(image_name: str) -> None:
         logger.error(f"Error saving to INI file: {e}")
 
 
+def read_battery_percent():
+    """Battery charge 0–100, or None if there is no battery / can't read it.
+
+    Native Linux /sys first; optional psutil fallback. Used by the 'hungry'
+    state — on a desktop with no battery it returns None (state never triggers)."""
+    base = Path("/sys/class/power_supply")
+    try:
+        for entry in base.iterdir():
+            try:
+                if (entry / "type").read_text().strip() == "Battery":
+                    return int((entry / "capacity").read_text().strip())
+            except OSError:
+                continue
+    except OSError:
+        pass
+    try:
+        import psutil
+        battery = psutil.sensors_battery()
+        if battery is not None:
+            return int(battery.percent)
+    except Exception:
+        pass
+    return None
+
+
 def harden_pixmap(pixmap: QtGui.QPixmap, threshold: int = 128) -> QtGui.QPixmap:
     """Snap alpha to 0/255 so a smooth-scaled silhouette has a crisp edge that
     matches the 1-bit shape mask — otherwise the anti-aliased edge renders as a
@@ -495,17 +520,24 @@ class PixelCatWindow(QtWidgets.QWidget):
             f"{gif_size.width()}x{gif_size.height()} (first_frame, {self.wait_time:.1f}s static)"
         )
 
+    def _all_pack_clips(self):
+        """Every Anim in the pack (for hardening / preprocessing)."""
+        pack = self.char_pack
+        clips = list(pack.anims) + list(pack.idle_anims) + list(pack.click_anims) + list(pack.hungry_anims)
+        clips += [a for a in (pack.sleep_in, pack.sleep_out, pack.yawn) if a is not None]
+        return clips
+
     def _setup_pack_content(self) -> None:
-        """Interactive char pack: static/blink frames, tracking pupils, periodic anims."""
+        """Interactive char pack: drives the state machine (awake/blink/click/idle/yawn/sleep/hungry)."""
         pack = self.char_pack
         # No compositor → snap body-frame edges to binary alpha (crisp, no fringe).
-        # Pupil sprites stay smooth: they're drawn over the opaque face, not over
-        # transparency, so they never fringe.
+        # Pupil sprites stay smooth (drawn over the opaque face, never fringe).
         if self.shape_mask_enabled:
             pack.static = harden_pixmap(pack.static)
-            if pack.blink is not None:
-                pack.blink = harden_pixmap(pack.blink)
-            for anim in pack.anims:
+            for still in ("blink", "sleep"):
+                if getattr(pack, still) is not None:
+                    setattr(pack, still, harden_pixmap(getattr(pack, still)))
+            for anim in self._all_pack_clips():
                 anim.frames = [harden_pixmap(frame) for frame in anim.frames]
         self.png_pixmap = pack.static
         self.gif_movie = None
@@ -517,59 +549,166 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.gif_duration, self.frame_delays = 0.0, []
         self.eye_clock = QtCore.QElapsedTimer()
         self.eye_clock.start()
+        self._test_now = None                 # tests inject time here
+        now = self._pack_now()
+
+        # --- state-machine state ---
+        self.base_state = "awake"             # "awake" | "sleeping"
+        self.active_clip = None               # (anim, start_t, next_state) one-shot
         self.squint_until = -10.0
-        self.next_blink = random.uniform(*pack.blink_every) if pack.blink_enabled else float("inf")
-        self.anim_next = [random.uniform(*anim.every) for anim in pack.anims]
-        self.active_anim = None
+        self.yawned = False
+        self.last_interaction = now           # mouse over the cat / click / drag
+        self.last_cursor_move = now           # global cursor movement
+        self.next_blink = now + random.uniform(*pack.blink_every) if pack.blink_enabled else float("inf")
+        self.next_idle = now + random.uniform(*pack.idle_random_every)
+        self.next_hungry = now + random.uniform(*pack.hungry_every)
+        self.anim_next = [now + random.uniform(*anim.every) for anim in pack.anims]
+        self._battery_pct = None
+        self._battery_checked = -1e9
         self._pack_mode = "open"
         self._last_cursor = QtGui.QCursor.pos()
         self._mask_cache: dict = {}
+
         self.pack_timer = QtCore.QTimer(self)
         self.pack_timer.timeout.connect(self._pack_tick)
-        self.pack_timer.start(33)     # ~30 fps; only repaints when something changed
+        self.pack_timer.start(33)             # ~30 fps; only repaints when something changed
         logger.info(
-            f"Loaded interactive char '{pack.name}' ({pack.static.width()}x{pack.static.height()}, "
-            f"eyes={pack.eyes is not None}, blink={pack.blink_enabled}, anims={len(pack.anims)})"
+            f"Loaded interactive char '{pack.name}' ({pack.static.width()}x{pack.static.height()}; "
+            f"eyes={pack.eyes is not None} blink={pack.blink_enabled} "
+            f"sleep={pack.sleep is not None} yawn={pack.yawn is not None} "
+            f"idle={len(pack.idle_anims)} click={len(pack.click_anims)} "
+            f"hungry={len(pack.hungry_anims)} anims={len(pack.anims)})"
         )
 
+    def _pack_now(self) -> float:
+        if getattr(self, "_test_now", None) is not None:
+            return self._test_now
+        return self.eye_clock.elapsed() / 1000.0
+
     def _pack_tick(self) -> None:
-        """Advance pack state; repaint only when the shown frame or gaze changes."""
+        """Advance the state machine; repaint only when the frame or gaze changes."""
+        now = self._pack_now()
+        cursor = QtGui.QCursor.pos()
+        moved = cursor != self._last_cursor
+        if moved:
+            self._last_cursor = cursor
+            self.last_cursor_move = now
+            self.yawned = False
         previous = self.current_pixmap
         self._pack_mode = self._update_pack_frame()
         changed = self.current_pixmap is not previous
-        if self._pack_mode == "open" and self.char_pack.eyes is not None:
-            cursor = QtGui.QCursor.pos()
-            if cursor != self._last_cursor:
-                self._last_cursor = cursor
-                changed = True
+        if moved and self._pack_mode == "open" and self.char_pack.eyes is not None:
+            changed = True
         if changed:
             self.update()
 
-    def _update_pack_frame(self) -> str:
-        """Pick the current frame (anim > blink > open) and set current_pixmap."""
+    def _clip_frame(self, anim, age_ms: float):
+        accumulated = 0
+        for frame, delay in zip(anim.frames, anim.delays):
+            accumulated += delay
+            if age_ms < accumulated:
+                return frame
+        return anim.frames[-1]
+
+    def _start_clip(self, anim, next_state: str, now: float) -> None:
+        self.active_clip = (anim, now, next_state)
+        if anim.frames:
+            self.current_pixmap = anim.frames[0]
+
+    def _wake(self, now: float) -> bool:
+        """If asleep (or falling asleep), wake via sleep_out (or instantly). True if woke."""
+        going_to_sleep = self.active_clip is not None and self.active_clip[2] == "sleeping"
+        if self.base_state != "sleeping" and not going_to_sleep:
+            return False
+        self.last_interaction = now      # waking is an interaction; don't re-sleep/yawn instantly
+        self.last_cursor_move = now
+        self.yawned = False
+        if self.char_pack.sleep_out is not None:
+            self._start_clip(self.char_pack.sleep_out, "awake", now)
+        else:
+            self.active_clip = None
+            self.base_state = "awake"
+        return True
+
+    def _battery_low(self) -> bool:
+        now = self._pack_now()
+        if now - self._battery_checked > 10.0:
+            self._battery_checked = now
+            self._battery_pct = read_battery_percent()
+        return self._battery_pct is not None and self._battery_pct <= self.char_pack.hungry_below
+
+    def _on_pack_click(self) -> None:
+        """Click reaction: wake if asleep, else play a clickN anim or squint."""
+        if self.char_pack is None:
+            return
+        now = self._pack_now()
+        self.last_interaction = now
+        self.yawned = False
+        if self._wake(now):
+            self.update()
+            return
         pack = self.char_pack
-        now = self.eye_clock.elapsed() / 1000.0
-        if self.active_anim is None:
-            for index, anim in enumerate(pack.anims):
-                if now >= self.anim_next[index]:
-                    self.active_anim = (anim, now)
-                    self.anim_next[index] = now + sum(anim.delays) / 1000.0 + random.uniform(*anim.every)
-                    break
-        if self.active_anim is not None:
-            anim, start = self.active_anim
-            elapsed_ms = (now - start) * 1000.0
-            if not anim.frames or elapsed_ms >= sum(anim.delays):
-                self.active_anim = None
+        if pack.click_anims:
+            self._start_clip(random.choice(pack.click_anims), "awake", now)
+        elif pack.blink is not None:
+            self.squint_until = now + pack.click_squint
+        self.update()
+
+    def _update_pack_frame(self) -> str:
+        """State machine: hungry > sleep > yawn > reaction > blink > awake. Sets current_pixmap."""
+        pack = self.char_pack
+        now = self._pack_now()
+
+        # An active one-shot clip (transition or reaction) plays to completion.
+        if self.active_clip is not None:
+            anim, start, next_state = self.active_clip
+            age_ms = (now - start) * 1000.0
+            if not anim.frames or age_ms >= sum(anim.delays):
+                self.active_clip = None
+                if next_state:
+                    self.base_state = next_state
             else:
-                acc = 0
-                frame = anim.frames[0]
-                for candidate, delay in zip(anim.frames, anim.delays):
-                    acc += delay
-                    if elapsed_ms < acc:
-                        frame = candidate
-                        break
-                self.current_pixmap = frame
+                self.current_pixmap = self._clip_frame(anim, age_ms)
                 return "anim"
+
+        # Held sleeping pose (wake is driven by interaction, not here).
+        if self.base_state == "sleeping":
+            self.current_pixmap = pack.sleep or pack.static
+            return "sleep"
+
+        idle_for = now - self.last_interaction
+        cursor_still = now - self.last_cursor_move
+
+        # hungry (low battery)
+        if pack.hungry_anims and now >= self.next_hungry and self._battery_low():
+            self._start_clip(random.choice(pack.hungry_anims), "awake", now)
+            self.next_hungry = now + random.uniform(*pack.hungry_every)
+            return "anim"
+        # sleep
+        if (pack.sleep is not None or pack.sleep_in is not None) and idle_for > pack.sleep_after:
+            if pack.sleep_in is not None:
+                self._start_clip(pack.sleep_in, "sleeping", now)
+                return "anim"
+            self.base_state = "sleeping"
+            self.current_pixmap = pack.sleep or pack.static
+            return "sleep"
+        # yawn (precursor to sleep)
+        if pack.yawn is not None and not self.yawned and cursor_still > pack.yawn_after:
+            self.yawned = True
+            self._start_clip(pack.yawn, "awake", now)
+            return "anim"
+        # idle-random pool
+        if pack.idle_anims and now >= self.next_idle:
+            self._start_clip(random.choice(pack.idle_anims), "awake", now)
+            self.next_idle = now + random.uniform(*pack.idle_random_every)
+            return "anim"
+        # periodic config animations
+        for index, anim in enumerate(pack.anims):
+            if now >= self.anim_next[index]:
+                self._start_clip(anim, "awake", now)
+                self.anim_next[index] = now + sum(anim.delays) / 1000.0 + random.uniform(*anim.every)
+                return "anim"
+        # blink
         if pack.blink_enabled and now >= self.next_blink:
             self.squint_until = now + pack.blink_duration
             self.next_blink = now + random.uniform(*pack.blink_every)
@@ -592,10 +731,6 @@ class PixelCatWindow(QtWidgets.QWidget):
             px = x + center.x() + ox - sprite.width() / 2.0
             py = y + center.y() + oy - sprite.height() / 2.0
             painter.drawPixmap(QtCore.QPointF(px, py), sprite)
-
-    def _trigger_squint(self) -> None:
-        if self.char_pack is not None:
-            self.squint_until = self.eye_clock.elapsed() / 1000.0 + self.char_pack.click_squint
 
     def _load_position(self) -> None:
         """Load window position from config; default to the bottom-right corner."""
@@ -1035,14 +1170,18 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.setMask(region.translated(x, y) if (x or y) else region)
 
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
-        """Handle mouse press for dragging (+ scrunch eyes shut on interactive characters)."""
+        """Handle mouse press for dragging (+ click reaction / wake on interactive characters)."""
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
-            self._trigger_squint()
+            self._on_pack_click()
             self.dragging = True
             self.drag_start_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
 
     def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
-        """Handle mouse move for dragging."""
+        """Handle mouse move for dragging (+ counts as interaction: resets idle, wakes)."""
+        if self.char_pack is not None:
+            now = self._pack_now()
+            self.last_interaction = now
+            self._wake(now)
         if self.dragging and event.buttons() == QtCore.Qt.MouseButton.LeftButton:
             new_pos = event.globalPosition().toPoint() - self.drag_start_pos
             self.move(new_pos)
