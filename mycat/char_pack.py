@@ -197,18 +197,20 @@ def load_pack(path, max_width: int = DEFAULT_MAX_WIDTH, max_height: int = DEFAUL
                 right=QtCore.QPointF(eye_cfg["right"]["x"] * scale, eye_cfg["right"]["y"] * scale),
             )
 
-        def gif_box_frames(name: str):
-            # Fit each GIF to the max box by its OWN native frame size, not by the
-            # static's scale. The body GIFs are often authored on a different-sized
-            # canvas than static.png; sharing the static's scale shrinks them, so a
-            # legacy character's animation rendered smaller than its still. (Pupil
-            # sprites/eye coords still use the static scale — they live in static's
-            # pixel space — but full-body frames each fill the box on their own.)
+        def gif_body_frames(name: str):
+            # Scale each body GIF so its on-screen HEIGHT matches the still's,
+            # keeping the GIF's own aspect ratio. The GIF is often authored on a
+            # different-sized canvas than static.png; sharing the static's scale
+            # shrank it (animation smaller than the still), while fitting it to the
+            # box independently left a different height (a vertical jump when it
+            # played). Matching the still's height keeps the character the same size
+            # in both states. (Pupil sprites/eye coords still use the static scale —
+            # they live in static's pixel space.)
             from PIL import Image
 
             data = archive.read(name)
             native_w, native_h = Image.open(io.BytesIO(data)).size
-            gif_scale = min(max_w / native_w, max_h / native_h, 1.0)
+            gif_scale = static.height() / native_h
             return gif_frames(data, gif_scale)
 
         blink_cfg = config.get("blink", {})
@@ -219,14 +221,14 @@ def load_pack(path, max_width: int = DEFAULT_MAX_WIDTH, max_height: int = DEFAUL
             name = entry.get("file")
             if not name or name not in names:
                 continue
-            frames, delays = gif_box_frames(name)
+            frames, delays = gif_body_frames(name)
             every = tuple(entry.get("every", [20, 40]))
             anims.append(Anim(frames=frames, delays=delays, every=every))
 
         def load_anim(name: str):
             if name not in names:
                 return None
-            frames, delays = gif_box_frames(name)
+            frames, delays = gif_body_frames(name)
             return Anim(frames=frames, delays=delays, every=(0.0, 0.0))
 
         def load_pool(prefix: str):
@@ -234,7 +236,7 @@ def load_pack(path, max_width: int = DEFAULT_MAX_WIDTH, max_height: int = DEFAUL
             for name in sorted(names):
                 base = name.rsplit("/", 1)[-1]
                 if base.startswith(prefix) and base.endswith(".gif"):
-                    frames, delays = gif_box_frames(name)
+                    frames, delays = gif_body_frames(name)
                     pool.append(Anim(frames=frames, delays=delays, every=(0.0, 0.0)))
             return pool
 
