@@ -18,6 +18,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 - **Black silhouette gap after switching characters (no-compositor shape-mask mode).** Switching from an animating character to another left part of the new character's body rendered black, frozen until the next animation played. On X11 without a compositor the shape mask was applied *after* the frame was blitted, so pixels newly revealed by a larger silhouette were never painted to screen (the server does not auto-expose a grown shape). The mask is now applied before painting, plus a one-shot follow-up repaint fills the revealed area; it settles in a single extra frame — no repaint loop (0 paints while idle, 30 fps while animating).
+- **Body animations rendered smaller than the still.** A character's GIF was scaled by the *static's* fit-scale; when the GIF was authored on a smaller native canvas than `static.png` (e.g. the converted girl/cat packs: 640×1138 GIF vs 768×1280 still) it came out shrunk. Each GIF now fits the `max_width`×`max_height` box by its own native size — like the still does — so the animation matches the body's footprint. The window is sized to the bounding box over the still and all frames (each centred) so a taller animated pose is not clipped.
 
 ## 0.1.6
 

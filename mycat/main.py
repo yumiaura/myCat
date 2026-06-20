@@ -470,8 +470,8 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.dragging = False
         self.drag_start_pos = QtCore.QPoint()
 
-        # Set window size to pixmap size
-        self.resize(self.current_pixmap.size())
+        # Set window size to pixmap size (pack: bounding box over all frames).
+        self.resize(self._pack_content_size() if self.char_pack is not None else self.current_pixmap.size())
 
         # Position window - defaults to bottom-right
         self._load_position()
@@ -526,6 +526,21 @@ class PixelCatWindow(QtWidgets.QWidget):
         clips = list(pack.anims) + list(pack.idle_anims) + list(pack.click_anims) + list(pack.hungry_anims)
         clips += [a for a in (pack.sleep_in, pack.sleep_out, pack.yawn) if a is not None]
         return clips
+
+    def _pack_content_size(self) -> QtCore.QSize:
+        """Bounding box over the static and every frame, so the window fits the
+        largest pose. Frames are box-fit independently and a body GIF may be taller
+        than the still; the window must hold it or it would be clipped. Each frame
+        is centred within this box at paint time."""
+        pack = self.char_pack
+        width, height = pack.static.width(), pack.static.height()
+        for still in (pack.blink, pack.sleep):
+            if still is not None:
+                width, height = max(width, still.width()), max(height, still.height())
+        for anim in self._all_pack_clips():
+            for frame in anim.frames:
+                width, height = max(width, frame.width()), max(height, frame.height())
+        return QtCore.QSize(width, height)
 
     def _setup_pack_content(self) -> None:
         """Interactive char pack: drives the state machine (awake/blink/click/idle/yawn/sleep/hungry)."""
@@ -917,8 +932,8 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.file_name = image_name
         self._setup_pack_content()
 
-        self.resize(self.current_pixmap.size())
-        new_size = self.current_pixmap.size()
+        new_size = self._pack_content_size()
+        self.resize(new_size)
         self.move(bottom_right_x - new_size.width(), bottom_right_y - new_size.height())
         save_image_to_ini(image_name)
         self._save_position()
