@@ -12,6 +12,7 @@ All notable changes to this project are documented in this file.
 - The OpenAI/cloud backend is now a dependency-free `urllib` client (no `openai` package required) that supports any `base_url`.
 - Renamed the "Start on login" item to "Autostart" in the context and tray menus (branch `chore/autostart-label`).
 - Skins are now decoded straight from the packaged ZIP bytes into an in-memory `QBuffer`-backed `QMovie`; nothing is written to `/tmp/mycat` anymore (branch `feat/in-memory-skins`). The animation restart and skin-switch paths recreate the movie from the held GIF bytes, so no temp files are touched at any point.
+- **Pupil gaze is now synchronous.** Both pupils share one angle — that of whichever eye is nearer the cursor. Outside the eye pair they move in parallel; when the cursor is horizontally between the eyes they mirror each other so the gaze converges. (Previously each eye tracked the cursor independently.)
 
 ### Removed
 - `/tmp/mycat` temp-file extraction and the `TEMP_DIR` / `STATIC_PNG_PATH` / `ANIMATION_GIF_PATH` globals plus `get_temp_dir()` (branch `feat/in-memory-skins`).

@@ -731,18 +731,45 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.current_pixmap = pack.blink if (squinting and pack.blink is not None) else pack.static
         return "blink" if squinting else "open"
 
+    def pupil_offsets(self, x: int, y: int, cursor: QtCore.QPoint):
+        """Gaze offsets (scaled px) for the (left, right) pupils.
+
+        Both pupils share one angle — that of whichever eye is nearer the cursor.
+        When the cursor is outside the eye pair they move in parallel (the same
+        offset); when it is horizontally between the eyes they mirror each other
+        (the nearer eye aims at the cursor, the other takes the horizontal
+        mirror), so the gaze converges. Sockets sit at equal height, so the two
+        cases meet continuously at the boundaries. Returns ((lox, loy), (rox, roy))."""
+        pack = self.char_pack
+        travel = pack.eyes.travel_radius
+        left_socket = self.mapToGlobal(QtCore.QPoint(round(x + pack.eyes.left.x()), round(y + pack.eyes.left.y())))
+        right_socket = self.mapToGlobal(QtCore.QPoint(round(x + pack.eyes.right.x()), round(y + pack.eyes.right.y())))
+
+        def aim(socket):
+            dx, dy = cursor.x() - socket.x(), cursor.y() - socket.y()
+            dist = math.hypot(dx, dy)
+            return (dx / dist * travel, dy / dist * travel) if dist > 1 else (0.0, 0.0)
+
+        left_dist = math.hypot(cursor.x() - left_socket.x(), cursor.y() - left_socket.y())
+        right_dist = math.hypot(cursor.x() - right_socket.x(), cursor.y() - right_socket.y())
+        left_nearer = left_dist <= right_dist
+        base = aim(left_socket if left_nearer else right_socket)
+
+        if left_socket.x() < cursor.x() < right_socket.x():     # between the eyes -> converge (mirror)
+            mirrored = (-base[0], base[1])
+            return (base, mirrored) if left_nearer else (mirrored, base)
+        return base, base                                       # outside the pair -> parallel
+
     def _draw_pupils(self, painter, x: int, y: int) -> None:
-        """Draw the L/R pupil sprites, offset toward the cursor within travel_radius."""
+        """Draw the L/R pupil sprites at the computed gaze offsets."""
         pack = self.char_pack
         if not pack.eyes or pack.eye_left is None or pack.eye_right is None:
             return
-        cursor = QtGui.QCursor.pos()
-        travel = pack.eyes.travel_radius
-        for center, sprite in ((pack.eyes.left, pack.eye_left), (pack.eyes.right, pack.eye_right)):
-            socket = self.mapToGlobal(QtCore.QPoint(round(x + center.x()), round(y + center.y())))
-            dx, dy = cursor.x() - socket.x(), cursor.y() - socket.y()
-            dist = math.hypot(dx, dy)
-            ox, oy = (dx / dist * travel, dy / dist * travel) if dist > 1 else (0.0, 0.0)
+        left_off, right_off = self.pupil_offsets(x, y, QtGui.QCursor.pos())
+        for center, sprite, (ox, oy) in (
+            (pack.eyes.left, pack.eye_left, left_off),
+            (pack.eyes.right, pack.eye_right, right_off),
+        ):
             px = x + center.x() + ox - sprite.width() / 2.0
             py = y + center.y() + oy - sprite.height() / 2.0
             painter.drawPixmap(QtCore.QPointF(px, py), sprite)
