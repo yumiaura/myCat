@@ -1,10 +1,10 @@
 """Local char discovery.
 
 A char is either a **folder** or a **`.zip`** (read in memory) named by its id.
-Characters live in two locations:
-- **Bundled:** `mycat/characters/` — packaged with the wheel.
+Chars live in two locations:
+- **Bundled:** `mycat/chars/` — packaged with the wheel.
 - **User:** platform-specific writable directory — receives downloads from the
-  shop and user-imported characters.
+  shop and user-imported chars.
 
 The user directory takes precedence: if both a bundled and a user copy of a
 char with the same id exist, the user one wins (so users can replace bundled
@@ -30,7 +30,7 @@ CHAR_MARKERS = ("config.json", "static.png")
 
 
 def bundled_chars_dir() -> Path:
-    return Path(__file__).resolve().parent / "characters"
+    return Path(__file__).resolve().parent / "chars"
 
 
 def is_char_folder(path: Path) -> bool:
@@ -43,15 +43,15 @@ def is_char_folder(path: Path) -> bool:
 
 
 def user_chars_dir() -> Path:
-    """Platform-specific writable directory for downloaded/user-added characters."""
+    """Platform-specific writable directory for downloaded/user-added chars."""
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-        return Path(base) / "mycat" / "characters"
+        return Path(base) / "mycat" / "chars"
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "mycat" / "characters"
+        return Path.home() / "Library" / "Application Support" / "mycat" / "chars"
     xdg = os.environ.get("XDG_DATA_HOME")
     base = Path(xdg) if xdg else Path.home() / ".local" / "share"
-    return base / "mycat" / "characters"
+    return base / "mycat" / "chars"
 
 
 def ensure_user_chars_dir() -> Path:
@@ -59,7 +59,7 @@ def ensure_user_chars_dir() -> Path:
     try:
         path.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
-        logger.warning("Could not create user characters dir %s: %s", path, exc)
+        logger.warning("Could not create user chars dir %s: %s", path, exc)
     return path
 
 

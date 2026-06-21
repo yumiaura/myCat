@@ -21,7 +21,7 @@ config.json (coordinates are in static.png native pixels):
     "animations": [ {"file": "anim/stretch.gif", "enabled": true, "every": [20, 40]} ]
   }
 
-The character is scaled proportionally to fit within max_width × max_height
+The char is scaled proportionally to fit within max_width × max_height
 (default 200×400, shrink-only); the renderer works in those scaled pixels.
 """
 
@@ -157,7 +157,7 @@ def gif_frames(data: bytes, scale: float):
 def load_pack(path, max_width: int = DEFAULT_MAX_WIDTH, max_height: int = DEFAULT_MAX_HEIGHT) -> CharPack:
     """Read a new-format char (folder or .zip), scaled to fit a max box.
 
-    The character is scaled proportionally to fit within ``max_width`` ×
+    The char is scaled proportionally to fit within ``max_width`` ×
     ``max_height`` (config ``max_width``/``max_height``, default 200×400); only
     downscaled, never enlarged. Everything (frames, sprites, eye coords) uses the
     same fit-scale.
@@ -203,7 +203,7 @@ def load_pack(path, max_width: int = DEFAULT_MAX_WIDTH, max_height: int = DEFAUL
             # different-sized canvas than static.png; sharing the static's scale
             # shrank it (animation smaller than the still), while fitting it to the
             # box independently left a different height (a vertical jump when it
-            # played). Matching the still's height keeps the character the same size
+            # played). Matching the still's height keeps the char the same size
             # in both states. (Pupil sprites/eye coords still use the static scale —
             # they live in static's pixel space.)
             from PIL import Image

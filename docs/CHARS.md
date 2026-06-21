@@ -1,17 +1,17 @@
 # mycat interactive char-pack format
 
-A character is a single `<name>.zip`. The cat is a small **state machine**: a base
+A char is a single `<name>.zip`. The cat is a small **state machine**: a base
 "awake" pose whose pupils follow the cursor, plus optional expressions and
 animations that play on idle, on click, on wake/sleep, and on low battery.
 
 Everything is **convention over configuration**: you drop files with the
 reserved names below into the zip and they are picked up automatically. Anything
-missing simply disables that behaviour — so a character can be as small as one PNG and
+missing simply disables that behaviour — so a char can be as small as one PNG and
 grow incrementally. `config.json` only carries *parameters* (timings, pupil
 geometry, thresholds), never file paths.
 
 All images are RGBA with a transparent background. Coordinates in `config.json`
-are in **`static.png` native pixels**; the runtime scales the character
+are in **`static.png` native pixels**; the runtime scales the char
 proportionally to fit within `max_width` × `max_height` (default 200×400,
 downscale-only) and scales everything else by the same factor.
 
@@ -173,6 +173,6 @@ The full state machine is **live** (`mycat/char_pack.py` + `PixelCatWindow`):
 awake (cursor-tracking pupils), blink, click reaction (`clickN.gif` or squint),
 idle-random (`idleN.gif`), yawn, sleep (`sleep_in/out` + held `sleep.png`), and
 hungry (`hungryN.gif` on low battery), plus the `idle` and `battery` config
-sections. Every state is **gated on its assets** — a character only does what
+sections. Every state is **gated on its assets** — a char only does what
 its files allow, so behaviour grows as you add GIFs. (No GIFs ship yet; the
-bundled characters use only static/blink/eyes/periodic-anim.)
+bundled chars use only static/blink/eyes/periodic-anim.)

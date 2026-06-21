@@ -2,7 +2,7 @@
 
 Pattern is copied from `llm_ui.py`: workers go through QThreadPool, results
 arrive via Qt signals on the main thread. The dialog is intentionally minimal
-for the MVP — two tabs (Catalog / My Characters) and a small status footer.
+for the MVP — two tabs (Catalog / My Chars) and a small status footer.
 """
 
 from __future__ import annotations
@@ -303,7 +303,7 @@ class ShopDialog(QtWidgets.QDialog):
         self.catalog_scroll.setWidget(self.catalog_content)
         self.tabs.addTab(self.catalog_scroll, "Catalog")
 
-        # My Characters tab
+        # My Chars tab
         my_chars_widget = QtWidgets.QWidget()
         my_chars_layout = QtWidgets.QVBoxLayout(my_chars_widget)
         my_chars_layout.setContentsMargins(8, 8, 8, 8)
@@ -315,7 +315,7 @@ class ShopDialog(QtWidgets.QDialog):
         buttons.addWidget(self.uninstall_button)
         buttons.addStretch(1)
         my_chars_layout.addLayout(buttons)
-        self.tabs.addTab(my_chars_widget, "My Characters")
+        self.tabs.addTab(my_chars_widget, "My Chars")
 
         # Footer
         self.status_label = QtWidgets.QLabel("")
@@ -343,7 +343,7 @@ class ShopDialog(QtWidgets.QDialog):
         self.refresh_button.setEnabled(True)
         self._render_catalog()
         self._refresh_my_chars()
-        self.status_label.setText(f"{len(catalog.characters)} characters available.")
+        self.status_label.setText(f"{len(catalog.chars)} chars available.")
 
     def _on_catalog_failed(self, message: str) -> None:
         self.refresh_button.setEnabled(True)
@@ -358,14 +358,14 @@ class ShopDialog(QtWidgets.QDialog):
                 widget.deleteLater()
         self._cards.clear()
 
-        if not self._catalog or not self._catalog.characters:
-            empty = QtWidgets.QLabel("No characters available.")
+        if not self._catalog or not self._catalog.chars:
+            empty = QtWidgets.QLabel("No chars available.")
             empty.setStyleSheet("color:#888;")
             self.catalog_grid.addWidget(empty, 0, 0)
             return
 
         columns = 3
-        for index, char in enumerate(self._catalog.characters):
+        for index, char in enumerate(self._catalog.chars):
             row, col = divmod(index, columns)
             installed = char_catalog.is_user_installed(char.id)
             card = _CharCard(char, installed=installed, parent=self.catalog_content)
@@ -380,7 +380,7 @@ class ShopDialog(QtWidgets.QDialog):
     def _install_char(self, char_id: str) -> None:
         if not self._catalog:
             return
-        char = next((s for s in self._catalog.characters if s.id == char_id), None)
+        char = next((s for s in self._catalog.chars if s.id == char_id), None)
         if char is None:
             return
         if char.tier != "free":

@@ -71,14 +71,15 @@ class CharEntry:
 class Catalog:
     schema_version: int
     generated_at: str
-    characters: list[CharEntry]
+    chars: list[CharEntry]
 
     @classmethod
     def from_dict(cls, data: dict) -> Catalog:
         return cls(
             schema_version=int(data.get("schema_version", 1)),
             generated_at=str(data.get("generated_at", "")),
-            characters=[CharEntry.from_dict(s) for s in data.get("characters", [])],
+            # Server wire key stays "characters"; our field is `chars`.
+            chars=[CharEntry.from_dict(s) for s in data.get("characters", [])],
         )
 
 

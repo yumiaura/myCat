@@ -206,7 +206,7 @@ def load_packaged_images(
         base_name = default_image or "cat"
         resolved = char_catalog.find_char(base_name)
         if resolved is None:
-            raise FileNotFoundError(f"Char '{base_name}' not found in bundled or user characters dir")
+            raise FileNotFoundError(f"Char '{base_name}' not found in bundled or user chars dir")
         char_path = resolved
     base_name = char_path.stem
 
@@ -388,7 +388,7 @@ def harden_pixmap(pixmap: QtGui.QPixmap, threshold: int = 128) -> QtGui.QPixmap:
     muddy fringe on X11 without a compositor.
 
     Uses Pillow's C-speed ``point`` on the alpha channel — a Python per-pixel
-    loop here froze loads of large multi-frame characters (e.g. girl*, 120
+    loop here froze loads of large multi-frame chars (e.g. girl*, 120
     frames at 281×500)."""
     from PIL import Image
 
@@ -480,7 +480,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
 
-        # Schedule first animation pass (GIF characters only)
+        # Schedule first animation pass (GIF chars only)
         if self.char_pack is None:
             self._schedule_next_animation()
 
@@ -825,7 +825,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         save_config(config)
     
     def _load_image(self, image_name: str) -> None:
-        """Switch characters — a new interactive pack or a legacy single-GIF."""
+        """Switch chars — a new interactive pack or a legacy single-GIF."""
         zip_path = char_catalog.find_char(image_name)
         if zip_path is None:
             logger.error(f"ZIP file not found for char: {image_name}")
@@ -996,10 +996,10 @@ class PixelCatWindow(QtWidgets.QWidget):
         reminder_action.triggered.connect(self._open_reminder)
         menu.addSeparator()
 
-        # Rebuild the list every time so freshly-installed characters appear without restart.
+        # Rebuild the list every time so freshly-installed chars appear without restart.
         self.available_images = char_catalog.scan_all()
         if len(self.available_images) > 0:
-            images_menu = menu.addMenu("Characters")
+            images_menu = menu.addMenu("Chars")
             for img_name in self.available_images:
                 action = images_menu.addAction(img_name)
                 if img_name == self.file_name:
@@ -1165,7 +1165,7 @@ class PixelCatWindow(QtWidgets.QWidget):
             self._schedule_next_animation()
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        """Paint the current pixmap (+ tracking pupils for interactive characters)."""
+        """Paint the current pixmap (+ tracking pupils for interactive chars)."""
         mode = getattr(self, "_pack_mode", None) if self.char_pack is not None else None
 
         # Centre the pixmap in the widget.
@@ -1176,7 +1176,7 @@ class PixelCatWindow(QtWidgets.QWidget):
 
         # Update the silhouette mask BEFORE painting: the backing-store -> screen
         # blit at the end of this paint is clipped to the *current* mask, so any
-        # pixels newly revealed by a shape change (e.g. switching to a character
+        # pixels newly revealed by a shape change (e.g. switching to a char
         # with a larger silhouette) must be inside the mask now, or they never
         # get blitted and stay as stale/black framebuffer until the next repaint.
         if self.shape_mask_enabled:
@@ -1202,7 +1202,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.shape_mask_key = key
 
         # Reuse the silhouette region per frame — building QRegion from a big
-        # bitmap each paint is what made multi-frame characters lag.
+        # bitmap each paint is what made multi-frame chars lag.
         cache = getattr(self, "_mask_cache", None)
         region = cache.get(pixmap.cacheKey()) if cache is not None else None
         if region is None:
@@ -1221,12 +1221,12 @@ class PixelCatWindow(QtWidgets.QWidget):
         # one more paint now that the new mask is in effect to fill them. The
         # cache-key guard above makes that follow-up paint a no-op for the mask,
         # so this settles in a single extra frame (no repaint loop). Without it a
-        # character switch onto a static frame freezes the gap as black until the
+        # char switch onto a static frame freezes the gap as black until the
         # next animation happens to repaint everything.
         self.update()
 
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
-        """Handle mouse press for dragging (+ click reaction / wake on interactive characters)."""
+        """Handle mouse press for dragging (+ click reaction / wake on interactive chars)."""
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
             self._on_pack_click()
             self.dragging = True
