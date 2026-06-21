@@ -6,8 +6,10 @@ All notable changes to this project are documented in this file.
 
 ### Added
 - **Multiple chat vendors.** The LLM settings dialog (right-click → LLM…) now lets you pick a vendor — Ollama (default, local), OpenAI, Grok (xAI), Groq, DeepSeek, OpenRouter — or define a **custom** OpenAI-compatible endpoint (name + base URL + key + model). One adapter covers every OpenAI-compatible provider. API keys are hybrid: typed into the dialog (saved to config) or read from the vendor's environment variable.
+- **Interactive character packs.** A character is a folder or `.zip` with `static`/`blink` frames, L/R pupil sprites, optional body GIFs, and a `config.json`. The cat tracks the cursor with synchronous pupils, blinks, reacts to clicks, and runs an asset-gated state machine (idle / yawn / sleep / hungry-on-low-battery) — each behaviour active only if its assets exist. Fits a `max_width`×`max_height` box; crisp edges on X11 without a compositor. Bundled `cat` character; format spec in `docs/CHARACTERS.md`.
 
 ### Changed
+- Renamed "skin" → "character" across the UI, code, docs, and shop wire-contract; the bundled directory moved `images/` → `characters/`.
 - The reminder settings dialog is now **non-modal**, so the flyby launched by its **Test** button can be grabbed and dragged while the dialog stays open (a modal dialog grabbed all input, leaving the test plane unclickable). Reopening while already open just raises the existing dialog (branch `fix/reminder-dialog-nonmodal`).
 - The OpenAI/cloud backend is now a dependency-free `urllib` client (no `openai` package required) that supports any `base_url`.
 - Renamed the "Start on login" item to "Autostart" in the context and tray menus (branch `chore/autostart-label`).
