@@ -116,10 +116,10 @@ The cat remembers its position and selected char between sessions in `~/.config/
 sudo apt install imagemagick
 
 # Build an animated GIF from a sprite sheet
-convert images/cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 images/cat.gif
+convert cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 cat.gif
 
 # Package it as a char ZIP
-zip images/cat.zip images/cat.gif
+zip cat.zip cat.gif
 ```
 
 Drop the resulting ZIP next to the others and pick it from the right-click **Chars** menu.

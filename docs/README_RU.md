@@ -109,10 +109,10 @@ mycat --pos 960 540        # центр экрана 1920x1080
 sudo apt install imagemagick
 
 # Собрать анимированный GIF из спрайт-листа
-convert images/cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 images/cat.gif
+convert cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 cat.gif
 
 # Упаковать как ZIP-персонаж
-zip images/cat.zip images/cat.gif
+zip cat.zip cat.gif
 ```
 
 Положи получившийся ZIP рядом с остальными и выбери его в меню **персонажей** по правому клику.

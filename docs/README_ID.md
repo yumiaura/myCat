@@ -109,10 +109,10 @@ Kucing mengingat posisi dan char di `~/.config/mycat/config.ini`.
 sudo apt install imagemagick
 
 # Bangun GIF animasi dari sprite sheet
-convert images/cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 images/cat.gif
+convert cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 cat.gif
 
 # Kemas sebagai ZIP char
-zip images/cat.zip images/cat.gif
+zip cat.zip cat.gif
 ```
 
 Letakkan ZIP hasilnya di samping yang lain dan pilih dari menu **Chars** klik-kanan.

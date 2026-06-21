@@ -109,10 +109,10 @@ mycat --pos 960 540        # 1920x1080 屏幕中心
 sudo apt install imagemagick
 
 # 从精灵图生成动画 GIF
-convert images/cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 images/cat.gif
+convert cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 cat.gif
 
 # 打包为角色 ZIP
-zip images/cat.zip images/cat.gif
+zip cat.zip cat.gif
 ```
 
 把生成的 ZIP 放到其它角色旁边，从右键 **角色** 菜单选择它。
