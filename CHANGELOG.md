@@ -12,16 +12,9 @@ All notable changes to this project are documented in this file.
 - The OpenAI/cloud backend is now a dependency-free `urllib` client (no `openai` package required) that supports any `base_url`.
 - Renamed the "Start on login" item to "Autostart" in the context and tray menus (branch `chore/autostart-label`).
 - Skins are now decoded straight from the packaged ZIP bytes into an in-memory `QBuffer`-backed `QMovie`; nothing is written to `/tmp/mycat` anymore (branch `feat/in-memory-skins`). The animation restart and skin-switch paths recreate the movie from the held GIF bytes, so no temp files are touched at any point.
-- **Pupil gaze is now synchronous.** Both pupils share one angle — that of whichever eye is nearer the cursor. Outside the eye pair they move in parallel; when the cursor is horizontally between the eyes they mirror each other so the gaze converges. (Previously each eye tracked the cursor independently.)
-- Renamed `docs/char-pack-format.md` → `docs/CHARACTERS.md` (the character-pack + state-machine spec).
 
 ### Removed
 - `/tmp/mycat` temp-file extraction and the `TEMP_DIR` / `STATIC_PNG_PATH` / `ANIMATION_GIF_PATH` globals plus `get_temp_dir()` (branch `feat/in-memory-skins`).
-- `demo/` standalone eye-cat prototype (`eye_cat_demo.py` + source PNGs) — superseded by the integrated eye-cat in `mycat/` and the bundled `cat` character.
-
-### Fixed
-- **Black silhouette gap after switching characters (no-compositor shape-mask mode).** Switching from an animating character to another left part of the new character's body rendered black, frozen until the next animation played. On X11 without a compositor the shape mask was applied *after* the frame was blitted, so pixels newly revealed by a larger silhouette were never painted to screen (the server does not auto-expose a grown shape). The mask is now applied before painting, plus a one-shot follow-up repaint fills the revealed area; it settles in a single extra frame — no repaint loop (0 paints while idle, 30 fps while animating).
-- **Body animations rendered smaller than the still.** A character's GIF was scaled by the *static's* fit-scale; when the GIF was authored on a smaller native canvas than `static.png` (e.g. the converted girl/cat packs: 640×1138 GIF vs 768×1280 still) it came out shrunk. Each body GIF is now scaled so its on-screen **height matches the still** (keeping the GIF's own aspect ratio), so the character stays the same size whether it is static or animating — no size change when an animation plays. The window is sized to the bounding box over the still and all frames (each centred) so a taller pose is never clipped.
 
 ## 0.1.6
 
