@@ -58,9 +58,9 @@ def ensure_user_skins_dir() -> Path:
 
 
 def normalize_skin_id(value: str) -> str:
-    """Return a filesystem-safe skin id for user-imported pets."""
+    """Return a filesystem-safe skin id for user-imported cats."""
     normalized = SKIN_ID_PATTERN.sub("-", value.strip()).strip(".-_").lower()
-    return normalized or "pet"
+    return normalized or "cat"
 
 
 def unique_skin_id(base_id: str) -> str:
@@ -95,15 +95,15 @@ def validate_skin_zip(zip_path: Path) -> None:
         raise ValueError(f"Skin ZIP must contain exactly one GIF, found {len(gif_files)}")
 
 
-def install_custom_pet(source_path: str | Path, pet_name: str | None = None) -> str:
-    """Install a local GIF or skin ZIP as a user pet and return its skin id."""
+def install_custom_cat(source_path: str | Path, cat_name: str | None = None) -> str:
+    """Install a local GIF or skin ZIP as a user cat and return its skin id."""
     source = Path(source_path).expanduser()
     if not source.exists():
-        raise FileNotFoundError(f"Pet image not found: {source}")
+        raise FileNotFoundError(f"Cat image not found: {source}")
     if not source.is_file():
-        raise ValueError(f"Pet image must be a file: {source}")
+        raise ValueError(f"Cat image must be a file: {source}")
 
-    base_name = pet_name or source.stem
+    base_name = cat_name or source.stem
     skin_id = unique_skin_id(base_name)
     destination = ensure_user_skins_dir() / f"{skin_id}.zip"
 
@@ -114,7 +114,7 @@ def install_custom_pet(source_path: str | Path, pet_name: str | None = None) -> 
         with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as zip_file:
             zip_file.write(source, arcname=f"{skin_id}.gif")
     else:
-        raise ValueError("Pet image must be a .gif animation or a .zip skin archive")
+        raise ValueError("Cat image must be a .gif animation or a .zip skin archive")
 
     record_installed(
         skin_id,
@@ -220,7 +220,7 @@ __all__ = [
     "unique_skin_id",
     "gif_names_in_zip",
     "validate_skin_zip",
-    "install_custom_pet",
+    "install_custom_cat",
     "scan_all",
     "find_skin_zip",
     "installed_metadata_path",

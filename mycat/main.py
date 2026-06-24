@@ -368,10 +368,10 @@ def save_image_to_ini(image_name: str) -> None:
         logger.error(f"Error saving to INI file: {e}")
 
 
-def install_pet_image(source_path: str, pet_name: str | None = None) -> str:
-    """Install a local pet GIF/ZIP and return the new skin id."""
-    skin_id = skin_catalog.install_custom_pet(source_path, pet_name)
-    logger.info("Installed custom pet '%s' from %s", skin_id, source_path)
+def install_cat_image(source_path: str, cat_name: str | None = None) -> str:
+    """Install a local cat GIF/ZIP and return the new skin id."""
+    skin_id = skin_catalog.install_custom_cat(source_path, cat_name)
+    logger.info("Installed custom cat '%s' from %s", skin_id, source_path)
     return skin_id
 
 
@@ -682,8 +682,8 @@ class PixelCatWindow(QtWidgets.QWidget):
         reminder_action.triggered.connect(self._open_reminder)
         menu.addSeparator()
 
-        import_pet_action = menu.addAction("Import pet…")
-        import_pet_action.triggered.connect(self._import_pet_image)
+        import_cat_action = menu.addAction("Import cat…")
+        import_cat_action.triggered.connect(self._import_cat_image)
 
         # Rebuild the list every time so freshly-installed skins appear without restart.
         self.available_images = skin_catalog.scan_all()
@@ -762,32 +762,32 @@ class PixelCatWindow(QtWidgets.QWidget):
         if controller is not None:
             controller.open_dialog()
 
-    def _import_pet_image(self) -> None:
-        """Let users install their own cat/dog GIF or skin ZIP from the menu."""
+    def _import_cat_image(self) -> None:
+        """Let users install their own cat GIF or skin ZIP from the menu."""
         file_path, _selected_filter = QtWidgets.QFileDialog.getOpenFileName(
             self,
-            "Choose pet animation",
+            "Choose cat animation",
             str(Path.home()),
-            "Pet animations (*.gif *.zip)",
+            "Cat animations (*.gif *.zip)",
         )
         if not file_path:
             return
 
         default_name = Path(file_path).stem
-        pet_name, ok = QtWidgets.QInputDialog.getText(
+        cat_name, ok = QtWidgets.QInputDialog.getText(
             self,
-            "Name this pet",
-            "Pet name:",
+            "Name this cat",
+            "Cat name:",
             text=default_name,
         )
         if not ok:
             return
 
         try:
-            skin_id = install_pet_image(file_path, pet_name or default_name)
+            skin_id = install_cat_image(file_path, cat_name or default_name)
         except Exception as exc:
-            logger.error("Could not import pet image: %s", exc)
-            QtWidgets.QMessageBox.warning(self, "Import pet", str(exc))
+            logger.error("Could not import cat image: %s", exc)
+            QtWidgets.QMessageBox.warning(self, "Import cat", str(exc))
             return
 
         self.available_images = skin_catalog.scan_all()
@@ -965,16 +965,16 @@ def parse_args() -> argparse.Namespace:
         help="Start position (overrides remembered position)",
     )
     parser.add_argument(
-        "--pet-image",
+        "--cat-image",
         type=str,
         default=None,
-        help="Install and launch a custom pet from a local .gif or .zip skin archive.",
+        help="Install and launch a custom cat from a local .gif or .zip skin archive.",
     )
     parser.add_argument(
-        "--pet-name",
+        "--cat-name",
         type=str,
         default=None,
-        help="Name to save the --pet-image skin under (for example: luna, max, momo).",
+        help="Name to save the --cat-image skin under (for example: luna, momo, miso).",
     )
     parser.add_argument(
         "--debug",
@@ -983,10 +983,10 @@ def parse_args() -> argparse.Namespace:
     )
     llm.add_arguments(parser)
     args = parser.parse_args()
-    if args.image and args.pet_image:
-        parser.error("--image and --pet-image cannot be used together")
-    if args.pet_name and not args.pet_image:
-        parser.error("--pet-name requires --pet-image")
+    if args.image and args.cat_image:
+        parser.error("--image and --cat-image cannot be used together")
+    if args.cat_name and not args.cat_image:
+        parser.error("--cat-name requires --cat-image")
     return args
 
 def x11_compositor_active() -> bool | None:
@@ -1257,19 +1257,19 @@ def main() -> None:
     available_images = scan_images_directory()
     logger.info(f"Found {len(available_images)} ZIP archive(s): {', '.join(available_images)}")
     
-    # Import a custom pet before scanning so it appears in menus and config.
-    launched_pet = None
-    if args.pet_image:
+    # Import a custom cat before scanning so it appears in menus and config.
+    launched_cat = None
+    if args.cat_image:
         try:
-            launched_pet = install_pet_image(args.pet_image, args.pet_name)
+            launched_cat = install_cat_image(args.cat_image, args.cat_name)
         except Exception as e:
-            logger.error(f"Error importing custom pet: {e}")
+            logger.error(f"Error importing custom cat: {e}")
             sys.exit(2)
 
     # Load default image from INI if no image path provided
     default_image = None
-    if launched_pet:
-        default_image = launched_pet
+    if launched_cat:
+        default_image = launched_cat
         available_images = scan_images_directory()
     elif not args.image:
         default_image = load_image_from_ini()

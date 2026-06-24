@@ -13,12 +13,12 @@ def write_gif(path: Path) -> None:
     image.save(path, format="GIF")
 
 
-def test_install_custom_pet_wraps_gif(monkeypatch, tmp_path):
+def test_install_custom_cat_wraps_gif(monkeypatch, tmp_path):
     monkeypatch.setenv("MYCAT_SKINS_DIR", str(tmp_path / "skins"))
     source = tmp_path / "Momo Cat!.gif"
     write_gif(source)
 
-    skin_id = skin_catalog.install_custom_pet(source, "Momo Cat!")
+    skin_id = skin_catalog.install_custom_cat(source, "Momo Cat!")
 
     assert skin_id == "momo-cat"
     installed = skin_catalog.user_skins_dir() / "momo-cat.zip"
@@ -31,39 +31,39 @@ def test_install_custom_pet_wraps_gif(monkeypatch, tmp_path):
     assert metadata["skins"][0]["sha256"]
 
 
-def test_install_custom_pet_copies_valid_zip(monkeypatch, tmp_path):
+def test_install_custom_cat_copies_valid_zip(monkeypatch, tmp_path):
     monkeypatch.setenv("MYCAT_SKINS_DIR", str(tmp_path / "skins"))
-    gif_path = tmp_path / "dog.gif"
-    zip_path = tmp_path / "dog.zip"
+    gif_path = tmp_path / "miso.gif"
+    zip_path = tmp_path / "miso.zip"
     write_gif(gif_path)
     with zipfile.ZipFile(zip_path, "w") as zip_file:
-        zip_file.write(gif_path, arcname="dog.gif")
+        zip_file.write(gif_path, arcname="miso.gif")
 
-    skin_id = skin_catalog.install_custom_pet(zip_path, "Max")
+    skin_id = skin_catalog.install_custom_cat(zip_path, "Miso")
 
-    assert skin_id == "max"
-    assert skin_catalog.find_skin_zip("max") == skin_catalog.user_skins_dir() / "max.zip"
+    assert skin_id == "miso"
+    assert skin_catalog.find_skin_zip("miso") == skin_catalog.user_skins_dir() / "miso.zip"
 
 
-def test_install_custom_pet_rejects_zip_without_single_gif(monkeypatch, tmp_path):
+def test_install_custom_cat_rejects_zip_without_single_gif(monkeypatch, tmp_path):
     monkeypatch.setenv("MYCAT_SKINS_DIR", str(tmp_path / "skins"))
     zip_path = tmp_path / "empty.zip"
     with zipfile.ZipFile(zip_path, "w") as zip_file:
         zip_file.writestr("readme.txt", "not a skin")
 
     with pytest.raises(ValueError, match="exactly one GIF"):
-        skin_catalog.install_custom_pet(zip_path, "empty")
+        skin_catalog.install_custom_cat(zip_path, "empty")
 
 
-def test_install_custom_pet_keeps_existing_user_skin(monkeypatch, tmp_path):
+def test_install_custom_cat_keeps_existing_user_skin(monkeypatch, tmp_path):
     monkeypatch.setenv("MYCAT_SKINS_DIR", str(tmp_path / "skins"))
     first = tmp_path / "first.gif"
     second = tmp_path / "second.gif"
     write_gif(first)
     write_gif(second)
 
-    first_id = skin_catalog.install_custom_pet(first, "Luna")
-    second_id = skin_catalog.install_custom_pet(second, "Luna")
+    first_id = skin_catalog.install_custom_cat(first, "Luna")
+    second_id = skin_catalog.install_custom_cat(second, "Luna")
 
     assert first_id == "luna"
     assert second_id == "luna-2"

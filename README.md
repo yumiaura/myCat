@@ -64,7 +64,7 @@ mycat                 # or, without installing:  python3 mycat/main.py
 ## ✨ Features
 
 - **Animated overlay** 🐱 — a frameless, always-on-top, draggable cat. Right-click for the menu (switch skin, quit).
-- **Custom pets** 🐾 — import your own cat or dog GIF from the right-click menu, or launch one from the CLI.
+- **Custom cats** 🐾 — import your own cat GIF from the right-click menu, or launch one from the CLI.
 - **Reminder** 🛩️ — set a message and a time (one-shot or daily) and the cat flies a little banner plane across the top of your screen. Right-click → *Reminder…* to set the message, direction, plane and color.
 - **Chat (Ollama)** 💬 — talk to the cat through a **local [Ollama](https://ollama.com) model**, no account or API key needed (see below).
 
@@ -92,13 +92,13 @@ mycat --image ~/my-custom-cat.zip
 
 A skin **ZIP** must contain exactly one `.gif`: its first frame is the static pose, then the GIF plays once and returns to that frame. Images larger than 300×500 are scaled down automatically.
 
-**`--pet-image <path>`** 🐾 — install and launch your own pet from a local `.gif` or skin `.zip`:
+**`--cat-image <path>`** 🐾 — install and launch your own cat from a local `.gif` or skin `.zip`:
 
 ```bash
-mycat --pet-image ~/Pictures/luna.gif --pet-name luna
+mycat --cat-image ~/Pictures/luna.gif --cat-name luna
 ```
 
-Imported pets are saved into the user skins folder, so they appear in the right-click **Images** menu on later launches. You can also import one without the terminal: right-click the pet → **Import pet…** → choose a GIF or ZIP → name it.
+Imported cats are saved into the user skins folder, so they appear in the right-click **Images** menu on later launches. You can also import one without the terminal: right-click the cat → **Import cat…** → choose a GIF or ZIP → name it.
 
 **`--pos <x> <y>`** 📍 — start at a specific screen position (otherwise the cat appears bottom-right and remembers where you last dragged it):
 
@@ -133,7 +133,7 @@ zip images/cat.zip images/cat.gif
 
 Drop the resulting ZIP next to the others and pick it from the right-click **skins** menu.
 
-For a real pet, export a transparent GIF of your cat or dog and import it with **Import pet…**. A short idle animation works best: first frame as the resting pose, then a blink, tail wag or tiny bounce.
+For a real cat, export a transparent GIF and import it with **Import cat…**. A short idle animation works best: first frame as the resting pose, then a blink, tail flick or tiny bounce.
 
 ## 🐳 Docker
 
