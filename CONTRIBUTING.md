@@ -55,9 +55,16 @@ Thank you for considering contributing to this cute desktop pet project! 🐱
 
 ## Testing
 
-Currently there are no automated tests, but contributions in this area are very welcome!
+Run the existing automated checks before opening a pull request:
 
-Consider adding tests for:
+```bash
+ruff check .
+QT_QPA_PLATFORM=offscreen python -m pytest -q
+```
+
+The test suite already covers the reminder, autostart, LLM settings, vendor
+selection and secret-store helpers. Additional coverage is especially welcome
+for:
 - Sprite loading and parsing
 - Configuration save/load
 - Window behavior (position, transparency)
