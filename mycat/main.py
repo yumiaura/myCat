@@ -368,6 +368,13 @@ def save_image_to_ini(image_name: str) -> None:
         logger.error(f"Error saving to INI file: {e}")
 
 
+def install_pet_image(source_path: str, pet_name: str | None = None) -> str:
+    """Install a local pet GIF/ZIP and return the new skin id."""
+    skin_id = skin_catalog.install_custom_pet(source_path, pet_name)
+    logger.info("Installed custom pet '%s' from %s", skin_id, source_path)
+    return skin_id
+
+
 class PixelCatWindow(QtWidgets.QWidget):
     """Main cat window widget with PNG/GIF animation and dragging."""
     
@@ -675,6 +682,9 @@ class PixelCatWindow(QtWidgets.QWidget):
         reminder_action.triggered.connect(self._open_reminder)
         menu.addSeparator()
 
+        import_pet_action = menu.addAction("Import pet…")
+        import_pet_action.triggered.connect(self._import_pet_image)
+
         # Rebuild the list every time so freshly-installed skins appear without restart.
         self.available_images = skin_catalog.scan_all()
         if len(self.available_images) > 0:
@@ -751,6 +761,37 @@ class PixelCatWindow(QtWidgets.QWidget):
         controller = getattr(self, "reminder_controller", None)
         if controller is not None:
             controller.open_dialog()
+
+    def _import_pet_image(self) -> None:
+        """Let users install their own cat/dog GIF or skin ZIP from the menu."""
+        file_path, _selected_filter = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "Choose pet animation",
+            str(Path.home()),
+            "Pet animations (*.gif *.zip)",
+        )
+        if not file_path:
+            return
+
+        default_name = Path(file_path).stem
+        pet_name, ok = QtWidgets.QInputDialog.getText(
+            self,
+            "Name this pet",
+            "Pet name:",
+            text=default_name,
+        )
+        if not ok:
+            return
+
+        try:
+            skin_id = install_pet_image(file_path, pet_name or default_name)
+        except Exception as exc:
+            logger.error("Could not import pet image: %s", exc)
+            QtWidgets.QMessageBox.warning(self, "Import pet", str(exc))
+            return
+
+        self.available_images = skin_catalog.scan_all()
+        self._load_image(skin_id)
 
     def _on_skin_installed(self, _skin_id: str) -> None:
         self.available_images = skin_catalog.scan_all()
@@ -924,12 +965,29 @@ def parse_args() -> argparse.Namespace:
         help="Start position (overrides remembered position)",
     )
     parser.add_argument(
+        "--pet-image",
+        type=str,
+        default=None,
+        help="Install and launch a custom pet from a local .gif or .zip skin archive.",
+    )
+    parser.add_argument(
+        "--pet-name",
+        type=str,
+        default=None,
+        help="Name to save the --pet-image skin under (for example: luna, max, momo).",
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Enable verbose DEBUG logging (per-frame animation cycle, GIF timing, etc.)",
     )
     llm.add_arguments(parser)
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.image and args.pet_image:
+        parser.error("--image and --pet-image cannot be used together")
+    if args.pet_name and not args.pet_image:
+        parser.error("--pet-name requires --pet-image")
+    return args
 
 def x11_compositor_active() -> bool | None:
     """Return True/False when an X11 compositing manager is running, None if undetermined.
@@ -1199,9 +1257,21 @@ def main() -> None:
     available_images = scan_images_directory()
     logger.info(f"Found {len(available_images)} ZIP archive(s): {', '.join(available_images)}")
     
+    # Import a custom pet before scanning so it appears in menus and config.
+    launched_pet = None
+    if args.pet_image:
+        try:
+            launched_pet = install_pet_image(args.pet_image, args.pet_name)
+        except Exception as e:
+            logger.error(f"Error importing custom pet: {e}")
+            sys.exit(2)
+
     # Load default image from INI if no image path provided
     default_image = None
-    if not args.image:
+    if launched_pet:
+        default_image = launched_pet
+        available_images = scan_images_directory()
+    elif not args.image:
         default_image = load_image_from_ini()
         if default_image and default_image not in available_images:
             logger.warning(f"Image '{default_image}' from INI not found in available images, using default: cat")

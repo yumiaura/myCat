@@ -12,10 +12,13 @@ defaults with newer downloads from the shop).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
+import re
 import sys
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 INSTALLED_JSON_NAME = "installed.json"
 INSTALLED_SCHEMA_VERSION = 1
+SKIN_ID_PATTERN = re.compile(r"[^A-Za-z0-9_.-]+")
 
 
 def bundled_skins_dir() -> Path:
@@ -31,6 +35,9 @@ def bundled_skins_dir() -> Path:
 
 def user_skins_dir() -> Path:
     """Platform-specific writable directory for downloaded/user-added skins."""
+    override = os.environ.get("MYCAT_SKINS_DIR")
+    if override:
+        return Path(override).expanduser()
     if sys.platform == "win32":
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
         return Path(base) / "mycat" / "skins"
@@ -48,6 +55,75 @@ def ensure_user_skins_dir() -> Path:
     except OSError as exc:
         logger.warning("Could not create user skins dir %s: %s", path, exc)
     return path
+
+
+def normalize_skin_id(value: str) -> str:
+    """Return a filesystem-safe skin id for user-imported pets."""
+    normalized = SKIN_ID_PATTERN.sub("-", value.strip()).strip(".-_").lower()
+    return normalized or "pet"
+
+
+def unique_skin_id(base_id: str) -> str:
+    """Return a skin id that does not overwrite an existing user skin."""
+    base_id = normalize_skin_id(base_id)
+    candidate = base_id
+    suffix = 2
+    user_dir = ensure_user_skins_dir()
+    while (user_dir / f"{candidate}.zip").exists():
+        candidate = f"{base_id}-{suffix}"
+        suffix += 1
+    return candidate
+
+
+def gif_names_in_zip(zip_path: Path) -> list[str]:
+    """Return GIF members from a skin ZIP, ignoring directory entries."""
+    with zipfile.ZipFile(zip_path, "r") as zip_file:
+        return [
+            name
+            for name in zip_file.namelist()
+            if not name.endswith("/") and name.lower().endswith(".gif")
+        ]
+
+
+def validate_skin_zip(zip_path: Path) -> None:
+    """Validate that a ZIP can be used as a skin archive."""
+    try:
+        gif_files = gif_names_in_zip(zip_path)
+    except zipfile.BadZipFile as exc:
+        raise ValueError(f"Invalid ZIP file: {zip_path}") from exc
+    if len(gif_files) != 1:
+        raise ValueError(f"Skin ZIP must contain exactly one GIF, found {len(gif_files)}")
+
+
+def install_custom_pet(source_path: str | Path, pet_name: str | None = None) -> str:
+    """Install a local GIF or skin ZIP as a user pet and return its skin id."""
+    source = Path(source_path).expanduser()
+    if not source.exists():
+        raise FileNotFoundError(f"Pet image not found: {source}")
+    if not source.is_file():
+        raise ValueError(f"Pet image must be a file: {source}")
+
+    base_name = pet_name or source.stem
+    skin_id = unique_skin_id(base_name)
+    destination = ensure_user_skins_dir() / f"{skin_id}.zip"
+
+    if source.suffix.lower() == ".zip":
+        validate_skin_zip(source)
+        destination.write_bytes(source.read_bytes())
+    elif source.suffix.lower() == ".gif":
+        with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED) as zip_file:
+            zip_file.write(source, arcname=f"{skin_id}.gif")
+    else:
+        raise ValueError("Pet image must be a .gif animation or a .zip skin archive")
+
+    record_installed(
+        skin_id,
+        version="local",
+        source=str(source),
+        sha256=hashlib.sha256(destination.read_bytes()).hexdigest(),
+        size_bytes=destination.stat().st_size,
+    )
+    return skin_id
 
 
 def scan_all() -> list[str]:
@@ -140,6 +216,11 @@ __all__ = [
     "bundled_skins_dir",
     "user_skins_dir",
     "ensure_user_skins_dir",
+    "normalize_skin_id",
+    "unique_skin_id",
+    "gif_names_in_zip",
+    "validate_skin_zip",
+    "install_custom_pet",
     "scan_all",
     "find_skin_zip",
     "installed_metadata_path",
