@@ -5,6 +5,7 @@ All notable changes to this project are documented in this file.
 ## Unreleased
 
 ### Added
+- **Live-cat demo (dev prototype).** `demo/live_cat_demo.py` — a standalone prototype of roadmap vertical B ("the cat feels alive"): the existing sprite is animated purely with code (breathing, blink, play hops, sleep, stress jitter) and system load is shown as the cat's *mood* rather than a number. Not wired into the shipped app; run with `python demo/live_cat_demo.py` (branch `demo/live-cat-prototype`).
 - **Multiple chat vendors.** The LLM settings dialog (right-click → LLM…) now lets you pick a vendor — Ollama (default, local), OpenAI, Grok (xAI), Groq, DeepSeek, OpenRouter — or define a **custom** OpenAI-compatible endpoint (name + base URL + key + model). One adapter covers every OpenAI-compatible provider. API keys are hybrid: typed into the dialog (saved to config) or read from the vendor's environment variable.
 
 ### Changed
