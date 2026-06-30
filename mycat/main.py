@@ -955,7 +955,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--wait",
         type=float,
-        default=STATIC_TIME,
+        default=None,
         help="Seconds to show first frame before playing GIF (default: 5.0)",
     )
 
@@ -1193,7 +1193,7 @@ def main() -> None:
         logging.getLogger().setLevel(logging.DEBUG)
 
     # Load wait time from config if not explicitly overridden by args
-    wait_time = load_wait_time_from_ini(STATIC_TIME) if args.wait == STATIC_TIME else args.wait
+    wait_time = args.wait if args.wait is not None else load_wait_time_from_ini(STATIC_TIME)
 
     llm_context = llm.initialize(args)
     
