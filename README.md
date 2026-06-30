@@ -63,7 +63,7 @@ mycat                 # or, without installing:  python3 mycat/main.py
 
 ## ✨ Features
 
-- **Animated overlay** 🐱 — a frameless, always-on-top, draggable cat. Right-click for the menu (switch skin, quit).
+- **Animated overlay** 🐱 — a frameless, always-on-top, draggable cat. Right-click for the menu (switch skin, settings, reset position, quit).
 - **Reminder** 🛩️ — set a message and a time (one-shot or daily) and the cat flies a little banner plane across the top of your screen. Right-click → *Reminder…* to set the message, direction, plane and color.
 - **Chat (Ollama)** 💬 — talk to the cat through a **local [Ollama](https://ollama.com) model**, no account or API key needed (see below).
 
@@ -104,7 +104,7 @@ mycat --pos 960 540        # center of a 1920x1080 screen
 ### Controls
 
 - **Left-drag** the cat to move it.
-- **Right-click** the cat for the menu (skins, Reminder…, Ollama…, Chat, Quit).
+- **Right-click** the cat or the system tray icon for the menu (Skins, Reminder…, Settings…, Reset Position, Ollama…, Chat, Quit).
 - **Quit** from the menu or with Ctrl+C in the terminal.
 
 The cat remembers its position and selected skin between sessions in `~/.config/mycat/config.ini`.

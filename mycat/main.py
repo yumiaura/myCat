@@ -334,6 +334,20 @@ def load_image_from_ini() -> str | None:
         return None
 
 
+def load_wait_time_from_ini(default_wait: float) -> float:
+    """Load wait_time setting from INI file."""
+    if not CFG_FILE.exists():
+        return default_wait
+    try:
+        config = configparser.ConfigParser()
+        config.read(CFG_FILE)
+        if 'settings' in config and 'wait_time' in config['settings']:
+            return float(config['settings']['wait_time'])
+    except Exception as e:
+        logger.error(f"Error reading wait_time from INI: {e}")
+    return default_wait
+
+
 def save_image_to_ini(image_name: str) -> None:
     """Save current image setting to INI file (skips writing if value is unchanged)."""
     try:
@@ -673,6 +687,9 @@ class PixelCatWindow(QtWidgets.QWidget):
 
         reminder_action = menu.addAction("Reminder…")
         reminder_action.triggered.connect(self._open_reminder)
+        
+        settings_action = menu.addAction("Settings…")
+        settings_action.triggered.connect(self._open_settings)
         menu.addSeparator()
 
         # Rebuild the list every time so freshly-installed skins appear without restart.
@@ -693,9 +710,35 @@ class PixelCatWindow(QtWidgets.QWidget):
             login_action.setChecked(autostart.is_enabled())
             login_action.toggled.connect(autostart.set_enabled)
 
+        menu.addSeparator()
+        reset_pos_action = menu.addAction("Reset Position")
+        reset_pos_action.triggered.connect(self._reset_position)
+
         quit_action = menu.addAction("Quit")
         quit_action.triggered.connect(QtWidgets.QApplication.quit)
         menu.exec(self.mapToGlobal(pos))
+
+    def _open_settings(self) -> None:
+        """Open the Settings dialog."""
+        try:
+            if __package__:
+                from .settings_ui import SettingsDialog
+            else:
+                import importlib
+                SettingsDialog = importlib.import_module("mycat.settings_ui").SettingsDialog
+        except Exception:
+            logger.exception("Failed to import settings dialog")
+            return
+        dialog = SettingsDialog(parent=self, config_path=CFG_FILE, main_window=self)
+        dialog.exec()
+
+    def _reset_position(self) -> None:
+        """Reset the cat's position to the bottom right."""
+        window_width = self.width()
+        window_height = self.height()
+        default_x, default_y = self.bottom_right_position(window_width, window_height)
+        self.move(default_x, default_y)
+        self._save_position()
 
     def open_llm_settings(self) -> None:
         """Open the LLM vendor settings dialog (vendor, model, test, save)."""
@@ -912,7 +955,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--wait",
         type=float,
-        default=STATIC_TIME,
+        default=None,
         help="Seconds to show first frame before playing GIF (default: 5.0)",
     )
 
@@ -1127,6 +1170,8 @@ def setup_tray(app, window, icon_pixmap):
         login_action.setChecked(autostart.is_enabled())
         login_action.toggled.connect(autostart.set_enabled)
     menu.addSeparator()
+    menu.addAction("Settings…", window._open_settings)
+    menu.addAction("Reset Position", window._reset_position)
     menu.addAction("Quit", QtWidgets.QApplication.quit)
     tray.setContextMenu(menu)
 
@@ -1146,6 +1191,9 @@ def main() -> None:
 
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
+
+    # Load wait time from config if not explicitly overridden by args
+    wait_time = args.wait if args.wait is not None else load_wait_time_from_ini(STATIC_TIME)
 
     llm_context = llm.initialize(args)
     
@@ -1212,14 +1260,14 @@ def main() -> None:
         png_pixmap, gif_movie, file_name, gif_data = load_packaged_images(args.image, default_image)
         logger.info(
             f"Playing {file_name}.zip (first frame) "
-            f"{png_pixmap.width()}x{png_pixmap.height()} for {args.wait:.1f}s"
+            f"{png_pixmap.width()}x{png_pixmap.height()} for {wait_time:.1f}s"
         )
     except Exception as e:
         logger.error(f"Error loading images: {e}")
         sys.exit(2)
 
     # Create and show window
-    window = PixelCatWindow(png_pixmap, gif_movie, args.wait, file_name, available_images, gif_data)
+    window = PixelCatWindow(png_pixmap, gif_movie, wait_time, file_name, available_images, gif_data)
     if llm_context:
         llm.attach(window, llm_context)
     
