@@ -734,7 +734,6 @@ class PixelCatWindow(QtWidgets.QWidget):
 
     def _reset_position(self) -> None:
         """Reset the cat's position to the bottom right."""
-        rect = usable_screen_rect()
         window_width = self.width()
         window_height = self.height()
         default_x, default_y = self.bottom_right_position(window_width, window_height)
