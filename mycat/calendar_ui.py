@@ -7,10 +7,12 @@ from PySide6 import QtCore, QtWidgets
 
 if __package__:
     from . import calendar_ics
+    from .ui_theme import LIGHT_QSS
 else:
     import importlib
 
     calendar_ics = importlib.import_module("mycat.calendar_ics")
+    LIGHT_QSS = importlib.import_module("mycat.ui_theme").LIGHT_QSS
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,7 @@ class CalendarDialog(QtWidgets.QDialog):
         self.controller = controller
         self.setWindowTitle("Calendar reminders")
         self.setModal(False)
+        self.setStyleSheet(LIGHT_QSS)
 
         settings = controller.settings
         layout = QtWidgets.QVBoxLayout(self)
@@ -113,9 +116,12 @@ class CalendarDialog(QtWidgets.QDialog):
             return
         nearest = events[0]
         when = nearest["start"].strftime("%H:%M")
-        self.status_label.setText(
-            f"OK — {len(events)} event(s) in the next 24 h; nearest: “{nearest['summary']}” at {when}."
-        )
+        text = f"📅 {nearest['summary']} — at {when}"
+        self.status_label.setText(f"OK — {len(events)} event(s) in 24 h · {text}")
+        # Fly the nearest event as a real banner (urgent, like calendar always is).
+        announcer = getattr(self.controller, "announcer", None)
+        if announcer is not None:
+            announcer.announce(text, urgent=True)
 
 
 __all__ = ["CalendarDialog"]

@@ -13,10 +13,12 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 if __package__:
     from . import activity as activity_mod
+    from .ui_theme import LIGHT_QSS
 else:
     import importlib
 
     activity_mod = importlib.import_module("mycat.activity")
+    LIGHT_QSS = importlib.import_module("mycat.ui_theme").LIGHT_QSS
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +209,7 @@ class ActivityDialog(QtWidgets.QDialog):
         self.setModal(False)
         self.setMinimumWidth(720)
         self.resize(760, 560)
+        self.setStyleSheet(LIGHT_QSS)
 
         settings = collector.settings
         layout = QtWidgets.QVBoxLayout(self)
@@ -297,12 +300,16 @@ class ActivityDialog(QtWidgets.QDialog):
         self.totals_label.setWordWrap(True)
         layout.addWidget(self.totals_label)
 
-        buttons = QtWidgets.QDialogButtonBox(
-            QtWidgets.QDialogButtonBox.StandardButton.Save | QtWidgets.QDialogButtonBox.StandardButton.Close
-        )
-        buttons.accepted.connect(self.save_and_close)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        # Save / Close, same style as the other dialogs; Save keeps it open.
+        button_row = QtWidgets.QHBoxLayout()
+        button_row.addStretch(1)
+        self.save_button = QtWidgets.QPushButton("Save")
+        self.close_button = QtWidgets.QPushButton("Close")
+        self.save_button.clicked.connect(self.save_settings)
+        self.close_button.clicked.connect(self.reject)
+        button_row.addWidget(self.save_button)
+        button_row.addWidget(self.close_button)
+        layout.addLayout(button_row)
 
         self.refresh_log()
         self.refresh_now()
@@ -543,7 +550,8 @@ class ActivityDialog(QtWidgets.QDialog):
             logger.exception("Failed to delete activity history")
         self.refresh_log()
 
-    def save_and_close(self) -> None:
+    def save_settings(self) -> None:
+        """Persist + apply, keeping the dialog open (matches GitHub/Calendar)."""
         settings = activity_mod.ActivitySettings(
             enabled=self.enabled_box.isChecked(),
             keyboard_enabled=self.keyboard_box.isChecked(),
@@ -553,7 +561,7 @@ class ActivityDialog(QtWidgets.QDialog):
         activity_mod.save_activity_settings(settings)
         self.collector.apply_settings(settings)
         logger.info("Activity settings saved (enabled=%s, keyboard=%s)", settings.enabled, settings.keyboard_enabled)
-        self.accept()
+        self.now_label.setText("Saved.")
 
 
 __all__ = ["ActivityDialog"]

@@ -11,10 +11,12 @@ from PySide6 import QtCore, QtWidgets
 
 if __package__:
     from . import github_notify
+    from .ui_theme import LIGHT_QSS
 else:
     import importlib
 
     github_notify = importlib.import_module("mycat.github_notify")
+    LIGHT_QSS = importlib.import_module("mycat.ui_theme").LIGHT_QSS
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,7 @@ class GitHubDialog(QtWidgets.QDialog):
         self.setWindowTitle("GitHub notifications")
         self.setModal(False)
         self.resize(380, 320)
+        self.setStyleSheet(LIGHT_QSS)
 
         settings = notifier.settings
         layout = QtWidgets.QVBoxLayout(self)
@@ -137,16 +140,28 @@ class GitHubDialog(QtWidgets.QDialog):
             self.status_label.setText(f"Failed: {result['error']}")
             return
         items = list(result.get("items", []))
-        # Show the latest item exactly as its banner would read.
+        # Show the latest item as its banner would read — and actually FLY it
+        # (urgent, so a running focus session's DND can't hold the test back).
+        announcer = getattr(self.notifier, "announcer", None)
         if result.get("mode") == "public":
             latest = next((e for e in items if github_notify.interesting_public_event(e)), None)
+            if latest is None and items:
+                latest = items[0]  # quiet feed: show the newest event of any kind
             if latest is not None:
-                self.status_label.setText(f"OK — public mode · {github_notify.event_text(latest)}")
+                text = github_notify.event_text(latest)
+                self.status_label.setText(f"OK — public mode · {text}")
+                if announcer is not None:
+                    announcer.announce(text, url=github_notify.event_html_url(latest), urgent=True)
             else:
                 self.status_label.setText("OK — public mode, no recent activity.")
         else:
             if items:
-                self.status_label.setText(f"OK · {github_notify.notification_text(items[0])}")
+                item = items[0]
+                text = github_notify.notification_text(item)
+                self.status_label.setText(f"OK · {text}")
+                if announcer is not None:
+                    url = github_notify.subject_html_url(item.get("subject") or {}, item.get("repository") or {})
+                    announcer.announce(text, url=url, urgent=True)
             else:
                 self.status_label.setText("OK — no unread notifications.")
 

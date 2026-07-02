@@ -10,26 +10,9 @@ import time
 from PySide6 import QtCore, QtWidgets
 
 from . import llm_ollama, llm_openai_compat, llm_prompt, llm_vendors
+from .ui_theme import LIGHT_QSS
 
 logger = logging.getLogger(__name__)
-
-LIGHT_QSS = (
-    "QDialog { background: #ffffff; color: #1c1c1c; }"
-    "QLabel, QCheckBox { color: #1c1c1c; background: transparent; }"
-    "QLineEdit, QSpinBox, QComboBox {"
-    " color: #1c1c1c; background: #ffffff;"
-    " border: 1px solid #c0c0c0; border-radius: 4px; padding: 3px 5px;"
-    " selection-color: white; selection-background-color: #ff6f91; }"
-    "QLineEdit:read-only { background: #f3f3f3; color: #666666; }"
-    "QComboBox QAbstractItemView {"
-    " color: #1c1c1c; background: #ffffff;"
-    " selection-color: white; selection-background-color: #ff6f91; }"
-    "QPushButton {"
-    " color: #1c1c1c; background: #f0f0f0;"
-    " border: 1px solid #c0c0c0; border-radius: 4px; padding: 5px 14px; }"
-    "QPushButton:hover { background: #e7e7e7; }"
-    "QPushButton:disabled { color: #9a9a9a; background: #f5f5f5; }"
-)
 
 STATUS_OK = "color: #1c7c2f;"
 STATUS_ERR = "color: #c0392b;"
