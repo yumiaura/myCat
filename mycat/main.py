@@ -24,7 +24,7 @@ from pathlib import Path
 
 # Allow running both as `python -m mycat` and `python mycat/main.py`
 if __package__:
-    from . import autostart, llm, reminder, secret_store, skin_catalog
+    from . import announcer, autostart, llm, reminder, secret_store, skin_catalog
 else:
     import importlib
     repo_root = Path(__file__).resolve().parent.parent
@@ -35,6 +35,7 @@ else:
     reminder = importlib.import_module("mycat.reminder")
     secret_store = importlib.import_module("mycat.secret_store")
     autostart = importlib.import_module("mycat.autostart")
+    announcer = importlib.import_module("mycat.announcer")
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -560,6 +561,11 @@ class PixelCatWindow(QtWidgets.QWidget):
         # Reminder scheduler (cat-on-a-plane flyby). Loads any saved reminder
         # and re-arms it; the flyby UI is imported lazily on first use.
         self.reminder_controller = reminder.ReminderController(self)
+
+        # Shared announcement queue: every companion feature (focus sessions,
+        # GitHub, calendar, digest) flies its banners through this one object
+        # so flybys never overlap and focus time stays quiet.
+        self.announcer = announcer.Announcer(self)
     
     def _load_position(self) -> None:
         """Load window position from config; default to the bottom-right corner."""

@@ -191,6 +191,12 @@ class FlybyWindow(QtWidgets.QWidget):
         self.plane_blit = None
         self.cat_blit = None
 
+        # Optional link — announcements (a GitHub PR, the morning digest)
+        # attach a URL; a double-click or the context menu opens it.
+        self.link_url = str(getattr(reminder, "url", "") or "")
+        if self.link_url:
+            self.setToolTip("Double-click to open • Drag to move • Right-click for options")
+
         self._text = (reminder.text or reminder_mod.DEFAULT_TEXT).strip() or reminder_mod.DEFAULT_TEXT
         self._ltr = reminder.normalized_direction() != DIRECTION_RTL
         self._progress = 0.0
@@ -637,6 +643,9 @@ class FlybyWindow(QtWidgets.QWidget):
         exit_running = self._exit_anim is not None and self._exit_anim.state() == Running
 
         menu = QtWidgets.QMenu(self)
+        if self.link_url:
+            menu.addAction("Open link", self.open_link)
+            menu.addSeparator()
         if main_paused or exit_paused or self._anim.state() == QtCore.QAbstractAnimation.State.Stopped:
             menu.addAction("Resume flight", self._resume_flight)
         elif main_running or exit_running:
@@ -644,6 +653,20 @@ class FlybyWindow(QtWidgets.QWidget):
         menu.addSeparator()
         menu.addAction("Close", self.close)
         menu.exec(event.globalPos())
+
+    def open_link(self) -> None:
+        """Open the announcement's URL in the browser and end the flight."""
+        if not self.link_url:
+            return
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl(self.link_url))
+        self.close()
+
+    def mouseDoubleClickEvent(self, event: QtGui.QMouseEvent) -> None:
+        if event.button() == QtCore.Qt.MouseButton.LeftButton and self.link_url:
+            self.open_link()
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
 
     def _pause_flight(self) -> None:
         if self._anim.state() == QtCore.QAbstractAnimation.State.Running:

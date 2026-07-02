@@ -5,6 +5,7 @@ All notable changes to this project are documented in this file.
 ## Unreleased
 
 ### Added
+- **Announcement queue.** All companion features (focus sessions, GitHub notifications, calendar reminders, the morning digest) deliver banners through one `Announcer`: a single flyby at a time with a pacing gap, do-not-disturb hold during focus sessions (urgent items break through), and an optional link on a banner opened by double-click or the flyby's context menu (branch `feat/companion`).
 - **First-run prompt to start on login.** On the first launch (where autostart is supported and not already on), mycat asks once whether to start every login — the autostart toggle was otherwise buried in the right-click menu. The answer is remembered in `[settings] autostart_prompted` so it is never asked twice (branch `feat/persistence-hardening`).
 - **Single-instance guard.** A second launch no longer spawns a second cat — it detects the running instance via a `QLockFile` and exits (a lock left by a crashed instance is reclaimed automatically) (branch `feat/persistence-hardening`).
 - **Multiple chat vendors.** The LLM settings dialog (right-click → LLM…) now lets you pick a vendor — Ollama (default, local), OpenAI, Grok (xAI), Groq, DeepSeek, OpenRouter — or define a **custom** OpenAI-compatible endpoint (name + base URL + key + model). One adapter covers every OpenAI-compatible provider. API keys are hybrid: typed into the dialog (saved to config) or read from the vendor's environment variable.
