@@ -249,7 +249,7 @@ def test_mode_selection(qapp, monkeypatch):
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     with_token = GitHubNotifier(None, settings=GitHubSettings(enabled=True, token="t"), start_timer=False)
     assert with_token.mode() == "notifications"
-    username_only = GitHubNotifier(None, settings=GitHubSettings(enabled=True, username="olya"), start_timer=False)
+    username_only = GitHubNotifier(None, settings=GitHubSettings(enabled=True, accounts="olya"), start_timer=False)
     assert username_only.mode() == "public"
 
 
@@ -281,7 +281,7 @@ def test_notifier_public_mode_announces(qapp, monkeypatch):
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     ann = AnnouncerStub()
     notifier = GitHubNotifier(
-        None, announcer=ann, settings=GitHubSettings(enabled=True, username="olya"), start_timer=False
+        None, announcer=ann, settings=GitHubSettings(enabled=True, accounts="olya"), start_timer=False
     )
     notifier.handle_result({"mode": "public", "status": 200, "items": [public_event("1")],
                             "etag": "E1", "poll_seconds": 300})
@@ -295,7 +295,34 @@ def test_notifier_public_mode_announces(qapp, monkeypatch):
     assert url == "https://github.com/o/r/issues/1"
 
 
-def test_settings_username_round_trip(tmp_path):
+def test_settings_accounts_round_trip_and_migration(tmp_path):
     cfg = tmp_path / "config.ini"
-    save_github_settings(GitHubSettings(enabled=True, username="olya"), cfg_file=cfg)
-    assert load_github_settings(cfg_file=cfg).username == "olya"
+    save_github_settings(GitHubSettings(enabled=True, accounts="olya, bob"), cfg_file=cfg)
+    assert load_github_settings(cfg_file=cfg).accounts == "olya, bob"
+    # Legacy configs that still say "username" are honoured.
+    legacy = tmp_path / "legacy.ini"
+    legacy.write_text("[github]\nenabled = true\nusername = olya\n")
+    assert load_github_settings(cfg_file=legacy).accounts == "olya"
+
+
+def test_parse_accounts():
+    from mycat.github_notify import parse_accounts
+
+    assert parse_accounts("olya, bob,  carol ") == ("olya", "bob", "carol")
+    assert parse_accounts("") == ()
+
+
+def test_multi_account_fetch_merges_and_keeps_etags():
+    from mycat.github_notify import fetch_accounts_events
+
+    def opener(request, timeout):
+        url = request.full_url
+        account = url.split("/users/")[1].split("/")[0]
+        body = json.dumps([public_event(f"{account}-1", "WatchEvent")]).encode()
+        return FakeResponse(200, {"ETag": f"etag-{account}"}, body)
+
+    result = fetch_accounts_events(("olya", "bob"), {}, opener=opener)
+    assert result["status"] == 200
+    assert {e["id"] for e in result["items"]} == {"olya-1", "bob-1"}
+    assert result["etags"] == {"olya": "etag-olya", "bob": "etag-bob"}
+    assert result["poll_seconds"] >= 300

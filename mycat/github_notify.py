@@ -40,11 +40,19 @@ CFG_FILE = CFG_DIR / "config.ini"
 
 API_URL = "https://api.github.com/notifications"
 DEFAULT_POLL_SECONDS = 60
-# Tokenless public mode polls the user's public received-events feed. The
+# Tokenless public mode polls the OWN public events of each listed account
+# (not the received-events dashboard feed — that is everything the thousands
+# of accounts you follow do, which reads as random strangers' PRs). The
 # unauthenticated rate limit is 60 req/h per IP, so poll gently (a 304 on the
-# ETag does not count against the limit).
-PUBLIC_EVENTS_URL = "https://api.github.com/users/{username}/received_events/public"
+# ETag does not count against the limit) and stretch the interval with the
+# number of accounts.
+PUBLIC_EVENTS_URL = "https://api.github.com/users/{account}/events/public"
 PUBLIC_POLL_SECONDS = 300
+
+
+def parse_accounts(raw: str) -> tuple:
+    """Comma-separated usernames → a clean tuple ("olya, bob" → ("olya","bob"))."""
+    return tuple(account.strip() for account in str(raw or "").split(",") if account.strip())
 DEFAULT_REASONS = ("review_requested", "mention", "assign")
 
 REASON_LABELS = {
@@ -62,7 +70,7 @@ class GitHubSettings:
     enabled: bool = False
     token: str = ""  # literal token from config — takes priority
     token_env: str = "GITHUB_TOKEN"  # env var fallback when token is empty
-    username: str = ""  # for the tokenless public mode
+    accounts: str = ""  # comma-separated usernames for the tokenless mode
     reasons: tuple = DEFAULT_REASONS
 
     def resolve_token(self) -> str:
@@ -86,7 +94,8 @@ def load_github_settings(cfg_file: Path = CFG_FILE) -> GitHubSettings:
         settings.enabled = section.getboolean("enabled", fallback=False)
         settings.token = section.get("token", "")
         settings.token_env = section.get("token_env", settings.token_env)
-        settings.username = section.get("username", "")
+        # "accounts" is the current key; fall back to the older "username".
+        settings.accounts = section.get("accounts", "") or section.get("username", "")
         raw_reasons = section.get("reasons", ",".join(DEFAULT_REASONS))
         reasons = tuple(reason.strip() for reason in raw_reasons.split(",") if reason.strip())
         settings.reasons = reasons or DEFAULT_REASONS
@@ -110,7 +119,7 @@ def save_github_settings(settings: GitHubSettings, cfg_file: Path = CFG_FILE) ->
         elif "token" in section:
             del section["token"]
         section["token_env"] = settings.token_env
-        section["username"] = settings.username
+        section["accounts"] = settings.accounts
         section["reasons"] = ",".join(settings.reasons)
         with open(cfg_file, "w") as fh:
             config.write(fh)
@@ -257,9 +266,9 @@ class PublicEventTracker:
         return fresh
 
 
-def fetch_public_events(username: str, etag: str = "", opener=None) -> dict:
-    """One tokenless poll of the public received-events feed."""
-    request = urllib.request.Request(PUBLIC_EVENTS_URL.format(username=username))
+def fetch_account_events(account: str, etag: str = "", opener=None) -> dict:
+    """One tokenless poll of ONE account's own public events."""
+    request = urllib.request.Request(PUBLIC_EVENTS_URL.format(account=account))
     request.add_header("Accept", "application/vnd.github+json")
     request.add_header("X-GitHub-Api-Version", "2022-11-28")
     request.add_header("User-Agent", "mycat-desktop-pet")
@@ -267,7 +276,7 @@ def fetch_public_events(username: str, etag: str = "", opener=None) -> dict:
         request.add_header("If-None-Match", etag)  # a 304 is free rate-limit-wise
 
     open_fn = opener or urllib.request.urlopen
-    result = {"status": 0, "items": [], "etag": etag, "poll_seconds": PUBLIC_POLL_SECONDS, "error": ""}
+    result = {"status": 0, "items": [], "etag": etag, "error": ""}
     try:
         with open_fn(request, timeout=15) as response:
             result["status"] = response.status
@@ -281,6 +290,35 @@ def fetch_public_events(username: str, etag: str = "", opener=None) -> dict:
     except Exception as exc:  # noqa: BLE001 - offline is a normal state, not a crash
         result["error"] = str(exc)
     return result
+
+
+def fetch_accounts_events(accounts, etags: dict, opener=None) -> dict:
+    """Poll every listed account; merge their events newest-first.
+
+    Per-account ETags ride along so unchanged feeds cost no rate limit. The
+    poll interval stretches with the account count to stay well inside the
+    anonymous 60 req/h budget.
+    """
+    items = []
+    new_etags = {}
+    errors = []
+    for account in accounts:
+        result = fetch_account_events(account, etags.get(account, ""), opener)
+        new_etags[account] = result["etag"]
+        if result["error"]:
+            errors.append(f"{account}: {result['error']}")
+        items.extend(result["items"])
+    items.sort(key=lambda event: str(event.get("created_at", "")), reverse=True)
+    return {
+        "status": 200,
+        "items": items,
+        "etags": new_etags,
+        "poll_seconds": max(PUBLIC_POLL_SECONDS, 90 * max(1, len(accounts))),
+        # Only a total failure is an error; a single typo'd account rides
+        # along as a warning so the healthy accounts keep working.
+        "error": "; ".join(errors) if errors and not items else "",
+        "warnings": "; ".join(errors),
+    }
 
 
 def fetch_notifications(token: str, last_modified: str = "", opener=None) -> dict:
@@ -339,17 +377,19 @@ class PollWorker(QtCore.QRunnable):
     class Emitter(QtCore.QObject):
         finished = QtCore.Signal(dict)
 
-    def __init__(self, token: str, cache_key: str, mode: str = "notifications", username: str = "") -> None:
+    def __init__(self, token: str, cache_key: str, mode: str = "notifications",
+                 accounts=(), etags=None) -> None:
         super().__init__()
         self.token = token
         self.cache_key = cache_key
         self.mode = mode
-        self.username = username
+        self.accounts = tuple(accounts)
+        self.etags = dict(etags or {})
         self.emitter = PollWorker.Emitter()
 
     def run(self) -> None:
         if self.mode == "public":
-            result = fetch_public_events(self.username, self.cache_key)
+            result = fetch_accounts_events(self.accounts, self.etags)
         else:
             result = fetch_notifications(self.token, self.cache_key)
         result["mode"] = self.mode
@@ -360,9 +400,9 @@ class GitHubNotifier(QtCore.QObject):
     """Polls GitHub and feeds the announcer.
 
     Two modes: with a token — your private notification inbox (review
-    requests, mentions, assignments); without a token but with a username —
-    only PUBLIC activity from that account's public feed (stars, forks, new
-    issues/PRs, releases). No token and no username → zero requests.
+    requests, mentions, assignments); without a token but with accounts
+    listed — only the PUBLIC activity of those accounts (stars, forks, new
+    issues/PRs, releases). No token and no accounts → zero requests.
     """
 
     def __init__(self, window, announcer=None, settings=None, start_timer=True) -> None:
@@ -373,7 +413,7 @@ class GitHubNotifier(QtCore.QObject):
         self.tracker = NotificationTracker(self.settings.reasons)
         self.public_tracker = PublicEventTracker()
         self.last_modified = ""
-        self.etag = ""
+        self.etags = {}  # per-account ETags for the public mode
         self.poll_seconds = DEFAULT_POLL_SECONDS
         self.polling = False  # a worker is in flight
         self.auth_failed = False
@@ -393,14 +433,14 @@ class GitHubNotifier(QtCore.QObject):
         self.tracker = NotificationTracker(settings.reasons)
         self.public_tracker = PublicEventTracker()
         self.last_modified = ""
-        self.etag = ""
+        self.etags = {}
         self.auth_failed = False
 
     def mode(self) -> str:
-        """"notifications" (token), "public" (username only) or "" (idle)."""
+        """"notifications" (token), "public" (accounts listed) or "" (idle)."""
         if self.settings.resolve_token():
             return "notifications"
-        if self.settings.username.strip():
+        if parse_accounts(self.settings.accounts):
             return "public"
         return ""
 
@@ -412,7 +452,8 @@ class GitHubNotifier(QtCore.QObject):
             return
         self.polling = True
         if mode == "public":
-            worker = PollWorker("", self.etag, mode="public", username=self.settings.username.strip())
+            worker = PollWorker("", "", mode="public",
+                                accounts=parse_accounts(self.settings.accounts), etags=self.etags)
         else:
             worker = PollWorker(self.settings.resolve_token(), self.last_modified)
         worker.emitter.finished.connect(self.handle_result)
@@ -438,7 +479,9 @@ class GitHubNotifier(QtCore.QObject):
             return
 
         if result.get("mode") == "public":
-            self.etag = str(result.get("etag", ""))
+            self.etags = dict(result.get("etags", {}))
+            if result.get("warnings"):
+                logger.debug("GitHub public poll warnings: %s", result["warnings"])
             for event in self.public_tracker.feed(list(result.get("items", []))):
                 text = event_text(event)
                 logger.info("GitHub public event: %s", text)
@@ -463,8 +506,10 @@ __all__ = [
     "PublicEventTracker",
     "load_github_settings",
     "save_github_settings",
+    "parse_accounts",
     "fetch_notifications",
-    "fetch_public_events",
+    "fetch_account_events",
+    "fetch_accounts_events",
     "notification_text",
     "event_text",
     "event_html_url",

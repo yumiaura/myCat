@@ -879,22 +879,23 @@ class ReminderDialog(QtWidgets.QDialog):
         self._sync_timing_enabled()
         self._in_radio.toggled.connect(self._sync_timing_enabled)
 
-        # Buttons.
+        # Buttons: Test, Reset (left) · Save, Close (right) — same order as
+        # every other mycat dialog.
         buttons = QtWidgets.QHBoxLayout()
         test_btn = QtWidgets.QPushButton("Test")
-        clear_btn = QtWidgets.QPushButton("Clear")
-        cancel_btn = QtWidgets.QPushButton("Cancel")
+        reset_btn = QtWidgets.QPushButton("Reset")
+        close_btn = QtWidgets.QPushButton("Close")
         save_btn = QtWidgets.QPushButton("Save")
         save_btn.setDefault(True)
         test_btn.clicked.connect(self._on_test)
-        clear_btn.clicked.connect(self._on_clear)
-        cancel_btn.clicked.connect(self.reject)
+        reset_btn.clicked.connect(self._on_clear)
+        close_btn.clicked.connect(self.reject)
         save_btn.clicked.connect(self._on_save)
         buttons.addWidget(test_btn)
-        buttons.addWidget(clear_btn)
+        buttons.addWidget(reset_btn)
         buttons.addStretch(1)
-        buttons.addWidget(cancel_btn)
         buttons.addWidget(save_btn)
+        buttons.addWidget(close_btn)
         layout.addLayout(buttons)
 
     def _sync_timing_enabled(self) -> None:
