@@ -20,6 +20,11 @@ classifiers = [
 dependencies = [
     "pillow>=12.0.0",
     "pyside6>=6.10.0",
+    # Activity diary key/click COUNTS (identity discarded in the hook). The
+    # diary is on by default, so this is a main dependency; where global
+    # hooks can't work (Wayland, missing macOS permission) the collector
+    # degrades to cursor-distance-only at runtime.
+    "pynput>=1.7",
 ]
 
 [dependency-groups]
@@ -34,9 +39,6 @@ secure = ["keyring>=24"]
 # ICS calendar reminders: RRULE expansion (the daily standup) is a swamp not
 # worth hand-rolling, so the calendar feature needs these two small libs.
 calendar = ["icalendar>=6", "recurring-ical-events>=3"]
-# Activity diary tier 2 (key/click COUNTS — identity is discarded in the
-# hook). Global hooks need pynput; unavailable on Wayland.
-activity = ["pynput>=1.7"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

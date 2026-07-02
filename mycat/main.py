@@ -442,39 +442,6 @@ def offer_autostart_on_first_run(window: QtWidgets.QWidget) -> None:
         logger.info("Autostart enabled via first-run prompt")
 
 
-def offer_activity_diary_on_first_run(window: QtWidgets.QWidget) -> None:
-    """Ask once whether to keep the local-only activity diary.
-
-    Input monitoring must be a conscious yes — the diary is off until the
-    user agrees, and the prompt stresses that nothing leaves this computer.
-    """
-    collector = getattr(window, "activity_collector", None)
-    if collector is None:
-        return
-    settings = collector.settings
-    if settings.prompted or settings.enabled:
-        return
-    # Record first so a crash mid-prompt never re-asks on every launch.
-    settings.prompted = True
-    activity.save_activity_settings(settings)
-    answer = QtWidgets.QMessageBox.question(
-        window,
-        "mycat",
-        "Keep a private activity diary?\n\n"
-        "The cat can log your focus sessions and how much you move the mouse,"
-        " and show a little recap each morning. Everything stays on this"
-        " computer — nothing is ever sent anywhere.\n\n"
-        "You can change or delete it any time: right-click → Activity…",
-        QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
-        QtWidgets.QMessageBox.StandardButton.Yes,
-    )
-    if answer == QtWidgets.QMessageBox.StandardButton.Yes:
-        settings.enabled = True
-        activity.save_activity_settings(settings)
-        collector.apply_settings(settings)
-        logger.info("Activity diary enabled via first-run prompt")
-
-
 def read_battery_percent():
     """Battery charge 0–100, or None if there is no battery / can't read it.
 
@@ -1858,8 +1825,6 @@ def main() -> None:
         app.setQuitOnLastWindowClosed(window.tray_icon is None)
         # First-run nudge to start on login (after the cat is up).
         QtCore.QTimer.singleShot(600, lambda: offer_autostart_on_first_run(window))
-        # Second gentle first-run question, after the autostart one settles.
-        QtCore.QTimer.singleShot(1800, lambda: offer_activity_diary_on_first_run(window))
 
     try:
         sys.exit(app.exec())

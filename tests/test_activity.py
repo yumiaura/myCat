@@ -106,17 +106,20 @@ def test_collector_key_counts_make_minute_active(tmp_path):
 def test_activity_settings_round_trip(tmp_path):
     cfg = tmp_path / "config.ini"
     save_activity_settings(
-        ActivitySettings(enabled=True, keyboard_enabled=True, retention_days=30, prompted=True), cfg_file=cfg
+        ActivitySettings(enabled=False, keyboard_enabled=False, retention_days=30, prompted=True), cfg_file=cfg
     )
     loaded = load_activity_settings(cfg_file=cfg)
-    assert loaded.enabled and loaded.keyboard_enabled and loaded.prompted
+    assert loaded.enabled is False  # opt-out round-trips
+    assert loaded.keyboard_enabled is False
+    assert loaded.prompted is True
     assert loaded.retention_days == 30
 
 
-def test_activity_settings_default_off(tmp_path):
+def test_activity_settings_default_on(tmp_path):
+    # The diary is core product behaviour: on by default (opt-out remains).
     loaded = load_activity_settings(cfg_file=tmp_path / "none.ini")
-    assert loaded.enabled is False
-    assert loaded.keyboard_enabled is False
+    assert loaded.enabled is True
+    assert loaded.keyboard_enabled is True
 
 
 # -- analysis --------------------------------------------------------------------

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Private activity diary: collector + analysis (opt-in, local-only).
+"""Private activity diary: collector + analysis (on by default, local-only).
 
 Hard rules, in order of importance:
 
@@ -17,10 +17,9 @@ Two tiers:
 
 - Tier 1 (no dependencies, no OS permissions): cursor distance via
   ``QCursor.pos()`` polling at 10 Hz.
-- Tier 2 (optional, needs ``pynput`` — ``pip install mycat[activity]``):
-  key press and mouse click *counts* via global hooks. Separate opt-in,
-  because global hooks are permission-heavy on macOS and antivirus-sensitive
-  on Windows; unavailable on Wayland.
+- Tier 2 (``pynput``): key press and mouse click *counts* via global hooks.
+  On by default; where hooks can't work (Wayland, missing macOS Input
+  Monitoring permission) the collector degrades to tier 1 at runtime.
 """
 
 import configparser
@@ -61,10 +60,12 @@ BREAK_REST_RATIO = 0.2
 
 @dataclass
 class ActivitySettings:
-    enabled: bool = False
-    keyboard_enabled: bool = False  # tier 2 (pynput) — separate opt-in
+    # The diary is core product behaviour: on by default, with an opt-out,
+    # a retention limit and a delete-everything button in the dialog.
+    enabled: bool = True
+    keyboard_enabled: bool = True  # tier 2 (pynput); degrades silently without it
     retention_days: int = DEFAULT_RETENTION_DAYS
-    prompted: bool = False  # first-run "keep a diary?" question asked
+    prompted: bool = False  # kept for config compatibility (prompt removed)
 
 
 def load_activity_settings(cfg_file: Path = CFG_FILE) -> ActivitySettings:
@@ -77,8 +78,8 @@ def load_activity_settings(cfg_file: Path = CFG_FILE) -> ActivitySettings:
         if "activity" not in config:
             return settings
         section = config["activity"]
-        settings.enabled = section.getboolean("enabled", fallback=False)
-        settings.keyboard_enabled = section.getboolean("keyboard_enabled", fallback=False)
+        settings.enabled = section.getboolean("enabled", fallback=True)
+        settings.keyboard_enabled = section.getboolean("keyboard_enabled", fallback=True)
         settings.retention_days = section.getint("retention_days", fallback=DEFAULT_RETENTION_DAYS)
         settings.prompted = section.getboolean("prompted", fallback=False)
     except Exception as exc:  # noqa: BLE001 - never let a bad config crash the app
@@ -185,7 +186,7 @@ class ActivityCollector(QtCore.QObject):
         try:
             from pynput import keyboard, mouse
         except Exception:  # noqa: BLE001 - optional dep, Wayland, missing perms…
-            logger.warning("pynput unavailable — key/click counting disabled (pip install mycat[activity])")
+            logger.warning("pynput unavailable — key/click counting disabled (cursor distance still recorded)")
             return
 
         def on_press(key) -> None:

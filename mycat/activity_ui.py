@@ -50,7 +50,7 @@ class ActivityDialog(QtWidgets.QDialog):
         layout.addWidget(self.enabled_box)
 
         self.keyboard_box = QtWidgets.QCheckBox(
-            "Also count keystrokes and clicks — counts only, never which keys (needs mycat[activity])"
+            "Also count keystrokes and clicks — counts only, never which keys"
         )
         self.keyboard_box.setChecked(settings.keyboard_enabled)
         layout.addWidget(self.keyboard_box)
