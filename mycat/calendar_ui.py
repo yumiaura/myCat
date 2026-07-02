@@ -118,7 +118,7 @@ class CalendarDialog(QtWidgets.QDialog):
         nearest = events[0]
         when = nearest["start"].strftime("%H:%M")
         text = f"📅 {nearest['summary']} — at {when}"
-        self.status_label.setText(f"OK — {len(events)} event(s) in 24 h · {text} · 🛫 watch the top of the screen")
+        self.status_label.setText(f"OK — {len(events)} event(s) in 24 h · {text}")
         # Fly the nearest event as a real banner (urgent, like calendar always is).
         announcer = getattr(self.controller, "announcer", None)
         if announcer is not None:

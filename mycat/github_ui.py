@@ -156,7 +156,7 @@ class GitHubDialog(QtWidgets.QDialog):
                 latest = items[0]  # quiet feed: show the newest event of any kind
             if latest is not None:
                 text = github_notify.event_text(latest)
-                self.set_status(f"OK · {text} · 🛫 watch the top of the screen", ok=True)
+                self.set_status(f"OK · {text}", ok=True)
                 if announcer is not None:
                     announcer.announce(text, url=github_notify.event_html_url(latest), urgent=True,
                                        speed=0.6, plane_width=220)
@@ -166,7 +166,7 @@ class GitHubDialog(QtWidgets.QDialog):
             if items:
                 item = items[0]
                 text = github_notify.notification_text(item)
-                self.set_status(f"OK · {text} · 🛫 watch the top of the screen", ok=True)
+                self.set_status(f"OK · {text}", ok=True)
                 if announcer is not None:
                     url = github_notify.subject_html_url(item.get("subject") or {}, item.get("repository") or {})
                     announcer.announce(text, url=url, urgent=True, speed=0.6, plane_width=220)
