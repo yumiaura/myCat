@@ -1,6 +1,6 @@
 """Announcer queue: pacing, one-at-a-time, DND hold/release, urgent bypass."""
 
-from mycat.announcer import MIN_GAP_SECONDS, Announcer
+from mycat.announcer import MIN_GAP_SECONDS, SKY_STALE_SECONDS, Announcer
 
 
 class FakeClock:
@@ -111,6 +111,20 @@ def test_urgent_jumps_ahead_but_keeps_fifo_among_urgent(qapp):
         ann.pump()
         order.append(sky.launched[-1].text)
     assert order == ["urgent-1", "urgent-2", "normal"]
+
+
+def test_parked_flyby_stops_blocking_after_stale_timeout(qapp):
+    ann, sky, clock = make_announcer(qapp)
+    ann.announce("parked one")  # takes off, user grabs and parks it
+    ann.announce("waiting")
+    # Still blocked while the parked plane is fresh…
+    clock.advance(60)
+    ann.pump()
+    assert [a.text for a in sky.launched] == ["parked one"]
+    # …but after the stale timeout the sky is released and the queue moves.
+    clock.advance(SKY_STALE_SECONDS + 1)
+    ann.pump()
+    assert [a.text for a in sky.launched] == ["parked one", "waiting"]
 
 
 def test_headless_launch_returns_none_keeps_pacing(qapp):

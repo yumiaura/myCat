@@ -65,17 +65,18 @@ class CalendarDialog(QtWidgets.QDialog):
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
 
-        # Test / Save / Close, in exactly that order; Save keeps the dialog open.
+        # Test (left) · Save, Close (right); Save keeps the dialog open.
         button_row = QtWidgets.QHBoxLayout()
-        button_row.addStretch(1)
         self.test_button = QtWidgets.QPushButton("Test")
         self.save_button = QtWidgets.QPushButton("Save")
         self.close_button = QtWidgets.QPushButton("Close")
         self.test_button.clicked.connect(self.run_test)
         self.save_button.clicked.connect(self.save_settings)
         self.close_button.clicked.connect(self.reject)
-        for button in (self.test_button, self.save_button, self.close_button):
-            button_row.addWidget(button)
+        button_row.addWidget(self.test_button)
+        button_row.addStretch(1)
+        button_row.addWidget(self.save_button)
+        button_row.addWidget(self.close_button)
         layout.addLayout(button_row)
 
     def collect_settings(self) -> "calendar_ics.CalendarSettings":
@@ -117,11 +118,11 @@ class CalendarDialog(QtWidgets.QDialog):
         nearest = events[0]
         when = nearest["start"].strftime("%H:%M")
         text = f"📅 {nearest['summary']} — at {when}"
-        self.status_label.setText(f"OK — {len(events)} event(s) in 24 h · {text}")
+        self.status_label.setText(f"OK — {len(events)} event(s) in 24 h · {text} · 🛫 watch the top of the screen")
         # Fly the nearest event as a real banner (urgent, like calendar always is).
         announcer = getattr(self.controller, "announcer", None)
         if announcer is not None:
-            announcer.announce(text, urgent=True)
+            announcer.announce(text, urgent=True, speed=0.6, plane_width=220)
 
 
 __all__ = ["CalendarDialog"]

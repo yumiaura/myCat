@@ -116,7 +116,7 @@ class LLMSettingsDialog(QtWidgets.QDialog):
         self.status_label.setWordWrap(True)
         self.test_btn = QtWidgets.QPushButton("Test")
         self.save_btn = QtWidgets.QPushButton("Save")
-        cancel_btn = QtWidgets.QPushButton("Cancel")
+        close_btn = QtWidgets.QPushButton("Close")
 
         form = QtWidgets.QFormLayout()
         form.addRow(self.enabled_box)
@@ -130,11 +130,12 @@ class LLMSettingsDialog(QtWidgets.QDialog):
         model_row.addWidget(self.load_btn)
         form.addRow("Model", model_row)
 
+        # Test (left) · Save, Close (right) — same order in every dialog.
         buttons = QtWidgets.QHBoxLayout()
         buttons.addWidget(self.test_btn)
         buttons.addStretch(1)
-        buttons.addWidget(cancel_btn)
         buttons.addWidget(self.save_btn)
+        buttons.addWidget(close_btn)
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.addLayout(form)
@@ -152,7 +153,7 @@ class LLMSettingsDialog(QtWidgets.QDialog):
         self.model_combo.currentTextChanged.connect(self.on_model_changed)
         self.test_btn.clicked.connect(self.on_test)
         self.save_btn.clicked.connect(self.on_save)
-        cancel_btn.clicked.connect(self.reject)
+        close_btn.clicked.connect(self.reject)
 
         # Select the active vendor and prime its fields.
         active = llm_vendors.active_vendor_name()

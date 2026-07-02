@@ -61,7 +61,7 @@ class GitHubDialog(QtWidgets.QDialog):
             "No token → <b>public activity only</b> (stars, forks, issues, releases)."
         )
         hint.setWordWrap(True)
-        hint.setStyleSheet("color: #666; font-size: 10px;")
+        hint.setStyleSheet("color: #555;")
         hint.setToolTip(
             "The notification inbox is private API — GitHub serves it only with a token\n"
             "(read-only, Notifications permission is enough). Without one, the cat follows\n"
@@ -84,21 +84,28 @@ class GitHubDialog(QtWidgets.QDialog):
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
 
-        # Test / Save / Close, in exactly that order. Save applies without
-        # closing, so the flow "save, then test" works in one open dialog.
+        # Test (left) · Save, Close (right). Save applies without closing,
+        # so the flow "save, then test" works in one open dialog.
         button_row = QtWidgets.QHBoxLayout()
-        button_row.addStretch(1)
         self.test_button = QtWidgets.QPushButton("Test")
         self.save_button = QtWidgets.QPushButton("Save")
         self.close_button = QtWidgets.QPushButton("Close")
         self.test_button.clicked.connect(self.run_test)
         self.save_button.clicked.connect(self.save_settings)
         self.close_button.clicked.connect(self.reject)
-        for button in (self.test_button, self.save_button, self.close_button):
-            button_row.addWidget(button)
+        button_row.addWidget(self.test_button)
+        button_row.addStretch(1)
+        button_row.addWidget(self.save_button)
+        button_row.addWidget(self.close_button)
         layout.addLayout(button_row)
 
     # -- actions ---------------------------------------------------------------
+
+    def set_status(self, text: str, ok: bool | None = None) -> None:
+        """Status line: green when ok, red when not, neutral otherwise."""
+        color = {True: "#1c7c2f", False: "#c0392b", None: "#555555"}[ok]
+        self.status_label.setStyleSheet(f"color: {color};")
+        self.status_label.setText(text)
 
     def collect_settings(self) -> "github_notify.GitHubSettings":
         reasons = tuple(key for key, box in self.reason_boxes.items() if box.isChecked())
@@ -116,15 +123,15 @@ class GitHubDialog(QtWidgets.QDialog):
         github_notify.save_github_settings(settings)
         self.notifier.apply_settings(settings)
         logger.info("GitHub notifier settings saved (enabled=%s)", settings.enabled)
-        self.status_label.setText("Saved.")
+        self.set_status("Saved.", ok=True)
 
     def run_test(self) -> None:
         settings = self.collect_settings()
         token = settings.resolve_token()
         if not token and not settings.username:
-            self.status_label.setText("Paste a token, or a username for the public-only mode.")
+            self.set_status("Paste a token, or a username for the public-only mode.", ok=False)
             return
-        self.status_label.setText("Checking…")
+        self.set_status("Checking…")
         self.test_button.setEnabled(False)
 
         if token:
@@ -137,7 +144,7 @@ class GitHubDialog(QtWidgets.QDialog):
     def show_test_result(self, result: dict) -> None:
         self.test_button.setEnabled(True)
         if result.get("error"):
-            self.status_label.setText(f"Failed: {result['error']}")
+            self.set_status(f"Failed: {result['error']}", ok=False)
             return
         items = list(result.get("items", []))
         # Show the latest item as its banner would read — and actually FLY it
@@ -149,21 +156,22 @@ class GitHubDialog(QtWidgets.QDialog):
                 latest = items[0]  # quiet feed: show the newest event of any kind
             if latest is not None:
                 text = github_notify.event_text(latest)
-                self.status_label.setText(f"OK — public mode · {text}")
+                self.set_status(f"OK · {text} · 🛫 watch the top of the screen", ok=True)
                 if announcer is not None:
-                    announcer.announce(text, url=github_notify.event_html_url(latest), urgent=True)
+                    announcer.announce(text, url=github_notify.event_html_url(latest), urgent=True,
+                                       speed=0.6, plane_width=220)
             else:
-                self.status_label.setText("OK — public mode, no recent activity.")
+                self.set_status("OK — public mode, no recent activity.", ok=True)
         else:
             if items:
                 item = items[0]
                 text = github_notify.notification_text(item)
-                self.status_label.setText(f"OK · {text}")
+                self.set_status(f"OK · {text} · 🛫 watch the top of the screen", ok=True)
                 if announcer is not None:
                     url = github_notify.subject_html_url(item.get("subject") or {}, item.get("repository") or {})
-                    announcer.announce(text, url=url, urgent=True)
+                    announcer.announce(text, url=url, urgent=True, speed=0.6, plane_width=220)
             else:
-                self.status_label.setText("OK — no unread notifications.")
+                self.set_status("OK — no unread notifications.", ok=True)
 
 
 __all__ = ["GitHubDialog"]

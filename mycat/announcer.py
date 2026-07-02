@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 
 # Seconds between the previous flyby leaving the screen and the next take-off.
 MIN_GAP_SECONDS = 4.0
+# A crossing takes ~20 s; a flyby older than this is parked (the user grabbed
+# it) — stop letting it block the queue.
+SKY_STALE_SECONDS = 180.0
 
 
 @dataclass
@@ -60,6 +63,7 @@ class Announcer(QtCore.QObject):
         self.queue: list[Announcement] = []
         self.dnd = False
         self.active = None  # the in-flight window; also guards "one at a time"
+        self.active_since = 0.0
         self.ready_at = 0.0  # earliest monotonic time for the next take-off
 
         if start_timer:
@@ -116,7 +120,12 @@ class Announcer(QtCore.QObject):
     def pump(self) -> None:
         """Launch the next eligible announcement, if the sky is clear."""
         if self.active is not None:
-            return
+            # A parked plane (grabbed mid-flight) must not block the queue
+            # forever — after SKY_STALE_SECONDS treat the sky as clear.
+            if self.clock() - self.active_since <= SKY_STALE_SECONDS:
+                return
+            logger.info("Flyby parked/stale — releasing the sky for the queue")
+            self.active = None
         if self.clock() < self.ready_at:
             return
         item = self.next_item()
@@ -131,6 +140,7 @@ class Announcer(QtCore.QObject):
             self.pump()
             return
         self.active = shown
+        self.active_since = self.clock()
 
     def flyby_gone(self) -> None:
         """The current flyby left the screen; schedule the next take-off."""
