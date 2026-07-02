@@ -12,6 +12,7 @@ dist/
 *.pyc
 uv.lock
 *.zip
+!mycat/chars/*.zip
 *.md
 !README.md
 !CHANGELOG.md
