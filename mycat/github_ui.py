@@ -34,6 +34,7 @@ class GitHubDialog(QtWidgets.QDialog):
         self.notifier = notifier
         self.setWindowTitle("GitHub notifications")
         self.setModal(False)
+        self.resize(380, 320)
 
         settings = notifier.settings
         layout = QtWidgets.QVBoxLayout(self)
@@ -53,15 +54,17 @@ class GitHubDialog(QtWidgets.QDialog):
         layout.addLayout(form)
 
         hint = QtWidgets.QLabel(
-            "<b>Why a token?</b> Your notification inbox (review requests, mentions,"
-            " assignments) is private API — GitHub only serves it with a token"
-            " (read-only, <b>Notifications</b> permission is enough).<br>"
-            "<b>Without a token</b> only <b>public</b> activity is tracked — stars,"
-            " forks, new issues/PRs and releases from the public feed of the"
-            " username above. Private repos and your inbox stay invisible.<br>"
-            "Requests go straight to api.github.com — nowhere else."
+            "Token → your inbox (reviews, mentions).<br>"
+            "No token → <b>public activity only</b> (stars, forks, issues, releases)."
         )
         hint.setWordWrap(True)
+        hint.setStyleSheet("color: #666; font-size: 10px;")
+        hint.setToolTip(
+            "The notification inbox is private API — GitHub serves it only with a token\n"
+            "(read-only, Notifications permission is enough). Without one, the cat follows\n"
+            "the username's public feed instead; private repos and the inbox stay invisible.\n"
+            "Requests go straight to api.github.com — nowhere else."
+        )
         layout.addWidget(hint)
 
         reasons_box = QtWidgets.QGroupBox("Announce")
@@ -129,12 +132,9 @@ class GitHubDialog(QtWidgets.QDialog):
             return
         count = len(result.get("items", []))
         if result.get("mode") == "public":
-            self.status_label.setText(
-                f"OK — public-only mode: {count} recent public event(s) in this feed. "
-                "Private repos and your inbox are NOT visible without a token."
-            )
+            self.status_label.setText(f"OK — public-only mode, {count} recent event(s).")
         else:
-            self.status_label.setText(f"OK — {count} unread notification(s) visible to this token.")
+            self.status_label.setText(f"OK — {count} unread notification(s).")
 
 
 __all__ = ["GitHubDialog"]
