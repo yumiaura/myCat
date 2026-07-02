@@ -139,8 +139,10 @@ minimum 12% so fresh input is visible immediately.
 
 Classic cycle: **25 min focus → 5 min break**, and after every 4 focuses a
 **15-min long break** (all four durations configurable). During focus the cat
-keeps still, a thin progress bar under it fills, and non-urgent banners are
-held until the break; calendar reminders still fly through.
+keeps still and non-urgent banners are held until the break; calendar
+reminders still fly through. Hovering the cat shows the current period —
+"Focus · 17:42 left · …" during a session, or "Other · 32 min · ⌨ … · 96%
+active" when you're working without a timer.
 
 **Auto-start:** returning to the keyboard after ≥ 5 minutes of silence
 (`IDLE_RESUME_MINUTES`) quietly starts a focus countdown — no banner, just

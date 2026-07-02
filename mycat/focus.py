@@ -10,9 +10,9 @@ State machine: ``idle → focus → break → idle``; after every
 one. The break starts by itself (resting should need no click); the next
 focus is started deliberately by the user.
 
-Only ``QtCore`` is imported here; the progress bar lives in ``focus_ui`` and
-is imported lazily so headless runs never need widgets (same split as
-``reminder`` / ``reminder_ui``).
+Only ``QtCore`` is imported here. Whether a session is running is readable
+from the cat's hover tooltip ("Focus · 17:42 left · …") and from the menu
+labels; outside a session the tooltip shows the current no-timer run.
 """
 
 import configparser
@@ -123,7 +123,6 @@ class FocusController(QtCore.QObject):
         self.on_long_break = False
         # Completed focus sessions since the last long break (not per day).
         self.focus_streak = 0
-        self.bar = None  # lazy FocusBarWindow; None while idle or headless
         # Auto-pomodoro: the activity collector (attached from main) emits an
         # idle-resume edge; an explicit Stop blocks auto-starts for a while.
         self.collector = None
@@ -257,6 +256,8 @@ class FocusController(QtCore.QObject):
 
     def tick(self) -> None:
         if self.state == IDLE:
+            # No timer — keep the hover tooltip tracking the current run.
+            self.refresh_visuals()
             return
         if self.phase_ends is not None and self.now_fn() >= self.phase_ends:
             self.finish_phase()
@@ -335,49 +336,34 @@ class FocusController(QtCore.QObject):
         except Exception:  # noqa: BLE001 - a broken DB must not kill the timer
             logger.exception("Failed to record %s session", self.state)
 
-    # -- visuals (bar under the cat + tooltip on the cat) ----------------------
+    # -- visuals: the cat's hover tooltip carries the current period -------------
+
+    def idle_run_text(self) -> str:
+        """Tooltip for the current no-timer activity run ("Other"), or ""."""
+        collector = self.collector
+        if collector is None or not hasattr(collector, "current_run_stats"):
+            return ""
+        stats = collector.current_run_stats()
+        if stats is None:
+            return ""
+        minutes = stats["elapsed_minutes"]
+        hours, mins = divmod(minutes, 60)
+        elapsed = f"{hours} h {mins:02d} min" if hours else f"{mins} min"
+        parts = [f"Other · {elapsed}"]
+        if stats["keys"]:
+            parts.append(f"⌨ {stats['keys']:,}")
+        if stats["mouse_px"]:
+            km = cursor_km_estimate(stats["mouse_px"])
+            parts.append(f"🖱 {km:.1f} km" if km >= 0.1 else f"🖱 {int(km * 1000)} m")
+        parts.append(f"{stats['active_pct']}% active")
+        return " · ".join(parts)
 
     def refresh_visuals(self) -> None:
         window = self.window
         if window is None or not hasattr(window, "setToolTip"):
             return
-        if self.state == IDLE:
-            window.setToolTip("")
-            if self.bar is not None:
-                self.bar.hide()
-            return
-        window.setToolTip(self.status_text())
-        bar = self.ensure_bar()
-        if bar is not None:
-            bar.update_state(
-                progress=self.progress(),
-                on_break=self.state == BREAK,
-                tooltip=self.status_text(),
-            )
-            bar.follow(window)
-            bar.show()
-
-    def ensure_bar(self):
-        if self.bar is not None:
-            return self.bar
-        app = QtCore.QCoreApplication.instance()
-        platform_name = ""
-        if hasattr(app, "platformName"):
-            platform_name = (app.platformName() or "").lower()
-        if platform_name == "offscreen":
-            return None
-        try:
-            if __package__:
-                from .focus_ui import FocusBarWindow
-            else:
-                import importlib
-
-                FocusBarWindow = importlib.import_module("mycat.focus_ui").FocusBarWindow
-        except Exception:
-            logger.exception("Failed to import focus bar")
-            return None
-        self.bar = FocusBarWindow()
-        return self.bar
+        # Session tooltip when a timer runs; the current "Other" run otherwise.
+        window.setToolTip(self.status_text() or self.idle_run_text())
 
 
 __all__ = ["FocusController", "FocusSettings", "load_focus_settings", "IDLE", "FOCUS", "BREAK"]
