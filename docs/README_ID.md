@@ -2,7 +2,7 @@
 
 # Kucing Desktop: Aplikasi Mengambang QT 🐱
 
-[<img src="https://raw.githubusercontent.com/yumiaura/yumiaura/refs/heads/main/images/cat.gif" width="164" alt="cat.gif"/>](https://github.com/yumiaura)
+[<img src="https://raw.githubusercontent.com/yumiaura/myCat/refs/heads/main/docs/cat.gif" width="164" alt="cat.gif"/>](https://github.com/yumiaura)
 
 <p class="badges">
   <img src="https://img.shields.io/pypi/pyversions/mycat?color=brightgreen" alt="Python Versions">
