@@ -287,8 +287,11 @@ class LLMSettingsDialog(QtWidgets.QDialog):
         self.test_btn.setEnabled(False)
         self.set_status(f"Testing {model}…", STATUS_INFO)
         worker = TestWorker(
-            self.kind_value(), self.base_url_edit.text().strip(), self.effective_key(),
-            model, self.request_timeout(),
+            self.kind_value(),
+            self.base_url_edit.text().strip(),
+            self.effective_key(),
+            model,
+            self.request_timeout(),
         )
         worker.signals.tested.connect(self.on_tested)
         worker.signals.error.connect(self.on_test_error)
@@ -343,8 +346,8 @@ class LLMSettingsDialog(QtWidgets.QDialog):
             logger.exception("Failed to apply LLM settings live")
             self.set_status(f"Saved, but live apply failed: {exc}", STATUS_ERR)
             return
-        self.set_status("Saved ✓", STATUS_OK)
-        self.accept()
+        state = "on" if enabled else "off"
+        self.set_status(f"Saved ✓ ({state}): {vendor.name} · {vendor.model}", STATUS_OK)
 
     def apply_live(self, vendor: llm_vendors.Vendor, enabled: bool) -> None:
         from . import llm, llm_ui
@@ -365,8 +368,11 @@ class LLMSettingsDialog(QtWidgets.QDialog):
             return
 
         context = llm.LLMContext(
-            backend_name=vendor.name, backend=backend,
-            settings=llm_prompt.load_llm_settings(), enabled=enabled, vendor=vendor,
+            backend_name=vendor.name,
+            backend=backend,
+            settings=llm_prompt.load_llm_settings(),
+            enabled=enabled,
+            vendor=vendor,
         )
         llm_ui.attach_chat(self.host_window, context, enabled=enabled)
 

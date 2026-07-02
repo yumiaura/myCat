@@ -93,7 +93,12 @@ class CalendarDialog(QtWidgets.QDialog):
         calendar_ics.save_calendar_settings(settings)
         self.controller.apply_settings(settings)
         logger.info("Calendar settings saved (enabled=%s)", settings.enabled)
-        self.status_label.setText("Saved.")
+        state = "on" if settings.enabled else "off"
+        url_note = "URL set" if settings.url else "no URL"
+        self.status_label.setText(
+            f"Saved ({state}): {url_note}, remind {settings.remind_minutes} min before, "
+            f"poll every {settings.poll_minutes} min."
+        )
 
     def run_test(self) -> None:
         url = self.url_edit.text().strip()
@@ -119,10 +124,11 @@ class CalendarDialog(QtWidgets.QDialog):
         when = nearest["start"].strftime("%H:%M")
         text = f"📅 {nearest['summary']} — at {when}"
         self.status_label.setText(f"OK — {len(events)} event(s) in 24 h · {text}")
-        # Fly the nearest event as a real banner (urgent, like calendar always is).
+        # Fly the nearest event as a real banner — same plane as every other
+        # announcement (urgent only, so it clears a focus session's DND).
         announcer = getattr(self.controller, "announcer", None)
         if announcer is not None:
-            announcer.announce(text, urgent=True, speed=0.6, plane_width=220)
+            announcer.announce(text, urgent=True)
 
 
 __all__ = ["CalendarDialog"]
