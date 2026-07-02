@@ -47,6 +47,11 @@ CURSOR_POLL_MS = 100  # 10 Hz — plenty for a distance integral
 # A minute counts as "active" from this much cursor travel (filters out the
 # desk bumping the mouse) or any key/click at all.
 ACTIVE_MOUSE_PX_THRESHOLD = 30
+# Per-sample cursor movement below this is sensor noise, not input.
+SAMPLE_MOVE_EPSILON_PX = 3
+# Input after at least this much silence is "coming back to the computer" —
+# the edge that auto-starts a focus session.
+IDLE_RESUME_MINUTES = 5
 DEFAULT_RETENTION_DAYS = 90
 # Merge active stretches separated by gaps up to this long, and only call the
 # result "work outside pomodoro" from this length up.
@@ -116,7 +121,14 @@ class ActivityCollector(QtCore.QObject):
     ``cursor_pos_fn`` / ``now_fn`` are injectable for tests. The pynput
     listeners only touch two integers from their callback threads (atomic
     enough under the GIL for counters we read once a minute).
+
+    Emits :attr:`resumed_after_idle` when input appears after at least
+    ``IDLE_RESUME_MINUTES`` of silence — the trigger for auto-pomodoro. The
+    very first input after startup only baselines (no signal), so launching
+    the app never auto-starts a session by itself.
     """
+
+    resumed_after_idle = QtCore.Signal()
 
     def __init__(
         self,
@@ -140,6 +152,10 @@ class ActivityCollector(QtCore.QObject):
         self.key_listener = None
         self.mouse_listener = None
         self.purged_today = False
+        # Idle-edge detection (auto-pomodoro trigger).
+        self.last_input_at = None
+        self.prev_keys = 0
+        self.prev_clicks = 0
 
         if start_timers:
             self.poll_timer = QtCore.QTimer(self)
@@ -227,12 +243,27 @@ class ActivityCollector(QtCore.QObject):
             self.flush()
             self.bucket_minute = minute
 
+        moved = 0.0
         pos = self.cursor_pos_fn()
         if pos is not None and self.last_pos is not None:
             dx = pos.x() - self.last_pos.x()
             dy = pos.y() - self.last_pos.y()
-            self.bucket_mouse_px += (dx * dx + dy * dy) ** 0.5
+            moved = (dx * dx + dy * dy) ** 0.5
+            self.bucket_mouse_px += moved
         self.last_pos = pos
+
+        input_now = (
+            moved > SAMPLE_MOVE_EPSILON_PX
+            or self.bucket_keys != self.prev_keys
+            or self.bucket_clicks != self.prev_clicks
+        )
+        self.prev_keys = self.bucket_keys
+        self.prev_clicks = self.bucket_clicks
+        if input_now:
+            if self.last_input_at is not None and now - self.last_input_at >= timedelta(minutes=IDLE_RESUME_MINUTES):
+                logger.info("Input after %s of silence — idle-resume edge", now - self.last_input_at)
+                self.resumed_after_idle.emit()
+            self.last_input_at = now
 
     def flush(self) -> None:
         if self.bucket_minute is None:
@@ -248,6 +279,8 @@ class ActivityCollector(QtCore.QObject):
         self.bucket_mouse_px = 0.0
         self.bucket_keys = 0
         self.bucket_clicks = 0
+        self.prev_keys = 0
+        self.prev_clicks = 0
         self.maybe_purge()
 
     def maybe_purge(self) -> None:

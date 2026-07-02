@@ -40,6 +40,20 @@ IDLE = "idle"
 FOCUS = "focus"
 BREAK = "break"
 
+
+def cursor_km_estimate(mouse_px: int) -> float:
+    """Pixels → km via the primary screen's DPI (96 when unavailable)."""
+    dpi = 96.0
+    try:
+        from PySide6 import QtGui
+
+        screen = QtGui.QGuiApplication.primaryScreen()
+        if screen is not None:
+            dpi = float(screen.physicalDotsPerInch()) or 96.0
+    except Exception:  # noqa: BLE001
+        pass
+    return mouse_px / dpi * 0.0254 / 1000.0
+
 # If a phase deadline was overshot by more than this (laptop lid closed,
 # suspend, hibernation), the moment has passed: finish the phase quietly with
 # no banner and no auto-break instead of celebrating hours later.
@@ -52,6 +66,9 @@ class FocusSettings:
     break_minutes: int = 5
     long_break_minutes: int = 15
     sessions_before_long_break: int = 4
+    # Auto-pomodoro: input after an idle stretch starts the countdown by
+    # itself (quietly — the bar and tooltip appear, no banner).
+    auto_start: bool = True
 
 
 def load_focus_settings() -> FocusSettings:
@@ -71,6 +88,7 @@ def load_focus_settings() -> FocusSettings:
         settings.sessions_before_long_break = section.getint(
             "sessions_before_long_break", fallback=settings.sessions_before_long_break
         )
+        settings.auto_start = section.getboolean("auto_start", fallback=settings.auto_start)
     except Exception as exc:  # noqa: BLE001 - never let a bad config crash the app
         logger.error("Failed to load focus settings: %s", exc)
     return settings
@@ -106,6 +124,10 @@ class FocusController(QtCore.QObject):
         # Completed focus sessions since the last long break (not per day).
         self.focus_streak = 0
         self.bar = None  # lazy FocusBarWindow; None while idle or headless
+        # Auto-pomodoro: the activity collector (attached from main) emits an
+        # idle-resume edge; an explicit Stop blocks auto-starts for a while.
+        self.collector = None
+        self.auto_blocked_until: datetime | None = None
 
         if start_timer:
             self.timer = QtCore.QTimer(self)
@@ -128,11 +150,32 @@ class FocusController(QtCore.QObject):
         """Abandon the current phase and go idle (no banner — user's choice)."""
         if self.state == IDLE:
             return
+        was_focus = self.state == FOCUS
         self.record_phase(completed=False)
         if self.announcer is not None:
             self.announcer.set_dnd(False)
         self.leave_phase()
+        if was_focus:
+            # An explicit Stop means "not now" — don't let the very next
+            # keystroke auto-start a fresh session on top of that decision.
+            self.auto_blocked_until = self.now_fn() + timedelta(minutes=self.settings.break_minutes)
         logger.info("Focus session stopped by user")
+
+    def attach_collector(self, collector) -> None:
+        """Wire the activity collector: its idle-resume edge auto-starts focus."""
+        self.collector = collector
+        signal = getattr(collector, "resumed_after_idle", None)
+        if signal is not None:
+            signal.connect(self.maybe_auto_start)
+
+    def maybe_auto_start(self) -> None:
+        """Quietly start a focus session on input-after-idle (auto-pomodoro)."""
+        if not self.settings.auto_start or self.state != IDLE:
+            return
+        if self.auto_blocked_until is not None and self.now_fn() < self.auto_blocked_until:
+            return
+        logger.info("Auto-starting a focus session (input after idle)")
+        self.start_focus()
 
     def skip_break(self) -> None:
         """Cut the break short and dive into the next focus session."""
@@ -158,11 +201,41 @@ class FocusController(QtCore.QObject):
         minutes, seconds = divmod(self.remaining_seconds(), 60)
         clock = f"{minutes:02d}:{seconds:02d}"
         if self.state == FOCUS:
-            return f"Focus · {clock} left · today {self.today_count()} 🍅"
+            text = f"Focus · {clock} left · today {self.today_count()} 🍅"
+            live = self.live_session_stats()
+            return f"{text} · {live}" if live else text
         if self.state == BREAK:
             label = "Long break" if self.on_long_break else "Break"
             return f"{label} · {clock} left · today {self.today_count()} 🍅"
         return ""
+
+    def live_session_stats(self) -> str:
+        """Interim numbers for the CURRENT session: keys, cursor path, active %.
+
+        Reads the flushed minute buckets plus the collector's live bucket, so
+        the tooltip moves while you type.
+        """
+        collector = self.collector
+        if collector is None or self.phase_started is None:
+            return ""
+        try:
+            rows = self.store.minutes_between(self.phase_started, self.now_fn())
+        except Exception:  # noqa: BLE001 - stats must never break the tooltip
+            return ""
+        keys = sum(row["keys"] for row in rows) + getattr(collector, "bucket_keys", 0)
+        mouse_px = sum(row["mouse_px"] for row in rows) + int(getattr(collector, "bucket_mouse_px", 0))
+        active = sum(row["active"] for row in rows)
+        observed = len(rows)
+
+        parts = []
+        if keys:
+            parts.append(f"⌨ {keys:,}")
+        if mouse_px:
+            km = cursor_km_estimate(mouse_px)
+            parts.append(f"🖱 {km:.1f} km" if km >= 0.1 else f"🖱 {int(km * 1000)} m")
+        if observed:
+            parts.append(f"{int(100 * active / observed)}% active")
+        return " · ".join(parts)
 
     # -- clock ---------------------------------------------------------------
 

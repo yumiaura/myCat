@@ -593,9 +593,12 @@ class PixelCatWindow(QtWidgets.QWidget):
         # urgent enough to fly through an active focus session.
         self.calendar_controller = calendar_ics.CalendarController(self, announcer=self.announcer)
 
-        # Activity diary (opt-in, local-only): counters, never content; the
-        # collector shares activity.db with the focus session log above.
+        # Activity diary (on by default, local-only): counters, never content;
+        # the collector shares activity.db with the focus session log above.
         self.activity_collector = activity.ActivityCollector(store=self.focus_controller.store)
+        # Auto-pomodoro: coming back to the keyboard after an idle stretch
+        # quietly starts the focus countdown ([focus] auto_start to disable).
+        self.focus_controller.attach_collector(self.activity_collector)
 
         # The morning newspaper: yesterday's stats once per day, first thing
         # after 05:00 — another small reason the cat is running at dawn.
