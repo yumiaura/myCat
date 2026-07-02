@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Settings dialog for the opt-in GitHub notifier.
 
-Mirrors the LLM settings dialog philosophy: bring your own token, test it
-right here, and nothing polls until "Enabled" is on.
+Public-first: you pick, with checkboxes, exactly which GitHub things ping the
+cat. The account fields come first; the token is optional and sits at the
+bottom — it only unlocks the private inbox categories, which stay greyed out
+until the token is entered and verified with "Test".
 """
 
 import logging
@@ -20,65 +22,64 @@ else:
 
 logger = logging.getLogger(__name__)
 
-REASON_CHOICES = (
-    ("review_requested", "Review requested"),
-    ("mention", "Mentions"),
-    ("assign", "Assigned to me"),
-    ("ci_activity", "CI activity"),
-)
+INBOX_CHOICES = [(key, github_notify.CATEGORY_LABELS[key]) for key in github_notify.INBOX_CATEGORIES]
+PUBLIC_CHOICES = [(key, github_notify.CATEGORY_LABELS[key]) for key in github_notify.PUBLIC_CATEGORIES]
 
 
 class GitHubDialog(QtWidgets.QDialog):
-    """Enable/disable, token, reason filter and a live "Test" button."""
+    """Enable/disable, identity, per-category checkboxes and a live "Test"."""
 
     def __init__(self, notifier, parent=None) -> None:
         super().__init__(parent)
         self.notifier = notifier
         self.setWindowTitle("GitHub notifications")
         self.setModal(False)
-        self.resize(380, 320)
+        self.resize(400, 500)
         self.setStyleSheet(LIGHT_QSS)
 
         settings = notifier.settings
+        self.token_verified = bool(settings.token_verified and settings.resolve_token())
         layout = QtWidgets.QVBoxLayout(self)
 
-        self.enabled_box = QtWidgets.QCheckBox("Enabled — the cat announces new GitHub notifications")
+        self.enabled_box = QtWidgets.QCheckBox("Enabled — announces GitHub activity")
         self.enabled_box.setChecked(settings.enabled)
         layout.addWidget(self.enabled_box)
 
         form = QtWidgets.QFormLayout()
+        self.me_edit = QtWidgets.QLineEdit(settings.me_login)
+        self.me_edit.setPlaceholderText("auto-filled when you verify a token")
+        form.addRow("GitHub username:", self.me_edit)
         self.token_edit = QtWidgets.QLineEdit(settings.token)
         self.token_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
-        self.token_edit.setPlaceholderText(f"fine-grained PAT (empty → ${settings.token_env})")
-        form.addRow("Token:", self.token_edit)
-        self.accounts_edit = QtWidgets.QLineEdit(settings.accounts)
-        self.accounts_edit.setPlaceholderText("user1, user2 — accounts to follow (tokenless mode)")
-        form.addRow("Accounts:", self.accounts_edit)
+        self.token_edit.setPlaceholderText(f"empty → ${settings.token_env}")
+        self.token_edit.textChanged.connect(self.on_token_changed)
+        form.addRow("Token (optional):", self.token_edit)
         layout.addLayout(form)
 
-        hint = QtWidgets.QLabel(
-            "Token → your inbox (reviews, mentions).<br>"
-            "No token → <b>public activity of the listed accounts</b> (stars, forks, issues, releases)."
-        )
-        hint.setWordWrap(True)
-        hint.setStyleSheet("color: #555;")
-        hint.setToolTip(
-            "The notification inbox is private API — GitHub serves it only with a token\n"
-            "(read-only, Notifications permission is enough). Without one, the cat follows\n"
-            "the listed accounts' public activity instead; private repos and the inbox stay invisible.\n"
-            "Requests go straight to api.github.com — nowhere else."
-        )
-        layout.addWidget(hint)
+        self.category_boxes: dict = {}
 
-        reasons_box = QtWidgets.QGroupBox("Announce")
-        reasons_layout = QtWidgets.QVBoxLayout(reasons_box)
-        self.reason_boxes = {}
-        for key, label in REASON_CHOICES:
+        public_box = QtWidgets.QGroupBox("Public options")
+        public_layout = QtWidgets.QVBoxLayout(public_box)
+        for key, label in PUBLIC_CHOICES:
             box = QtWidgets.QCheckBox(label)
-            box.setChecked(key in settings.reasons)
-            self.reason_boxes[key] = box
-            reasons_layout.addWidget(box)
-        layout.addWidget(reasons_box)
+            box.setChecked(key in settings.categories)
+            self.category_boxes[key] = box
+            public_layout.addWidget(box)
+        layout.addWidget(public_box)
+
+        self.inbox_box = QtWidgets.QGroupBox("Private options (token required)")
+        inbox_layout = QtWidgets.QVBoxLayout(self.inbox_box)
+        for key, label in INBOX_CHOICES:
+            box = QtWidgets.QCheckBox(label)
+            box.setChecked(key in settings.categories)
+            self.category_boxes[key] = box
+            inbox_layout.addWidget(box)
+        self.inbox_box.setToolTip(
+            "Enter a token above and press Test to unlock these. They are served only with a\n"
+            "token (read-only Notifications scope is enough); requests go straight to api.github.com."
+        )
+        layout.addWidget(self.inbox_box)
+        self.set_inbox_enabled(self.token_verified)
 
         self.status_label = QtWidgets.QLabel("")
         self.status_label.setWordWrap(True)
@@ -99,7 +100,16 @@ class GitHubDialog(QtWidgets.QDialog):
         button_row.addWidget(self.close_button)
         layout.addLayout(button_row)
 
-    # -- actions ---------------------------------------------------------------
+    # -- state -----------------------------------------------------------------
+
+    def set_inbox_enabled(self, enabled: bool) -> None:
+        for key, label in INBOX_CHOICES:
+            self.category_boxes[key].setEnabled(enabled)
+
+    def on_token_changed(self, text: str) -> None:
+        # Editing the token invalidates any prior verification.
+        self.token_verified = False
+        self.set_inbox_enabled(False)
 
     def set_status(self, text: str, ok: bool | None = None) -> None:
         """Status line: green when ok, red when not, neutral otherwise."""
@@ -108,14 +118,19 @@ class GitHubDialog(QtWidgets.QDialog):
         self.status_label.setText(text)
 
     def collect_settings(self) -> "github_notify.GitHubSettings":
-        reasons = tuple(key for key, box in self.reason_boxes.items() if box.isChecked())
+        categories = tuple(key for key, box in self.category_boxes.items() if box.isChecked())
         return github_notify.GitHubSettings(
             enabled=self.enabled_box.isChecked(),
             token=self.token_edit.text().strip(),
             token_env=self.notifier.settings.token_env,
-            accounts=self.accounts_edit.text().strip(),
-            reasons=reasons or github_notify.DEFAULT_REASONS,
+            # "Also follow" is no longer shown; preserve any value already in config.
+            accounts=self.notifier.settings.accounts,
+            me_login=self.me_edit.text().strip(),
+            categories=categories,
+            token_verified=self.token_verified,
         )
+
+    # -- actions ---------------------------------------------------------------
 
     def save_settings(self) -> None:
         """Persist + apply, but keep the dialog open (save → then test)."""
@@ -123,56 +138,92 @@ class GitHubDialog(QtWidgets.QDialog):
         github_notify.save_github_settings(settings)
         self.notifier.apply_settings(settings)
         logger.info("GitHub notifier settings saved (enabled=%s)", settings.enabled)
-        self.set_status("Saved.", ok=True)
+        public_on = sum(1 for key, label in PUBLIC_CHOICES if self.category_boxes[key].isChecked())
+        private_on = sum(1 for key, label in INBOX_CHOICES if self.category_boxes[key].isChecked())
+        state = "on" if settings.enabled else "off"
+        who = settings.me_login or "no username"
+        token_note = "token verified" if self.token_verified else "no token"
+        self.set_status(
+            f"Saved ({state}): {who} · {public_on} public + {private_on} private options · {token_note}.",
+            ok=True,
+        )
 
     def run_test(self) -> None:
         settings = self.collect_settings()
         token = settings.resolve_token()
-        accounts = github_notify.parse_accounts(settings.accounts)
+        accounts = list(self.sample_accounts(settings))
         if not token and not accounts:
-            self.set_status("Paste a token, or list accounts for the public-only mode.", ok=False)
+            self.set_status("Enter your username, list accounts, or paste a token.", ok=False)
             return
         self.set_status("Checking…")
         self.test_button.setEnabled(False)
 
         if token:
-            worker = github_notify.PollWorker(token, "")
+            worker = github_notify.PollWorker(token, "", mode="verify")
         else:
             worker = github_notify.PollWorker("", "", mode="public", accounts=accounts)
         worker.emitter.finished.connect(self.show_test_result)
         QtCore.QThreadPool.globalInstance().start(worker)
 
+    def sample_accounts(self, settings) -> tuple:
+        """Accounts to sample in the tokenless Test: yourself + those you follow."""
+        me = settings.me_login.strip()
+        accounts = list(github_notify.parse_accounts(settings.accounts))
+        if me and me.lower() not in {a.lower() for a in accounts}:
+            accounts.insert(0, me)
+        return tuple(accounts)
+
+    def fly_sample(self, text: str, url: str) -> None:
+        """Fly the sample banner — same plane as a real notification, just urgent
+        (so a focus session's DND can't hold the test back)."""
+        announcer = getattr(self.notifier, "announcer", None)
+        if announcer is not None:
+            announcer.announce(text, url=url, urgent=True)
+
     def show_test_result(self, result: dict) -> None:
         self.test_button.setEnabled(True)
+        mode = result.get("mode")
+
+        if mode == "verify":
+            if result.get("error") or int(result.get("status", 0)) != 200:
+                self.token_verified = False
+                self.set_inbox_enabled(False)
+                self.set_status("Token rejected — check the PAT (read-only Notifications scope).", ok=False)
+                return
+            login = str(result.get("login", ""))
+            self.token_verified = True
+            self.set_inbox_enabled(True)
+            if login:
+                self.me_edit.setText(login)
+            items = list(result.get("items", []))
+            if items:
+                text = github_notify.notification_text(items[0])
+                self.set_status(f"OK · verified as {login} · {text}", ok=True)
+                url = github_notify.subject_html_url(items[0].get("subject") or {}, items[0].get("repository") or {})
+                self.fly_sample(text, url)
+            else:
+                self.set_status(f"OK · verified as {login} · no notifications.", ok=True)
+            return
+
         if result.get("error"):
             self.set_status(f"Failed: {result['error']}", ok=False)
             return
+
         items = list(result.get("items", []))
-        # Show the latest item as its banner would read — and actually FLY it
-        # (urgent, so a running focus session's DND can't hold the test back).
-        announcer = getattr(self.notifier, "announcer", None)
-        if result.get("mode") == "public":
-            latest = next((e for e in items if github_notify.interesting_public_event(e)), None)
-            if latest is None and items:
-                latest = items[0]  # quiet feed: show the newest event of any kind
-            if latest is not None:
-                text = github_notify.event_text(latest)
-                self.set_status(f"OK · {text}", ok=True)
-                if announcer is not None:
-                    announcer.announce(text, url=github_notify.event_html_url(latest), urgent=True,
-                                       speed=0.6, plane_width=220)
-            else:
-                self.set_status("OK — public mode, no recent activity.", ok=True)
+        me = self.me_edit.text().strip()
+
+        def interest(event):
+            return github_notify.public_event_interesting(event, me)
+
+        latest = next((event for event in items if interest(event)), None)
+        if latest is None and items:
+            latest = items[0]  # quiet feed: show the newest event of any kind
+        if latest is not None:
+            text = github_notify.event_text(latest)
+            self.set_status(f"OK · {text}", ok=True)
+            self.fly_sample(text, github_notify.event_html_url(latest))
         else:
-            if items:
-                item = items[0]
-                text = github_notify.notification_text(item)
-                self.set_status(f"OK · {text}", ok=True)
-                if announcer is not None:
-                    url = github_notify.subject_html_url(item.get("subject") or {}, item.get("repository") or {})
-                    announcer.announce(text, url=url, urgent=True, speed=0.6, plane_width=220)
-            else:
-                self.set_status("OK — no unread notifications.", ok=True)
+            self.set_status("OK — public mode, no recent activity.", ok=True)
 
 
 __all__ = ["GitHubDialog"]
