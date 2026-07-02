@@ -130,11 +130,19 @@ class GitHubDialog(QtWidgets.QDialog):
         if result.get("error"):
             self.status_label.setText(f"Failed: {result['error']}")
             return
-        count = len(result.get("items", []))
+        items = list(result.get("items", []))
+        # Show the latest item exactly as its banner would read.
         if result.get("mode") == "public":
-            self.status_label.setText(f"OK — public-only mode, {count} recent event(s).")
+            latest = next((e for e in items if github_notify.interesting_public_event(e)), None)
+            if latest is not None:
+                self.status_label.setText(f"OK — public mode · {github_notify.event_text(latest)}")
+            else:
+                self.status_label.setText("OK — public mode, no recent activity.")
         else:
-            self.status_label.setText(f"OK — {count} unread notification(s).")
+            if items:
+                self.status_label.setText(f"OK · {github_notify.notification_text(items[0])}")
+            else:
+                self.status_label.setText("OK — no unread notifications.")
 
 
 __all__ = ["GitHubDialog"]
