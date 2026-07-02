@@ -396,11 +396,38 @@ def run_interval(start: datetime, end: datetime) -> dict:
     }
 
 
+def sessions_table(store, day: date) -> list:
+    """Per-session rows for the Activity table.
+
+    Each focus/break session on ``day`` becomes a row with its start time,
+    duration, and the keystrokes / clicks / cursor path summed over the
+    minute buckets that fall inside it. Ordered by start time.
+    """
+    rows = []
+    for session in store.sessions_on(day):
+        started = datetime.fromisoformat(session["started_at"])
+        ended = datetime.fromisoformat(session["ended_at"])
+        minutes = store.minutes_between(started, ended)
+        rows.append(
+            {
+                "kind": session["kind"],
+                "completed": bool(session["completed"]),
+                "start": started,
+                "duration_seconds": int((ended - started).total_seconds()),
+                "keys": sum(row["keys"] for row in minutes),
+                "clicks": sum(row["clicks"] for row in minutes),
+                "mouse_px": sum(row["mouse_px"] for row in minutes),
+            }
+        )
+    return rows
+
+
 def day_summary(store, day: date, dpi: float = 96.0) -> dict:
     """Totals for banners and the dialog: km, keys, clicks, 🍅, best focus."""
     totals = store.day_totals(day)
     return {
         "cursor_km": cursor_km(totals["mouse_px"], dpi),
+        "mouse_px_total": totals["mouse_px"],
         "keys": totals["keys"],
         "clicks": totals["clicks"],
         "active_minutes": totals["active_minutes"],

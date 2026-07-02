@@ -39,7 +39,7 @@ def make_dialog(tmp_path):
     )
     controller = FocusController(None, announcer=AnnouncerStub(), store=store, now_fn=now, start_timer=False)
     controller.attach_collector(collector)
-    dialog = ActivityDialog(collector, focus_controller=controller)
+    dialog = ActivityDialog(collector, focus_controller=controller, start_now_timer=False)
     return dialog, controller, now
 
 
@@ -57,3 +57,24 @@ def test_now_line_mirrors_focus_tooltip(tmp_path, qapp):
     text = dialog.now_label.text()
     assert text.startswith("Now: Focus · 17:42 left")
     assert "🍅" in text
+
+
+def test_table_has_session_rows_and_totals(tmp_path, qapp):
+    from mycat import activity_store
+
+    dialog, controller, now = make_dialog(tmp_path)
+    store = controller.store
+    start = datetime(2026, 7, 2, 9, 0)
+    store.record_session(activity_store.FOCUS, start, start + timedelta(minutes=25), 1500, True)
+    for offset in range(25):
+        store.record_minute(start + timedelta(minutes=offset), 4000, 200, 8, True)
+    dialog.refresh_log()
+    # 1 session row + 1 totals row.
+    assert dialog.table.rowCount() == 2
+    assert dialog.table.item(0, 0).text().startswith("🍅 Focus")
+    assert dialog.table.item(0, 1).text() == "09:00"  # start time on the session row
+    assert dialog.table.item(0, 3).text() == "5,000"  # 25 min × 200 keys
+    totals = dialog.table.item(1, 0).text()
+    assert totals.startswith("Σ day")
+    assert dialog.table.item(1, 1).text() == ""  # totals row carries NO start time
+    assert dialog.table.item(1, 3).text() == "5,000"

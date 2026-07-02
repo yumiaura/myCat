@@ -19,7 +19,24 @@ else:
 
 logger = logging.getLogger(__name__)
 
-KIND_ICONS = {"focus": "🍅", "break": "☕", "work": "💻"}
+KIND_ICONS = {"focus": "🍅", "break": "☕", "long_break": "☕", "work": "💻"}
+
+# Session table: start + duration per session, then the input counters.
+# The bottom totals row deliberately carries NO start/end times.
+TABLE_COLUMNS = ["Session", "Start", "Duration", "⌨ Keys", "🖱 Clicks", "Cursor path"]
+
+
+def format_duration(seconds: int) -> str:
+    minutes, secs = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours} h {minutes:02d} min"
+    return f"{minutes}:{secs:02d}"
+
+
+def format_path(mouse_px: int, dpi: float) -> str:
+    km = activity_mod.cursor_km(mouse_px, dpi)
+    return f"{km:.2f} km" if km >= 0.1 else f"{int(km * 1000)} m"
 
 
 def screen_dpi() -> float:
@@ -35,7 +52,7 @@ def screen_dpi() -> float:
 class ActivityDialog(QtWidgets.QDialog):
     """Settings + the per-day interval log for the local activity diary."""
 
-    def __init__(self, collector, focus_controller=None, parent=None) -> None:
+    def __init__(self, collector, focus_controller=None, parent=None, start_now_timer=True) -> None:
         super().__init__(parent)
         self.collector = collector
         self.focus_controller = focus_controller
@@ -55,7 +72,8 @@ class ActivityDialog(QtWidgets.QDialog):
         self.now_timer = QtCore.QTimer(self)
         self.now_timer.setInterval(1000)
         self.now_timer.timeout.connect(self.refresh_now)
-        self.now_timer.start()
+        if start_now_timer:
+            self.now_timer.start()
         self.refresh_now()
 
         self.enabled_box = QtWidgets.QCheckBox("Keep a private activity diary (everything stays on this computer)")
@@ -90,8 +108,16 @@ class ActivityDialog(QtWidgets.QDialog):
         day_row.addStretch(1)
         layout.addLayout(day_row)
 
-        self.log_list = QtWidgets.QListWidget()
-        layout.addWidget(self.log_list, 1)
+        self.table = QtWidgets.QTableWidget(0, len(TABLE_COLUMNS))
+        self.table.setHorizontalHeaderLabels(TABLE_COLUMNS)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        for column in range(1, len(TABLE_COLUMNS)):
+            header.setSectionResizeMode(column, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        layout.addWidget(self.table, 1)
 
         self.totals_label = QtWidgets.QLabel("")
         self.totals_label.setWordWrap(True)
@@ -124,32 +150,63 @@ class ActivityDialog(QtWidgets.QDialog):
     def refresh_log(self) -> None:
         day = self.selected_day()
         store = self.collector.store
-        self.log_list.clear()
+        dpi = screen_dpi()
+        self.table.setRowCount(0)
         try:
-            intervals = activity_mod.classify_day(store, day)
-            summary = activity_mod.day_summary(store, day, dpi=screen_dpi())
-        except Exception:  # noqa: BLE001 - a broken DB shows an empty log, not a crash
-            logger.exception("Failed to build activity log")
+            rows = activity_mod.sessions_table(store, day)
+            summary = activity_mod.day_summary(store, day, dpi=dpi)
+        except Exception:  # noqa: BLE001 - a broken DB shows an empty table, not a crash
+            logger.exception("Failed to build activity table")
             self.totals_label.setText("Could not read the activity database.")
             return
 
-        if not intervals:
-            self.log_list.addItem("No sessions or activity recorded.")
-        for interval in intervals:
-            icon = KIND_ICONS.get(interval["kind"], "·")
-            span = f"{interval['start'].strftime('%H:%M')}–{interval['end'].strftime('%H:%M')}"
-            self.log_list.addItem(f"{span}  {icon}  {interval['label']}")
+        for session in rows:
+            icon = KIND_ICONS.get(session["kind"], "·")
+            label = "Focus" if session["kind"] == "focus" else "Break"
+            if session["kind"] == "focus" and not session["completed"]:
+                label = "Focus (stopped)"
+            self.append_row(
+                [
+                    f"{icon} {label}",
+                    session["start"].strftime("%H:%M"),
+                    format_duration(session["duration_seconds"]),
+                    f"{session['keys']:,}",
+                    f"{session['clicks']:,}",
+                    format_path(session["mouse_px"], dpi),
+                ]
+            )
 
+        # Bottom totals row — day aggregates, NO start/end times.
         active_h, active_m = divmod(summary["active_minutes"], 60)
-        parts = [f"🖱 {summary['cursor_km']:.2f} km"]
-        if self.collector.settings.keyboard_enabled:
-            parts.append(f"⌨ {summary['keys']:,}")
-            parts.append(f"clicks {summary['clicks']:,}")
-        parts.append(f"🍅 {summary['focus_count']}")
-        if summary["best_focus_minutes"]:
-            parts.append(f"best focus {summary['best_focus_minutes']} min")
-        parts.append(f"at the computer {active_h} h {active_m:02d} min")
-        self.totals_label.setText(" · ".join(parts))
+        self.append_row(
+            [
+                f"Σ day  ·  🍅 {summary['focus_count']}",
+                "",
+                f"{active_h} h {active_m:02d} min active",
+                f"{summary['keys']:,}",
+                f"{summary['clicks']:,}",
+                format_path(summary["mouse_px_total"], dpi),
+            ],
+            bold=True,
+        )
+
+    def append_row(self, cells, bold=False) -> None:
+        row = self.table.rowCount()
+        self.table.insertRow(row)
+        for column, text in enumerate(cells):
+            item = QtWidgets.QTableWidgetItem(text)
+            if column != 0:
+                item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            if bold:
+                font = item.font()
+                font.setBold(True)
+                item.setFont(font)
+            self.table.setItem(row, column, item)
+
+    def closeEvent(self, event) -> None:
+        # Stop the ticking so a closed dialog never touches a stale controller.
+        self.now_timer.stop()
+        super().closeEvent(event)
 
     # -- actions ----------------------------------------------------------------
 
