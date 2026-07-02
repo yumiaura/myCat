@@ -24,7 +24,7 @@ from pathlib import Path
 
 # Allow running both as `python -m mycat` and `python mycat/main.py`
 if __package__:
-    from . import announcer, autostart, focus, github_notify, llm, reminder, secret_store, skin_catalog
+    from . import announcer, autostart, calendar_ics, focus, github_notify, llm, reminder, secret_store, skin_catalog
 else:
     import importlib
     repo_root = Path(__file__).resolve().parent.parent
@@ -38,6 +38,7 @@ else:
     announcer = importlib.import_module("mycat.announcer")
     focus = importlib.import_module("mycat.focus")
     github_notify = importlib.import_module("mycat.github_notify")
+    calendar_ics = importlib.import_module("mycat.calendar_ics")
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -576,6 +577,10 @@ class PixelCatWindow(QtWidgets.QWidget):
         # GitHub notifications (opt-in, BYO token): silent — zero network
         # requests — until enabled in its settings dialog.
         self.github_notifier = github_notify.GitHubNotifier(self, announcer=self.announcer)
+
+        # Calendar reminders (opt-in, secret ICS URL): the only banners
+        # urgent enough to fly through an active focus session.
+        self.calendar_controller = calendar_ics.CalendarController(self, announcer=self.announcer)
     
     def _load_position(self) -> None:
         """Load window position from config; default to the bottom-right corner."""
@@ -759,6 +764,9 @@ class PixelCatWindow(QtWidgets.QWidget):
         github_action = menu.addAction("GitHub…")
         github_action.triggered.connect(self.open_github_settings)
 
+        calendar_action = menu.addAction("Calendar…")
+        calendar_action.triggered.connect(self.open_calendar_settings)
+
         # Focus (pomodoro) — labels reflect the live session state; the menu
         # is rebuilt on every right-click so they are always current.
         focus_controller = getattr(self, "focus_controller", None)
@@ -827,6 +835,24 @@ class PixelCatWindow(QtWidgets.QWidget):
             logger.exception("Failed to import GitHub settings UI")
             return
         dialog = GitHubDialog(notifier, parent=self)
+        dialog.show()
+        dialog.raise_()
+
+    def open_calendar_settings(self) -> None:
+        """Open the calendar reminder settings dialog (ICS URL, lead time)."""
+        controller = getattr(self, "calendar_controller", None)
+        if controller is None:
+            return
+        try:
+            if __package__:
+                from .calendar_ui import CalendarDialog
+            else:
+                import importlib
+                CalendarDialog = importlib.import_module("mycat.calendar_ui").CalendarDialog
+        except Exception:
+            logger.exception("Failed to import calendar settings UI")
+            return
+        dialog = CalendarDialog(controller, parent=self)
         dialog.show()
         dialog.raise_()
 
@@ -1237,6 +1263,7 @@ def setup_tray(app, window, icon_pixmap):
     menu.addAction("Reminder…", window._open_reminder)
     menu.addAction("LLM…", window.open_llm_settings)
     menu.addAction("GitHub…", window.open_github_settings)
+    menu.addAction("Calendar…", window.open_calendar_settings)
 
     # One toggle action for focus sessions; its label is refreshed just before
     # the menu opens (the tray menu is built once, unlike the context menu).

@@ -31,6 +31,9 @@ dev = [
 # Optional: store API keys in the OS keyring instead of plaintext config.
 [project.optional-dependencies]
 secure = ["keyring>=24"]
+# ICS calendar reminders: RRULE expansion (the daily standup) is a swamp not
+# worth hand-rolling, so the calendar feature needs these two small libs.
+calendar = ["icalendar>=6", "recurring-ical-events>=3"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
