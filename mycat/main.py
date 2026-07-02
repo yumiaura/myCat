@@ -1424,6 +1424,13 @@ class PixelCatWindow(QtWidgets.QWidget):
         # next animation happens to repaint everything.
         self.update()
 
+    def enterEvent(self, event: QtCore.QEvent) -> None:
+        """Show the current-period tooltip immediately — no hover delay."""
+        tip = self.toolTip()
+        if tip:
+            QtWidgets.QToolTip.showText(QtGui.QCursor.pos(), tip, self)
+        super().enterEvent(event)
+
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
         """Handle mouse press for dragging (+ click reaction / wake on interactive chars)."""
         if event.button() == QtCore.Qt.MouseButton.LeftButton:

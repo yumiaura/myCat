@@ -350,7 +350,16 @@ class FocusController(QtCore.QObject):
         if window is None or not hasattr(window, "setToolTip"):
             return
         # Session tooltip when a timer runs; the current "Other" run otherwise.
-        window.setToolTip(self.status_text() or self.idle_run_text())
+        text = self.status_text() or self.idle_run_text()
+        window.setToolTip(text)
+        # While the tooltip is on screen, keep its countdown/stats ticking.
+        try:
+            from PySide6 import QtGui, QtWidgets
+
+            if text and QtWidgets.QToolTip.isVisible() and window.underMouse():
+                QtWidgets.QToolTip.showText(QtGui.QCursor.pos(), text, window)
+        except Exception:  # noqa: BLE001 - a tooltip must never break the timer
+            pass
 
 
 __all__ = ["FocusController", "FocusSettings", "load_focus_settings", "IDLE", "FOCUS", "BREAK"]
