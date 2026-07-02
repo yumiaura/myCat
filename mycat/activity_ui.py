@@ -56,48 +56,52 @@ def screen_dpi() -> float:
         return 96.0
 
 
-SEGMENT_COLORS = {
-    "focus": QtGui.QColor("#d94a4a"),        # matches the focus progress bar
-    "break": QtGui.QColor("#4caf50"),        # short rest
-    "long_break": QtGui.QColor("#2e7d32"),   # Big break — deeper green
-    "interrupted": QtGui.QColor("#e0a52e"),  # 🍌 a stopped pomodoro
-    "current": QtGui.QColor("#4a8fe2"),      # the live period
-}
-SEGMENT_LABELS = {
-    "focus": "Focus",
-    "break": "Break",
-    "long_break": "Big break",
-    "interrupted": "Interrupted",
-}
-TRACK_BG = QtGui.QColor("#e9e9ec")
-GRID_COLOR = QtGui.QColor("#c8c8cc")
-NOW_COLOR = QtGui.QColor("#333333")
-AXIS_TEXT = QtGui.QColor("#666666")
+# Timeline is an activity heat strip, not a session timeline:
+#   not tracked  → transparent (the grey track shows through)
+#   tracked, idle→ green (a rest)
+#   tracked, busy→ red, the redder the more input that minute carried
+TRACK_BG = QtGui.QColor("#d4d4d8")       # "not tracked" — a subtle grey
+GRID_COLOR = QtGui.QColor("#bcbcc2")
+NOW_COLOR = QtGui.QColor("#444444")
+AXIS_TEXT = QtGui.QColor("#888888")
+REST_COLOR = QtGui.QColor("#8bbf8b")     # tracked but no activity
+HEAT_LOW = (233, 179, 179)               # a little activity → pale red
+HEAT_HIGH = (192, 57, 43)                # lots of activity → deep red
+# One busy minute's input mapped to full saturation (keys + weighted clicks + px).
+BUSY_FULL = 300.0
+
+
+def busy_fraction(keys: int, clicks: int, mouse_px: int) -> float:
+    busy = keys + clicks * 5 + mouse_px / 100.0
+    return min(1.0, busy / BUSY_FULL)
+
+
+def heat_color(pct: float) -> QtGui.QColor:
+    r = round(HEAT_LOW[0] + (HEAT_HIGH[0] - HEAT_LOW[0]) * pct)
+    g = round(HEAT_LOW[1] + (HEAT_HIGH[1] - HEAT_LOW[1]) * pct)
+    b = round(HEAT_LOW[2] + (HEAT_HIGH[2] - HEAT_LOW[2]) * pct)
+    return QtGui.QColor(r, g, b)
 
 
 class DayTimeline(QtWidgets.QWidget):
-    """A horizontal strip of the day: focus / rest / interrupted segments.
+    """Per-minute activity heat strip for the day.
 
-    Makes the pomodoro rhythm visible — a red focus block, a green rest, then
-    the next block — so "отдохнув, начинается следующий период" is something
-    you can see at a glance. The live current period is a blue lane below the
-    session track, and a dark line marks "now".
+    Each recorded minute is a thin bar: green when you were at rest and red
+    (deeper = busier) when you were active. Minutes with no data leave the
+    grey track showing, so gaps read as "not tracked". A dark line marks now.
     """
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setMinimumHeight(66)
+        self.setMinimumHeight(46)
         self.setMouseTracking(True)
-        self.segments = []       # [{start, end, kind}]
-        self.current = None      # {start, end, kind: "current"} or None
+        self.cells = []          # [(minute_dt, "rest"|"active", busy_pct)]
         self.window_start = None
         self.window_end = None
         self.now = None
-        self.hit_areas = []      # [(QRectF, tooltip)]
 
-    def set_data(self, segments, current, window_start, window_end, now) -> None:
-        self.segments = segments
-        self.current = current
+    def set_data(self, cells, window_start, window_end, now) -> None:
+        self.cells = cells
         self.window_start = window_start
         self.window_end = window_end
         self.now = now
@@ -115,68 +119,62 @@ class DayTimeline(QtWidgets.QWidget):
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
         painter.setPen(QtCore.Qt.PenStyle.NoPen)
 
-        left, right, top = 8, 8, 6
-        track_h, gap, cur_h = 22, 4, 8
-        usable_w = max(1, self.width() - left - right)
-        track_y = top
-        cur_y = track_y + track_h + gap
-        axis_y = cur_y + cur_h + 3
-        self.hit_areas = []
+        left, top = 8, 6
+        track_h = 22
+        axis_y = top + track_h + 3
+        usable_w = max(1, self.width() - 2 * left)
+        track_rect = QtCore.QRectF(left, top, usable_w, track_h)
 
-        # Empty background track.
+        # Grey "not tracked" track.
         painter.setBrush(TRACK_BG)
-        painter.drawRoundedRect(QtCore.QRectF(left, track_y, usable_w, track_h), 4, 4)
+        painter.drawRoundedRect(track_rect, 4, 4)
 
-        # Hour gridlines + labels.
+        # Per-minute heat, clipped to the rounded track.
+        span_minutes = max(1.0, (self.window_end - self.window_start).total_seconds() / 60.0)
+        minute_w = usable_w / span_minutes
+        clip = QtGui.QPainterPath()
+        clip.addRoundedRect(track_rect, 4, 4)
+        painter.save()
+        painter.setClipPath(clip)
+        for minute_dt, kind, pct in self.cells:
+            x0 = self.x_for(minute_dt, left, usable_w)
+            color = REST_COLOR if kind == "rest" else heat_color(pct)
+            painter.fillRect(QtCore.QRectF(x0, top, max(1.0, minute_w + 0.6), track_h), color)
+        painter.restore()
+
+        # Hour gridlines + labels, thinned out for wide (full-day) windows.
+        span_hours = (self.window_end - self.window_start).total_seconds() / 3600.0
+        step = 1 if span_hours <= 8 else 2 if span_hours <= 16 else 3
         painter.setFont(QtGui.QFont(self.font().family(), 7))
         hour = self.window_start.replace(minute=0, second=0, microsecond=0)
         if hour < self.window_start:
             hour = hour + timedelta(hours=1)
         while hour <= self.window_end:
-            hx = self.x_for(hour, left, usable_w)
-            painter.setPen(QtGui.QPen(GRID_COLOR, 1))
-            painter.drawLine(QtCore.QPointF(hx, track_y), QtCore.QPointF(hx, cur_y + cur_h))
-            painter.setPen(QtGui.QPen(AXIS_TEXT))
-            painter.drawText(QtCore.QRectF(hx - 14, axis_y, 28, 12),
-                             QtCore.Qt.AlignmentFlag.AlignCenter, hour.strftime("%H"))
-            painter.setPen(QtCore.Qt.PenStyle.NoPen)
+            if hour.hour % step == 0:
+                hx = self.x_for(hour, left, usable_w)
+                painter.setPen(QtGui.QPen(GRID_COLOR, 1))
+                painter.drawLine(QtCore.QPointF(hx, top), QtCore.QPointF(hx, top + track_h))
+                painter.setPen(QtGui.QPen(AXIS_TEXT))
+                painter.drawText(QtCore.QRectF(hx - 14, axis_y, 28, 12),
+                                 QtCore.Qt.AlignmentFlag.AlignCenter, hour.strftime("%H"))
+                painter.setPen(QtCore.Qt.PenStyle.NoPen)
             hour = hour + timedelta(hours=1)
 
-        # Session segments.
-        for seg in self.segments:
-            x0 = self.x_for(seg["start"], left, usable_w)
-            x1 = self.x_for(seg["end"], left, usable_w)
-            rect = QtCore.QRectF(x0, track_y, max(2.0, x1 - x0), track_h)
-            painter.setBrush(SEGMENT_COLORS.get(seg["kind"], TRACK_BG))
-            painter.drawRoundedRect(rect, 2, 2)
-            label = SEGMENT_LABELS.get(seg["kind"], seg["kind"].capitalize())
-            self.hit_areas.append(
-                (rect, f"{label}  {seg['start'].strftime('%H:%M')}–{seg['end'].strftime('%H:%M')}")
-            )
-
-        # Live current period, in its own thin lane.
-        if self.current is not None:
-            x0 = self.x_for(self.current["start"], left, usable_w)
-            x1 = self.x_for(self.current["end"], left, usable_w)
-            rect = QtCore.QRectF(x0, cur_y, max(2.0, x1 - x0), cur_h)
-            painter.setBrush(SEGMENT_COLORS["current"])
-            painter.drawRoundedRect(rect, 2, 2)
-            self.hit_areas.append((rect, f"Current  from {self.current['start'].strftime('%H:%M')}"))
-
-        # "Now" marker.
         if self.now is not None:
             nx = self.x_for(self.now, left, usable_w)
             painter.setPen(QtGui.QPen(NOW_COLOR, 1))
-            painter.drawLine(QtCore.QPointF(nx, track_y - 2), QtCore.QPointF(nx, cur_y + cur_h + 1))
+            painter.drawLine(QtCore.QPointF(nx, top - 2), QtCore.QPointF(nx, top + track_h + 1))
         painter.end()
 
     def mouseMoveEvent(self, event) -> None:
-        point = event.position()
-        for rect, tip in self.hit_areas:
-            if rect.contains(point):
-                self.setToolTip(tip)
-                return
-        self.setToolTip("")
+        if self.window_start is None:
+            return
+        left = 8
+        usable_w = max(1, self.width() - 2 * left)
+        frac = min(1.0, max(0.0, (event.position().x() - left) / usable_w))
+        span = (self.window_end - self.window_start).total_seconds()
+        moment = self.window_start + timedelta(seconds=frac * span)
+        self.setToolTip(moment.strftime("%H:%M"))
 
 
 class ActivityDialog(QtWidgets.QDialog):
@@ -188,7 +186,8 @@ class ActivityDialog(QtWidgets.QDialog):
         self.focus_controller = focus_controller
         self.setWindowTitle("Activity diary")
         self.setModal(False)
-        self.resize(520, 500)
+        self.setMinimumWidth(720)
+        self.resize(760, 560)
 
         settings = collector.settings
         layout = QtWidgets.QVBoxLayout(self)
@@ -209,12 +208,19 @@ class ActivityDialog(QtWidgets.QDialog):
         self.current_start = None
         self.dpi = 96.0
 
-        self.enabled_box = QtWidgets.QCheckBox("Keep a private activity diary (everything stays on this computer)")
+        self.enabled_box = QtWidgets.QCheckBox("Track my activity")
+        self.enabled_box.setToolTip(
+            "Record focus sessions and how much you use the mouse and keyboard.\n"
+            "A private diary kept only on this computer — nothing is ever sent anywhere.\n"
+            "Off = nothing is recorded."
+        )
         self.enabled_box.setChecked(settings.enabled)
         layout.addWidget(self.enabled_box)
 
-        self.keyboard_box = QtWidgets.QCheckBox(
-            "Also count keystrokes and clicks — counts only, never which keys"
+        self.keyboard_box = QtWidgets.QCheckBox("…count keys + clicks too")
+        self.keyboard_box.setToolTip(
+            "Also count keystrokes and mouse clicks — how many, never which keys.\n"
+            "Off = only cursor movement is measured."
         )
         self.keyboard_box.setChecked(settings.keyboard_enabled)
         layout.addWidget(self.keyboard_box)
@@ -241,15 +247,15 @@ class ActivityDialog(QtWidgets.QDialog):
         day_row.addStretch(1)
         layout.addLayout(day_row)
 
-        # Day rhythm strip: work → rest → next period, at a glance.
+        # Day activity strip: red = active (deeper = busier), green = rest,
+        # grey = not tracked.
         self.timeline = DayTimeline()
         layout.addWidget(self.timeline)
         legend = QtWidgets.QLabel(
-            "<span style='color:#d94a4a'>■</span> Work &nbsp;"
-            "<span style='color:#4caf50'>■</span> Rest &nbsp;"
-            "<span style='color:#2e7d32'>■</span> Big break &nbsp;"
-            "<span style='color:#e0a52e'>■</span> Interrupted &nbsp;"
-            "<span style='color:#4a8fe2'>■</span> Current &nbsp;·&nbsp; │ now"
+            "<span style='color:#d4d4d8'>■</span> not tracked &nbsp;"
+            "<span style='color:#8bbf8b'>■</span> rest &nbsp;"
+            "<span style='color:#c0392b'>■</span> active <span style='color:#888'>(deeper = busier)</span>"
+            " &nbsp;·&nbsp; │ now"
         )
         legend.setTextFormat(QtCore.Qt.TextFormat.RichText)
         legend.setStyleSheet("color: #666; font-size: 10px;")
@@ -335,40 +341,41 @@ class ActivityDialog(QtWidgets.QDialog):
         return {**stats, "label": "▶ Working", "color": "#555555", "phase": "current"}
 
     def build_timeline(self):
-        """(segments, current, window_start, window_end, now) for DayTimeline."""
+        """(cells, window_start, window_end, now) — a per-minute activity heat.
+
+        The window is the FULL selected day: midnight→now for today (the strip
+        only reaches elapsed time), midnight→midnight for yesterday. Each
+        recorded minute becomes a cell — green when idle, red (by input) when
+        active; unrecorded minutes are gaps that show the grey track.
+        """
         day = self.selected_day()
         store = self.collector.store
         is_today = self.day_combo.currentIndex() == 0
         now = self.collector.now_fn()
-        segments = []
-        for session in activity_mod.sessions_table(store, day):
-            end = session["start"] + timedelta(seconds=session["duration_seconds"])
-            if session["kind"] == "focus" and not session["completed"]:
-                kind = "interrupted"
-            elif session["kind"] == "focus":
-                kind = "focus"
-            elif session["kind"] == "long_break":
-                kind = "long_break"
+        day_start = datetime.combine(day, day_time(0, 0))
+
+        cells = []
+        for row in store.minutes_between(day_start, day_start + timedelta(days=1)):
+            minute_dt = datetime.fromisoformat(row["minute"])
+            if row["active"]:
+                cells.append((minute_dt, "active", busy_fraction(row["keys"], row["clicks"], row["mouse_px"])))
             else:
-                kind = "break"
-            segments.append({"start": session["start"], "end": end, "kind": kind})
-        current = None
-        if is_today:
-            period = self.current_period()
-            if period is not None:
-                kind = period["phase"] if period["phase"] in ("focus", "break", "long_break") else "current"
-                current = {"start": period["start"], "end": now, "kind": kind}
-        starts = [s["start"] for s in segments] + ([current["start"]] if current else [])
-        ends = [s["end"] for s in segments] + ([current["end"]] if current else [])
-        if starts:
-            window_start = min(starts).replace(minute=0, second=0, microsecond=0)
-            window_end = max(ends)
-        else:
-            window_start = datetime.combine(day, day_time(9, 0))
-            window_end = datetime.combine(day, day_time(18, 0))
-        if is_today:
-            window_end = max(window_end, now)
-        return segments, current, window_start, window_end, (now if is_today else None)
+                cells.append((minute_dt, "rest", 0.0))
+
+        # Extend the live edge with the not-yet-flushed current minute.
+        if is_today and self.collector.current_run_stats() is not None:
+            current_minute = now.replace(second=0, microsecond=0)
+            if not cells or cells[-1][0] != current_minute:
+                pct = busy_fraction(
+                    int(self.collector.bucket_keys),
+                    int(self.collector.bucket_clicks),
+                    int(self.collector.bucket_mouse_px),
+                )
+                cells.append((current_minute, "active", max(pct, 0.12)))
+
+        window_start = day_start
+        window_end = max(now, day_start + timedelta(minutes=1)) if is_today else day_start + timedelta(days=1)
+        return cells, window_start, window_end, (now if is_today else None)
 
     def selected_day(self) -> date:
         today = self.collector.now_fn().date()

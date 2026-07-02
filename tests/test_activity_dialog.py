@@ -133,24 +133,34 @@ def test_long_break_labelled_big_break(tmp_path, qapp):
     controller.store.record_session(activity_store.LONG_BREAK, start, start + timedelta(minutes=15), 900, True)
     dialog.refresh_log()
     assert dialog.table.item(0, 0).text() == "🛋 Big break"
-    segments, current, ws, we, marker = dialog.build_timeline()
-    assert segments[0]["kind"] == "long_break"
 
 
-def test_build_timeline_segments(tmp_path, qapp):
-    from mycat import activity_store
-
+def test_timeline_cells_are_activity_heat(tmp_path, qapp):
     dialog, controller, now = make_dialog(tmp_path)
-    start = datetime(2026, 7, 2, 9, 0)
-    controller.store.record_session(activity_store.FOCUS, start, start + timedelta(minutes=25), 1500, True)
-    controller.store.record_session(
-        activity_store.BREAK, start + timedelta(minutes=25), start + timedelta(minutes=30), 300, True
-    )
-    now.now = datetime(2026, 7, 2, 9, 40)
-    segments, current, ws, we, marker = dialog.build_timeline()
-    kinds = [s["kind"] for s in segments]
-    assert kinds == ["focus", "break"]
-    assert marker == now.now  # today shows the "now" marker
+    store = controller.store
+    # 9:00 busy (active), 9:01 idle (rest), 9:02 no data (gap).
+    store.record_minute(datetime(2026, 7, 2, 9, 0), 4000, 250, 10, True)
+    store.record_minute(datetime(2026, 7, 2, 9, 1), 0, 0, 0, False)
+    now.now = datetime(2026, 7, 2, 9, 30)
+    cells, ws, we, marker = dialog.build_timeline()
+    kinds = {c[0].strftime("%H:%M"): c[1] for c in cells}
+    assert kinds["09:00"] == "active"
+    assert kinds["09:01"] == "rest"
+    assert "09:02" not in kinds  # unrecorded minute → no cell (grey gap)
+    # Full-day window for today: midnight → now.
+    assert ws == datetime(2026, 7, 2, 0, 0)
+    assert we == now.now
+    assert marker == now.now
+
+
+def test_timeline_window_full_day_for_yesterday(tmp_path, qapp):
+    dialog, controller, now = make_dialog(tmp_path)
+    now.now = datetime(2026, 7, 2, 14, 0)
+    dialog.day_combo.setCurrentIndex(1)  # Yesterday
+    cells, ws, we, marker = dialog.build_timeline()
+    assert ws == datetime(2026, 7, 1, 0, 0)
+    assert we == datetime(2026, 7, 2, 0, 0)  # full 24h
+    assert marker is None  # no "now" line on a past day
 
 
 def test_no_current_row_when_idle(tmp_path, qapp):
