@@ -69,12 +69,31 @@ def test_table_has_session_rows_and_totals(tmp_path, qapp):
     for offset in range(25):
         store.record_minute(start + timedelta(minutes=offset), 4000, 200, 8, True)
     dialog.refresh_log()
-    # 1 session row + 1 totals row.
+    # 1 finished session row + 1 TOTAL row (no session is active here).
     assert dialog.table.rowCount() == 2
     assert dialog.table.item(0, 0).text().startswith("🍅 Focus")
     assert dialog.table.item(0, 1).text() == "09:00"  # start time on the session row
+    assert dialog.table.item(0, 2).text() == "25:00"  # duration
     assert dialog.table.item(0, 3).text() == "5,000"  # 25 min × 200 keys
     totals = dialog.table.item(1, 0).text()
-    assert totals.startswith("Σ day")
-    assert dialog.table.item(1, 1).text() == ""  # totals row carries NO start time
+    assert totals.startswith("TOTAL")
+    assert "🍅 1" in totals
+    assert dialog.table.item(1, 1).text() == ""  # TOTAL row carries NO start time
+    assert dialog.table.item(1, 2).text() == "25:00"  # total duration, no "active"
+    assert "active" not in dialog.table.item(1, 2).text()
     assert dialog.table.item(1, 3).text() == "5,000"
+
+
+def test_current_row_on_top_updates_live(tmp_path, qapp):
+    dialog, controller, now = make_dialog(tmp_path)
+    controller.start_focus()  # a session is now in progress
+    dialog.refresh_log()
+    # Top row is the live Current row: start time + the word "Current".
+    assert dialog.current_row == 0
+    assert "Focus" in dialog.table.item(0, 0).text()
+    assert dialog.table.item(0, 1).text() == "09:00"
+    assert dialog.table.item(0, 2).text() == "Current"
+    # Type during the session; the live cells move without a full rebuild.
+    controller.collector.bucket_keys += 42
+    dialog.refresh_now()
+    assert dialog.table.item(0, 3).text() == "42"

@@ -74,7 +74,10 @@ class ActivityDialog(QtWidgets.QDialog):
         self.now_timer.timeout.connect(self.refresh_now)
         if start_now_timer:
             self.now_timer.start()
-        self.refresh_now()
+        # Live "Current" row bookkeeping.
+        self.current_row = None
+        self.current_start = None
+        self.dpi = 96.0
 
         self.enabled_box = QtWidgets.QCheckBox("Keep a private activity diary (everything stays on this computer)")
         self.enabled_box.setChecked(settings.enabled)
@@ -113,6 +116,8 @@ class ActivityDialog(QtWidgets.QDialog):
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
+        # Never elide labels to "Focus …" — show them in full.
+        self.table.setTextElideMode(QtCore.Qt.TextElideMode.ElideNone)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
         for column in range(1, len(TABLE_COLUMNS)):
@@ -131,17 +136,33 @@ class ActivityDialog(QtWidgets.QDialog):
         layout.addWidget(buttons)
 
         self.refresh_log()
+        self.refresh_now()
 
     # -- data -------------------------------------------------------------------
 
     def refresh_now(self) -> None:
-        """Mirror the focus tooltip: countdown + interim session stats."""
+        """Every second: update the countdown line and the live Current row."""
         controller = self.focus_controller
         status = controller.status_text() if controller is not None else ""
         if status:
             self.now_label.setText(f"Now: {status}")
         else:
             self.now_label.setText("Now: idle — auto-pomodoro starts a session when you get going.")
+
+        # The Current row only lives on the Today view.
+        if self.day_combo.currentIndex() != 0:
+            return
+        stats = controller.current_session_stats() if controller is not None else None
+        start = stats["start"] if stats else None
+        if start != self.current_start:
+            # A period began or ended — rebuild so the finished one drops into
+            # the list and a fresh Current row (if any) appears on top.
+            self.refresh_log()
+            return
+        if stats is not None and self.current_row is not None:
+            self.set_cell(self.current_row, 3, f"{stats['keys']:,}")
+            self.set_cell(self.current_row, 4, f"{stats['clicks']:,}")
+            self.set_cell(self.current_row, 5, format_path(stats["mouse_px"], self.dpi))
 
     def selected_day(self) -> date:
         today = self.collector.now_fn().date()
@@ -150,17 +171,40 @@ class ActivityDialog(QtWidgets.QDialog):
     def refresh_log(self) -> None:
         day = self.selected_day()
         store = self.collector.store
-        dpi = screen_dpi()
+        self.dpi = screen_dpi()
         self.table.setRowCount(0)
+        self.current_row = None
+        self.current_start = None
         try:
             rows = activity_mod.sessions_table(store, day)
-            summary = activity_mod.day_summary(store, day, dpi=dpi)
+            summary = activity_mod.day_summary(store, day, dpi=self.dpi)
         except Exception:  # noqa: BLE001 - a broken DB shows an empty table, not a crash
             logger.exception("Failed to build activity table")
             self.totals_label.setText("Could not read the activity database.")
             return
 
-        for session in rows:
+        controller = self.focus_controller
+        stats = controller.current_session_stats() if controller is not None else None
+        # A live "Current" row on top, only on the Today view.
+        if stats is not None and self.day_combo.currentIndex() == 0:
+            icon = KIND_ICONS.get(stats["kind"], "▶")
+            label = "Focus" if stats["kind"] == "focus" else "Break"
+            self.append_row(
+                [
+                    f"▶ {icon} {label}",
+                    stats["start"].strftime("%H:%M"),
+                    "Current",
+                    f"{stats['keys']:,}",
+                    f"{stats['clicks']:,}",
+                    format_path(stats["mouse_px"], self.dpi),
+                ],
+                italic=True,
+            )
+            self.current_row = 0
+            self.current_start = stats["start"]
+
+        # Finished sessions, newest first.
+        for session in reversed(rows):
             icon = KIND_ICONS.get(session["kind"], "·")
             label = "Focus" if session["kind"] == "focus" else "Break"
             if session["kind"] == "focus" and not session["completed"]:
@@ -172,36 +216,42 @@ class ActivityDialog(QtWidgets.QDialog):
                     format_duration(session["duration_seconds"]),
                     f"{session['keys']:,}",
                     f"{session['clicks']:,}",
-                    format_path(session["mouse_px"], dpi),
+                    format_path(session["mouse_px"], self.dpi),
                 ]
             )
 
-        # Bottom totals row — day aggregates, NO start/end times.
-        active_h, active_m = divmod(summary["active_minutes"], 60)
+        # Bottom TOTAL row — day aggregates, NO start/end times, no "active".
+        total_duration = sum(session["duration_seconds"] for session in rows)
         self.append_row(
             [
-                f"Σ day  ·  🍅 {summary['focus_count']}",
+                f"TOTAL  ·  🍅 {summary['focus_count']}",
                 "",
-                f"{active_h} h {active_m:02d} min active",
+                format_duration(total_duration),
                 f"{summary['keys']:,}",
                 f"{summary['clicks']:,}",
-                format_path(summary["mouse_px_total"], dpi),
+                format_path(summary["mouse_px_total"], self.dpi),
             ],
             bold=True,
         )
 
-    def append_row(self, cells, bold=False) -> None:
+    def append_row(self, cells, bold=False, italic=False) -> None:
         row = self.table.rowCount()
         self.table.insertRow(row)
         for column, text in enumerate(cells):
             item = QtWidgets.QTableWidgetItem(text)
             if column != 0:
                 item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
-            if bold:
+            if bold or italic:
                 font = item.font()
-                font.setBold(True)
+                font.setBold(bold)
+                font.setItalic(italic)
                 item.setFont(font)
             self.table.setItem(row, column, item)
+
+    def set_cell(self, row, column, text) -> None:
+        item = self.table.item(row, column)
+        if item is not None:
+            item.setText(text)
 
     def closeEvent(self, event) -> None:
         # Stop the ticking so a closed dialog never touches a stale controller.

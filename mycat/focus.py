@@ -209,32 +209,46 @@ class FocusController(QtCore.QObject):
             return f"{label} · {clock} left · today {self.today_count()} 🍅"
         return ""
 
-    def live_session_stats(self) -> str:
-        """Interim numbers for the CURRENT session: keys, cursor path, active %.
+    def current_session_stats(self) -> dict | None:
+        """Interim counters for the CURRENT period, or None when idle.
 
-        Reads the flushed minute buckets plus the collector's live bucket, so
-        the tooltip moves while you type.
+        Flushed minute buckets plus the collector's live bucket, so the values
+        move while you type. Shared by the focus tooltip and the Activity
+        dialog's live "Current" row.
         """
-        collector = self.collector
-        if collector is None or self.phase_started is None:
-            return ""
+        if self.state == IDLE or self.phase_started is None:
+            return None
         try:
             rows = self.store.minutes_between(self.phase_started, self.now_fn())
         except Exception:  # noqa: BLE001 - stats must never break the tooltip
-            return ""
-        keys = sum(row["keys"] for row in rows) + getattr(collector, "bucket_keys", 0)
-        mouse_px = sum(row["mouse_px"] for row in rows) + int(getattr(collector, "bucket_mouse_px", 0))
-        active = sum(row["active"] for row in rows)
-        observed = len(rows)
+            rows = []
+        collector = self.collector
+        keys = sum(row["keys"] for row in rows) + int(getattr(collector, "bucket_keys", 0) or 0)
+        clicks = sum(row["clicks"] for row in rows) + int(getattr(collector, "bucket_clicks", 0) or 0)
+        mouse_px = sum(row["mouse_px"] for row in rows) + int(getattr(collector, "bucket_mouse_px", 0) or 0)
+        return {
+            "kind": self.state,
+            "start": self.phase_started,
+            "keys": keys,
+            "clicks": clicks,
+            "mouse_px": mouse_px,
+            "active": sum(row["active"] for row in rows),
+            "observed": len(rows),
+        }
 
+    def live_session_stats(self) -> str:
+        """The current-period counters as a one-line tooltip fragment."""
+        stats = self.current_session_stats()
+        if stats is None:
+            return ""
         parts = []
-        if keys:
-            parts.append(f"⌨ {keys:,}")
-        if mouse_px:
-            km = cursor_km_estimate(mouse_px)
+        if stats["keys"]:
+            parts.append(f"⌨ {stats['keys']:,}")
+        if stats["mouse_px"]:
+            km = cursor_km_estimate(stats["mouse_px"])
             parts.append(f"🖱 {km:.1f} km" if km >= 0.1 else f"🖱 {int(km * 1000)} m")
-        if observed:
-            parts.append(f"{int(100 * active / observed)}% active")
+        if stats["observed"]:
+            parts.append(f"{int(100 * stats['active'] / stats['observed'])}% active")
         return " · ".join(parts)
 
     # -- clock ---------------------------------------------------------------
