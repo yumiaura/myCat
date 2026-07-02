@@ -65,7 +65,11 @@ class ActivityStore:
         self.db_path = db_path or (user_data_dir() / "activity.db")
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(str(self.db_path))
-        self.connection.execute("PRAGMA journal_mode=WAL")
+        # Durable rollback journal: every commit lands in the main .db file
+        # immediately. (WAL kept data in a side journal that a hard exit could
+        # drop before it was checkpointed — losing sessions across restarts.)
+        self.connection.execute("PRAGMA journal_mode=DELETE")
+        self.connection.execute("PRAGMA synchronous=FULL")
         self.connection.executescript(SCHEMA)
         self.connection.commit()
 

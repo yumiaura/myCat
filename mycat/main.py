@@ -442,6 +442,16 @@ def offer_autostart_on_first_run(window: QtWidgets.QWidget) -> None:
         logger.info("Autostart enabled via first-run prompt")
 
 
+def flush_activity_on_quit(window: QtWidgets.QWidget) -> None:
+    """On a clean Quit, flush the current activity minute to the database."""
+    collector = getattr(window, "activity_collector", None)
+    if collector is not None:
+        try:
+            collector.flush()
+        except Exception as exc:  # noqa: BLE001 - shutdown must never raise
+            logger.debug("Activity flush on quit failed: %s", exc)
+
+
 def read_battery_percent():
     """Battery charge 0–100, or None if there is no battery / can't read it.
 
@@ -1827,6 +1837,8 @@ def main() -> None:
         # only the explicit Quit action does. With no tray to quit from, keep
         # the old behaviour so the user is never stuck with an invisible process.
         app.setQuitOnLastWindowClosed(window.tray_icon is None)
+        # Flush the in-progress activity minute on a clean Quit.
+        app.aboutToQuit.connect(lambda: flush_activity_on_quit(window))
         # First-run nudge to start on login (after the cat is up).
         QtCore.QTimer.singleShot(600, lambda: offer_autostart_on_first_run(window))
 

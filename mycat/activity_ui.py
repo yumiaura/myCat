@@ -60,8 +60,9 @@ def screen_dpi() -> float:
 #   not tracked  → transparent (the grey track shows through)
 #   tracked, idle→ green (a rest)
 #   tracked, busy→ red, the redder the more input that minute carried
-TRACK_BG = QtGui.QColor("#cfcfd6")       # past but "not tracked" — a subtle grey
-FUTURE_BG = QtGui.QColor("#ebebf0")      # hasn't happened yet — a lighter grey
+TRACK_BG = QtGui.QColor("#ffffff")       # past but "not tracked" — white
+TRACK_BORDER = QtGui.QColor("#c4c4cc")
+FUTURE_BG = QtGui.QColor("#d4d4da")       # hasn't happened yet — grey
 GRID_COLOR = QtGui.QColor("#bcbcc2")
 NOW_COLOR = QtGui.QColor("#1f6feb")      # the "now" marker — a strong accent
 AXIS_TEXT = QtGui.QColor("#888888")
@@ -126,9 +127,11 @@ class DayTimeline(QtWidgets.QWidget):
         usable_w = max(1, self.width() - 2 * left)
         track_rect = QtCore.QRectF(left, top, usable_w, track_h)
 
-        # Grey "not tracked" (past) track.
+        # White "not tracked" (past) track with a thin outline.
         painter.setBrush(TRACK_BG)
+        painter.setPen(QtGui.QPen(TRACK_BORDER, 1))
         painter.drawRoundedRect(track_rect, 4, 4)
+        painter.setPen(QtCore.Qt.PenStyle.NoPen)
 
         span_minutes = max(1.0, (self.window_end - self.window_start).total_seconds() / 60.0)
         minute_w = usable_w / span_minutes
@@ -268,10 +271,10 @@ class ActivityDialog(QtWidgets.QDialog):
         self.timeline = DayTimeline()
         layout.addWidget(self.timeline)
         legend = QtWidgets.QLabel(
-            "<span style='color:#d4d4d8'>■</span> not tracked &nbsp;"
             "<span style='color:#8bbf8b'>■</span> rest &nbsp;"
-            "<span style='color:#c0392b'>■</span> active <span style='color:#888'>(deeper = busier)</span>"
-            " &nbsp;·&nbsp; │ now"
+            "<span style='color:#c0392b'>■</span> active <span style='color:#888'>(deeper = busier)</span> &nbsp;"
+            "<span style='color:#d4d4da'>■</span> not yet &nbsp;·&nbsp; white = not tracked &nbsp;·&nbsp;"
+            " <span style='color:#1f6feb'>│</span> now"
         )
         legend.setTextFormat(QtCore.Qt.TextFormat.RichText)
         legend.setStyleSheet("color: #666; font-size: 10px;")
@@ -326,6 +329,8 @@ class ActivityDialog(QtWidgets.QDialog):
             self.refresh_log()
             return
         if period is not None and self.current_row is not None:
+            elapsed = (self.collector.now_fn() - period["start"]).total_seconds()
+            self.set_cell(self.current_row, 2, format_duration(elapsed))
             self.set_cell(self.current_row, 3, f"{period['keys']:,}")
             self.set_cell(self.current_row, 4, f"{period['clicks']:,}")
             self.set_cell(self.current_row, 5, format_path(period["mouse_px"], self.dpi))
@@ -416,15 +421,18 @@ class ActivityDialog(QtWidgets.QDialog):
         # The day-rhythm strip.
         self.timeline.set_data(*self.build_timeline())
 
-        # A live "Current period" row on top — labelled Work / Rest / Working
-        # so it is obvious what you should be doing right now.
+        current_keys = current_clicks = current_px = current_active = 0
+
+        # A live "Current period" row on top — labelled by phase (Focus / Rest
+        # / Big break / Active) with the elapsed time so far in Duration.
         period = self.current_period() if self.day_combo.currentIndex() == 0 else None
         if period is not None:
+            elapsed = (self.collector.now_fn() - period["start"]).total_seconds()
             self.append_row(
                 [
                     period["label"],
                     period["start"].strftime("%H:%M"),
-                    "Current",
+                    format_duration(elapsed),
                     f"{period['keys']:,}",
                     f"{period['clicks']:,}",
                     format_path(period["mouse_px"], self.dpi),
@@ -436,8 +444,13 @@ class ActivityDialog(QtWidgets.QDialog):
             self.current_row = 0
             self.current_start = period["start"]
             self.current_phase = period["phase"]
+            current_keys = period["keys"]
+            current_clicks = period["clicks"]
+            current_px = period["mouse_px"]
+            current_active = period.get("active_minutes", period.get("active", 0))
 
         # Finished sessions, newest first.
+        session_keys = session_clicks = session_px = session_active = 0
         for session in reversed(rows):
             if session["kind"] == "focus" and not session["completed"]:
                 label = "🍌 Interrupted"  # a stopped pomodoro
@@ -459,19 +472,42 @@ class ActivityDialog(QtWidgets.QDialog):
                     active_pct(session["active_minutes"], window_minutes),
                 ]
             )
+            session_keys += session["keys"]
+            session_clicks += session["clicks"]
+            session_px += session["mouse_px"]
+            session_active += session["active_minutes"]
 
-        # Bottom TOTAL row — day aggregates, only completed 🍅, no dot, no times.
-        total_duration = sum(session["duration_seconds"] for session in rows)
-        total_active = sum(session["active_minutes"] for session in rows)
+        # Everything you did that isn't a session (or the live period) — so the
+        # rows add up to the day total instead of silently dropping it.
+        other_keys = max(0, summary["keys"] - session_keys - current_keys)
+        other_clicks = max(0, summary["clicks"] - session_clicks - current_clicks)
+        other_px = max(0, summary["mouse_px_total"] - session_px - current_px)
+        other_active = max(0, summary["active_minutes"] - session_active - current_active)
+        if other_keys or other_clicks or other_px or other_active:
+            self.append_row(
+                [
+                    "▷ Other (no timer)",
+                    "",
+                    format_duration(other_active * 60),
+                    f"{other_keys:,}",
+                    f"{other_clicks:,}",
+                    format_path(other_px, self.dpi),
+                    "",
+                ]
+            )
+            self.table.item(self.table.rowCount() - 1, 0).setForeground(QtGui.QColor("#777777"))
+
+        # Bottom TOTAL row = the day totals, which now equal the sum of the
+        # rows above. Single space before 🍅; duration is total active time.
         self.append_row(
             [
-                f"TOTAL   🍅 {summary['focus_count']}",
+                f"TOTAL 🍅 {summary['focus_count']}",
                 "",
-                format_duration(total_duration),
+                format_duration(summary["active_minutes"] * 60),
                 f"{summary['keys']:,}",
                 f"{summary['clicks']:,}",
                 format_path(summary["mouse_px_total"], self.dpi),
-                active_pct(total_active, total_duration // 60),
+                "",
             ],
             bold=True,
         )

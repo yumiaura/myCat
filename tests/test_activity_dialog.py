@@ -99,7 +99,7 @@ def test_current_row_reflects_activity_run(tmp_path, qapp):
     assert dialog.current_row == 0
     assert dialog.table.item(0, 0).text() == "▶ Active (no timer)"
     assert dialog.table.item(0, 1).text() == "09:00"
-    assert dialog.table.item(0, 2).text() == "Current"
+    assert dialog.table.item(0, 2).text() == "3:00"  # elapsed so far (09:00 → 09:03)
     assert dialog.table.item(0, 3).text() == "300"  # 3 min × 100 keys
     assert dialog.table.item(0, 6).text().endswith("%")  # active percentage
     # Typing moves the live cells without a full rebuild.
