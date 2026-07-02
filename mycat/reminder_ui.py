@@ -295,7 +295,9 @@ class FlybyWindow(QtWidgets.QWidget):
     def _banner_font(self) -> QtGui.QFont:
         font = QtGui.QFont()
         font.setBold(True)
-        font.setPixelSize(int(self._flag_h * 0.55))
+        # 0.40 of the flag height: banner texts got longer (GitHub events,
+        # digests), a smaller face keeps the flag from growing screen-wide.
+        font.setPixelSize(max(10, int(self._flag_h * 0.40)))
         return font
 
     def _compute_flag_length(self) -> int:
