@@ -368,6 +368,72 @@ def save_image_to_ini(image_name: str) -> None:
         logger.error(f"Error saving to INI file: {e}")
 
 
+def autostart_was_prompted() -> bool:
+    """Whether the first-run "start on login?" prompt has already been shown.
+
+    Stored as ``[settings] autostart_prompted`` so the user is asked at most once.
+    """
+    if not CFG_FILE.exists():
+        return False
+    try:
+        config = configparser.ConfigParser()
+        config.read(CFG_FILE)
+        return config.getboolean("settings", "autostart_prompted", fallback=False)
+    except Exception as exc:
+        logger.debug("Could not read autostart_prompted flag: %s", exc)
+        return False
+
+
+def mark_autostart_prompted() -> None:
+    """Record that the first-run autostart prompt has been shown."""
+    try:
+        CFG_DIR.mkdir(parents=True, exist_ok=True)
+        config = configparser.ConfigParser()
+        if CFG_FILE.exists():
+            config.read(CFG_FILE)
+        if "settings" not in config:
+            config.add_section("settings")
+        config["settings"]["autostart_prompted"] = "true"
+        with open(CFG_FILE, "w") as f:
+            config.write(f)
+        secret_store.secure_file(CFG_FILE)
+    except Exception as exc:
+        logger.error("Could not save autostart_prompted flag: %s", exc)
+
+
+def should_offer_autostart() -> bool:
+    """First run, on a platform that supports autostart, not enabled, not asked."""
+    return (
+        autostart.is_supported()
+        and not autostart.is_enabled()
+        and not autostart_was_prompted()
+    )
+
+
+def offer_autostart_on_first_run(window: QtWidgets.QWidget) -> None:
+    """Ask once, on first run, whether to keep mycat on screen every login.
+
+    The whole point of autostart is to make the cat persistent — but the toggle
+    is buried in the right-click menu, so most users never find it. A single
+    gentle first-run prompt is the biggest lever for "always running".
+    """
+    if not should_offer_autostart():
+        return
+    # Record first so a crash mid-prompt never re-asks on every launch.
+    mark_autostart_prompted()
+    answer = QtWidgets.QMessageBox.question(
+        window,
+        "mycat",
+        "Keep mycat on screen every time you log in?\n\n"
+        "You can change this any time from the right-click menu → Autostart.",
+        QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+        QtWidgets.QMessageBox.StandardButton.Yes,
+    )
+    if answer == QtWidgets.QMessageBox.StandardButton.Yes:
+        autostart.set_enabled(True)
+        logger.info("Autostart enabled via first-run prompt")
+
+
 class PixelCatWindow(QtWidgets.QWidget):
     """Main cat window widget with PNG/GIF animation and dragging."""
     
@@ -1181,6 +1247,18 @@ def main() -> None:
         logger.error(f"Failed to initialize Qt application: {e}")
         sys.exit(1)
     
+    # Single instance: a second launch must not spawn a second cat. Hold the
+    # lock for the whole process lifetime (it is released when the process
+    # exits). A lock left by a crashed instance is reclaimed automatically
+    # because QLockFile records the owner PID and detects a dead owner.
+    if platform_name != "offscreen":
+        CFG_DIR.mkdir(parents=True, exist_ok=True)
+        instance_lock = QtCore.QLockFile(str(CFG_DIR / "mycat.lock"))
+        instance_lock.setStaleLockTime(0)
+        if not instance_lock.tryLock(100):
+            logger.info("Another mycat instance is already running — exiting.")
+            sys.exit(0)
+
     # Setup signal handlers for graceful shutdown
     def signal_handler(signum, frame):
         """Handle Ctrl+C gracefully."""
@@ -1233,6 +1311,12 @@ def main() -> None:
         window.show()
         # Persistent cat tray icon (kept on the window so it isn't GC'd).
         window.tray_icon = setup_tray(app, window, png_pixmap)
+        # Live in the tray: hiding/closing windows no longer quits the app —
+        # only the explicit Quit action does. With no tray to quit from, keep
+        # the old behaviour so the user is never stuck with an invisible process.
+        app.setQuitOnLastWindowClosed(window.tray_icon is None)
+        # First-run nudge to start on login (after the cat is up).
+        QtCore.QTimer.singleShot(600, lambda: offer_autostart_on_first_run(window))
 
     try:
         sys.exit(app.exec())
