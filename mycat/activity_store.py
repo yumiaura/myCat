@@ -34,6 +34,16 @@ CREATE TABLE IF NOT EXISTS focus_session (
     completed INTEGER NOT NULL       -- 0 = stopped/skipped early, 1 = ran out
 );
 CREATE INDEX IF NOT EXISTS idx_focus_session_started ON focus_session(started_at);
+
+-- One row per minute the collector observed. Counters only, never content:
+-- how far the cursor moved and how many keys/clicks happened, not which.
+CREATE TABLE IF NOT EXISTS minute_activity (
+    minute TEXT PRIMARY KEY,         -- local ISO truncated to the minute
+    mouse_px INTEGER NOT NULL,
+    keys INTEGER NOT NULL,
+    clicks INTEGER NOT NULL,
+    active INTEGER NOT NULL          -- 1 = any input observed this minute
+);
 """
 
 
@@ -104,6 +114,75 @@ class ActivityStore:
             (FOCUS, start.isoformat(), end.isoformat()),
         ).fetchone()
         return int(row[0])
+
+    def longest_completed_focus_minutes(self, day: date) -> int:
+        """Length of the day's longest completed focus session, in minutes."""
+        best = 0
+        for row in self.sessions_on(day):
+            if row["kind"] != FOCUS or not row["completed"]:
+                continue
+            started = datetime.fromisoformat(row["started_at"])
+            ended = datetime.fromisoformat(row["ended_at"])
+            best = max(best, int((ended - started).total_seconds() // 60))
+        return best
+
+    # -- minute activity buckets ------------------------------------------------
+
+    def record_minute(self, minute: datetime, mouse_px: int, keys: int, clicks: int, active: bool) -> None:
+        """Upsert one minute bucket (the collector flushes on rollover)."""
+        key = minute.replace(second=0, microsecond=0).isoformat()
+        self.connection.execute(
+            "INSERT INTO minute_activity (minute, mouse_px, keys, clicks, active)"
+            " VALUES (?, ?, ?, ?, ?)"
+            " ON CONFLICT(minute) DO UPDATE SET"
+            " mouse_px = mouse_px + excluded.mouse_px,"
+            " keys = keys + excluded.keys,"
+            " clicks = clicks + excluded.clicks,"
+            " active = max(active, excluded.active)",
+            (key, int(mouse_px), int(keys), int(clicks), int(active)),
+        )
+        self.connection.commit()
+
+    def minutes_between(self, start: datetime, end: datetime) -> list[sqlite3.Row]:
+        self.connection.row_factory = sqlite3.Row
+        rows = self.connection.execute(
+            "SELECT minute, mouse_px, keys, clicks, active FROM minute_activity"
+            " WHERE minute >= ? AND minute < ? ORDER BY minute",
+            (start.isoformat(), end.isoformat()),
+        ).fetchall()
+        self.connection.row_factory = None
+        return rows
+
+    def day_totals(self, day: date) -> dict:
+        start = datetime.combine(day, datetime.min.time())
+        end = start + timedelta(days=1)
+        row = self.connection.execute(
+            "SELECT COALESCE(SUM(mouse_px), 0), COALESCE(SUM(keys), 0),"
+            " COALESCE(SUM(clicks), 0), COALESCE(SUM(active), 0), COUNT(*)"
+            " FROM minute_activity WHERE minute >= ? AND minute < ?",
+            (start.isoformat(), end.isoformat()),
+        ).fetchone()
+        return {
+            "mouse_px": int(row[0]),
+            "keys": int(row[1]),
+            "clicks": int(row[2]),
+            "active_minutes": int(row[3]),
+            "observed_minutes": int(row[4]),
+        }
+
+    def purge_minutes_older_than(self, days: int, now: datetime | None = None) -> int:
+        """Retention: drop minute buckets past the horizon. Returns rows dropped."""
+        moment = now or datetime.now()
+        cutoff = (moment - timedelta(days=days)).isoformat()
+        cursor = self.connection.execute("DELETE FROM minute_activity WHERE minute < ?", (cutoff,))
+        self.connection.commit()
+        return cursor.rowcount
+
+    def delete_all_activity(self) -> None:
+        """The settings dialog's "delete everything" button."""
+        self.connection.execute("DELETE FROM minute_activity")
+        self.connection.execute("DELETE FROM focus_session")
+        self.connection.commit()
 
 
 __all__ = ["ActivityStore", "user_data_dir", "FOCUS", "BREAK", "LONG_BREAK"]

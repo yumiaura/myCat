@@ -24,7 +24,18 @@ from pathlib import Path
 
 # Allow running both as `python -m mycat` and `python mycat/main.py`
 if __package__:
-    from . import announcer, autostart, calendar_ics, focus, github_notify, llm, reminder, secret_store, skin_catalog
+    from . import (
+        activity,
+        announcer,
+        autostart,
+        calendar_ics,
+        focus,
+        github_notify,
+        llm,
+        reminder,
+        secret_store,
+        skin_catalog,
+    )
 else:
     import importlib
     repo_root = Path(__file__).resolve().parent.parent
@@ -39,6 +50,7 @@ else:
     focus = importlib.import_module("mycat.focus")
     github_notify = importlib.import_module("mycat.github_notify")
     calendar_ics = importlib.import_module("mycat.calendar_ics")
+    activity = importlib.import_module("mycat.activity")
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -438,6 +450,39 @@ def offer_autostart_on_first_run(window: QtWidgets.QWidget) -> None:
         logger.info("Autostart enabled via first-run prompt")
 
 
+def offer_activity_diary_on_first_run(window: QtWidgets.QWidget) -> None:
+    """Ask once whether to keep the local-only activity diary.
+
+    Input monitoring must be a conscious yes — the diary is off until the
+    user agrees, and the prompt stresses that nothing leaves this computer.
+    """
+    collector = getattr(window, "activity_collector", None)
+    if collector is None:
+        return
+    settings = collector.settings
+    if settings.prompted or settings.enabled:
+        return
+    # Record first so a crash mid-prompt never re-asks on every launch.
+    settings.prompted = True
+    activity.save_activity_settings(settings)
+    answer = QtWidgets.QMessageBox.question(
+        window,
+        "mycat",
+        "Keep a private activity diary?\n\n"
+        "The cat can log your focus sessions and how much you move the mouse,"
+        " and show a little recap each morning. Everything stays on this"
+        " computer — nothing is ever sent anywhere.\n\n"
+        "You can change or delete it any time: right-click → Activity…",
+        QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+        QtWidgets.QMessageBox.StandardButton.Yes,
+    )
+    if answer == QtWidgets.QMessageBox.StandardButton.Yes:
+        settings.enabled = True
+        activity.save_activity_settings(settings)
+        collector.apply_settings(settings)
+        logger.info("Activity diary enabled via first-run prompt")
+
+
 class PixelCatWindow(QtWidgets.QWidget):
     """Main cat window widget with PNG/GIF animation and dragging."""
     
@@ -581,6 +626,10 @@ class PixelCatWindow(QtWidgets.QWidget):
         # Calendar reminders (opt-in, secret ICS URL): the only banners
         # urgent enough to fly through an active focus session.
         self.calendar_controller = calendar_ics.CalendarController(self, announcer=self.announcer)
+
+        # Activity diary (opt-in, local-only): counters, never content; the
+        # collector shares activity.db with the focus session log above.
+        self.activity_collector = activity.ActivityCollector(store=self.focus_controller.store)
     
     def _load_position(self) -> None:
         """Load window position from config; default to the bottom-right corner."""
@@ -767,6 +816,9 @@ class PixelCatWindow(QtWidgets.QWidget):
         calendar_action = menu.addAction("Calendar…")
         calendar_action.triggered.connect(self.open_calendar_settings)
 
+        activity_action = menu.addAction("Activity…")
+        activity_action.triggered.connect(self.open_activity_dialog)
+
         # Focus (pomodoro) — labels reflect the live session state; the menu
         # is rebuilt on every right-click so they are always current.
         focus_controller = getattr(self, "focus_controller", None)
@@ -853,6 +905,24 @@ class PixelCatWindow(QtWidgets.QWidget):
             logger.exception("Failed to import calendar settings UI")
             return
         dialog = CalendarDialog(controller, parent=self)
+        dialog.show()
+        dialog.raise_()
+
+    def open_activity_dialog(self) -> None:
+        """Open the activity diary dialog (settings + interval log)."""
+        collector = getattr(self, "activity_collector", None)
+        if collector is None:
+            return
+        try:
+            if __package__:
+                from .activity_ui import ActivityDialog
+            else:
+                import importlib
+                ActivityDialog = importlib.import_module("mycat.activity_ui").ActivityDialog
+        except Exception:
+            logger.exception("Failed to import activity UI")
+            return
+        dialog = ActivityDialog(collector, parent=self)
         dialog.show()
         dialog.raise_()
 
@@ -1264,6 +1334,7 @@ def setup_tray(app, window, icon_pixmap):
     menu.addAction("LLM…", window.open_llm_settings)
     menu.addAction("GitHub…", window.open_github_settings)
     menu.addAction("Calendar…", window.open_calendar_settings)
+    menu.addAction("Activity…", window.open_activity_dialog)
 
     # One toggle action for focus sessions; its label is refreshed just before
     # the menu opens (the tray menu is built once, unlike the context menu).
@@ -1421,6 +1492,8 @@ def main() -> None:
         app.setQuitOnLastWindowClosed(window.tray_icon is None)
         # First-run nudge to start on login (after the cat is up).
         QtCore.QTimer.singleShot(600, lambda: offer_autostart_on_first_run(window))
+        # Second gentle first-run question, after the autostart one settles.
+        QtCore.QTimer.singleShot(1800, lambda: offer_activity_diary_on_first_run(window))
 
     try:
         sys.exit(app.exec())

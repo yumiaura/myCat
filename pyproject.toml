@@ -34,6 +34,9 @@ secure = ["keyring>=24"]
 # ICS calendar reminders: RRULE expansion (the daily standup) is a swamp not
 # worth hand-rolling, so the calendar feature needs these two small libs.
 calendar = ["icalendar>=6", "recurring-ical-events>=3"]
+# Activity diary tier 2 (key/click COUNTS — identity is discarded in the
+# hook). Global hooks need pynput; unavailable on Wayland.
+activity = ["pynput>=1.7"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
