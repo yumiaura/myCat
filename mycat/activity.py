@@ -152,8 +152,9 @@ class ActivityCollector(QtCore.QObject):
         self.key_listener = None
         self.mouse_listener = None
         self.purged_today = False
-        # Idle-edge detection (auto-pomodoro trigger).
+        # Idle-edge detection (auto-pomodoro trigger) + current activity run.
         self.last_input_at = None
+        self.run_start = None  # start of the current continuous activity run
         self.prev_keys = 0
         self.prev_clicks = 0
 
@@ -260,9 +261,12 @@ class ActivityCollector(QtCore.QObject):
         self.prev_keys = self.bucket_keys
         self.prev_clicks = self.bucket_clicks
         if input_now:
-            if self.last_input_at is not None and now - self.last_input_at >= timedelta(minutes=IDLE_RESUME_MINUTES):
+            new_run = self.last_input_at is None or (now - self.last_input_at) >= timedelta(minutes=IDLE_RESUME_MINUTES)
+            if new_run and self.last_input_at is not None:
                 logger.info("Input after %s of silence — idle-resume edge", now - self.last_input_at)
                 self.resumed_after_idle.emit()
+            if new_run:
+                self.run_start = now
             self.last_input_at = now
 
     def flush(self) -> None:
@@ -282,6 +286,44 @@ class ActivityCollector(QtCore.QObject):
         self.prev_keys = 0
         self.prev_clicks = 0
         self.maybe_purge()
+
+    def current_run(self, now=None):
+        """The ongoing activity run {start}, or None when currently idle.
+
+        A run starts on input after ≥ IDLE_RESUME_MINUTES of silence and is
+        considered over once that much silence passes again — this is the
+        "текущий промежуток" shown live at the top of the Activity table,
+        independent of whether a pomodoro session is formally running.
+        """
+        now = now or self.now_fn()
+        if self.run_start is None or self.last_input_at is None:
+            return None
+        if now - self.last_input_at >= timedelta(minutes=IDLE_RESUME_MINUTES):
+            return None
+        return {"start": self.run_start}
+
+    def current_run_stats(self, now=None):
+        """Live counters for the current run: keys, clicks, path, active %."""
+        now = now or self.now_fn()
+        run = self.current_run(now)
+        if run is None:
+            return None
+        start = run["start"]
+        try:
+            rows = self.store.minutes_between(start, now)
+        except Exception:  # noqa: BLE001 - stats must never break the dialog
+            rows = []
+        elapsed_minutes = max(1, int((now - start).total_seconds() // 60))
+        active = sum(row["active"] for row in rows)
+        return {
+            "start": start,
+            "keys": sum(row["keys"] for row in rows) + int(self.bucket_keys),
+            "clicks": sum(row["clicks"] for row in rows) + int(self.bucket_clicks),
+            "mouse_px": sum(row["mouse_px"] for row in rows) + int(self.bucket_mouse_px),
+            "active_minutes": active,
+            "elapsed_minutes": elapsed_minutes,
+            "active_pct": min(100, round(100 * active / elapsed_minutes)),
+        }
 
     def maybe_purge(self) -> None:
         """Apply retention once per process run (cheap, good enough)."""
@@ -417,6 +459,7 @@ def sessions_table(store, day: date) -> list:
                 "keys": sum(row["keys"] for row in minutes),
                 "clicks": sum(row["clicks"] for row in minutes),
                 "mouse_px": sum(row["mouse_px"] for row in minutes),
+                "active_minutes": sum(row["active"] for row in minutes),
             }
         )
     return rows

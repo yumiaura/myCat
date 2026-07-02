@@ -21,9 +21,15 @@ logger = logging.getLogger(__name__)
 
 KIND_ICONS = {"focus": "🍅", "break": "☕", "long_break": "☕", "work": "💻"}
 
-# Session table: start + duration per session, then the input counters.
-# The bottom totals row deliberately carries NO start/end times.
-TABLE_COLUMNS = ["Session", "Start", "Duration", "⌨ Keys", "🖱 Clicks", "Cursor path"]
+# Session table: start + duration per session, then the input counters and
+# how active that stretch was. The bottom TOTAL row carries NO start/end times.
+TABLE_COLUMNS = ["Session", "Start", "Duration", "⌨ Keys", "🖱 Clicks", "Cursor path", "Active"]
+
+
+def active_pct(active_minutes: int, window_minutes: int) -> str:
+    if window_minutes <= 0:
+        return "—"
+    return f"{min(100, round(100 * active_minutes / window_minutes))}%"
 
 
 def format_duration(seconds: int) -> str:
@@ -152,17 +158,18 @@ class ActivityDialog(QtWidgets.QDialog):
         # The Current row only lives on the Today view.
         if self.day_combo.currentIndex() != 0:
             return
-        stats = controller.current_session_stats() if controller is not None else None
+        stats = self.collector.current_run_stats()
         start = stats["start"] if stats else None
         if start != self.current_start:
-            # A period began or ended — rebuild so the finished one drops into
-            # the list and a fresh Current row (if any) appears on top.
+            # A period began or ended — rebuild so a fresh Current row (if any)
+            # appears on top and the list stays in sync.
             self.refresh_log()
             return
         if stats is not None and self.current_row is not None:
             self.set_cell(self.current_row, 3, f"{stats['keys']:,}")
             self.set_cell(self.current_row, 4, f"{stats['clicks']:,}")
             self.set_cell(self.current_row, 5, format_path(stats["mouse_px"], self.dpi))
+            self.set_cell(self.current_row, 6, f"{stats['active_pct']}%")
 
     def selected_day(self) -> date:
         today = self.collector.now_fn().date()
@@ -183,20 +190,19 @@ class ActivityDialog(QtWidgets.QDialog):
             self.totals_label.setText("Could not read the activity database.")
             return
 
-        controller = self.focus_controller
-        stats = controller.current_session_stats() if controller is not None else None
-        # A live "Current" row on top, only on the Today view.
-        if stats is not None and self.day_combo.currentIndex() == 0:
-            icon = KIND_ICONS.get(stats["kind"], "▶")
-            label = "Focus" if stats["kind"] == "focus" else "Break"
+        # A live "Current period" row on top (the current activity run, which
+        # need not be a formal pomodoro), only on the Today view.
+        stats = self.collector.current_run_stats() if self.day_combo.currentIndex() == 0 else None
+        if stats is not None:
             self.append_row(
                 [
-                    f"▶ {icon} {label}",
+                    "▶ Current",
                     stats["start"].strftime("%H:%M"),
                     "Current",
                     f"{stats['keys']:,}",
                     f"{stats['clicks']:,}",
                     format_path(stats["mouse_px"], self.dpi),
+                    f"{stats['active_pct']}%",
                 ],
                 italic=True,
             )
@@ -205,31 +211,37 @@ class ActivityDialog(QtWidgets.QDialog):
 
         # Finished sessions, newest first.
         for session in reversed(rows):
-            icon = KIND_ICONS.get(session["kind"], "·")
-            label = "Focus" if session["kind"] == "focus" else "Break"
             if session["kind"] == "focus" and not session["completed"]:
-                label = "Focus (stopped)"
+                label = "🍌 Interrupted"  # a stopped pomodoro
+            elif session["kind"] == "focus":
+                label = "🍅 Focus"
+            else:
+                label = "☕ Break"
+            window_minutes = session["duration_seconds"] // 60
             self.append_row(
                 [
-                    f"{icon} {label}",
+                    label,
                     session["start"].strftime("%H:%M"),
                     format_duration(session["duration_seconds"]),
                     f"{session['keys']:,}",
                     f"{session['clicks']:,}",
                     format_path(session["mouse_px"], self.dpi),
+                    active_pct(session["active_minutes"], window_minutes),
                 ]
             )
 
-        # Bottom TOTAL row — day aggregates, NO start/end times, no "active".
+        # Bottom TOTAL row — day aggregates, only completed 🍅, no dot, no times.
         total_duration = sum(session["duration_seconds"] for session in rows)
+        total_active = sum(session["active_minutes"] for session in rows)
         self.append_row(
             [
-                f"TOTAL  ·  🍅 {summary['focus_count']}",
+                f"TOTAL   🍅 {summary['focus_count']}",
                 "",
                 format_duration(total_duration),
                 f"{summary['keys']:,}",
                 f"{summary['clicks']:,}",
                 format_path(summary["mouse_px_total"], self.dpi),
+                active_pct(total_active, total_duration // 60),
             ],
             bold=True,
         )
