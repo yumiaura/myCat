@@ -24,7 +24,7 @@ from pathlib import Path
 
 # Allow running both as `python -m mycat` and `python mycat/main.py`
 if __package__:
-    from . import announcer, autostart, llm, reminder, secret_store, skin_catalog
+    from . import announcer, autostart, focus, llm, reminder, secret_store, skin_catalog
 else:
     import importlib
     repo_root = Path(__file__).resolve().parent.parent
@@ -36,6 +36,7 @@ else:
     secret_store = importlib.import_module("mycat.secret_store")
     autostart = importlib.import_module("mycat.autostart")
     announcer = importlib.import_module("mycat.announcer")
+    focus = importlib.import_module("mycat.focus")
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -566,6 +567,10 @@ class PixelCatWindow(QtWidgets.QWidget):
         # GitHub, calendar, digest) flies its banners through this one object
         # so flybys never overlap and focus time stays quiet.
         self.announcer = announcer.Announcer(self)
+
+        # Pomodoro-style focus sessions: the cat settles down while you work,
+        # a thin bar under it shows the remaining time, banners mark breaks.
+        self.focus_controller = focus.FocusController(self, announcer=self.announcer)
     
     def _load_position(self) -> None:
         """Load window position from config; default to the bottom-right corner."""
@@ -745,6 +750,19 @@ class PixelCatWindow(QtWidgets.QWidget):
 
         reminder_action = menu.addAction("Reminder…")
         reminder_action.triggered.connect(self._open_reminder)
+
+        # Focus (pomodoro) — labels reflect the live session state; the menu
+        # is rebuilt on every right-click so they are always current.
+        focus_controller = getattr(self, "focus_controller", None)
+        if focus_controller is not None:
+            if focus_controller.state == focus.FOCUS:
+                menu.addAction("Stop focus", focus_controller.stop)
+            elif focus_controller.state == focus.BREAK:
+                menu.addAction("Skip break", focus_controller.skip_break)
+                menu.addAction("Stop session", focus_controller.stop)
+            else:
+                minutes = focus_controller.settings.focus_minutes
+                menu.addAction(f"Focus {minutes} min", focus_controller.start_focus)
         menu.addSeparator()
 
         # Rebuild the list every time so freshly-installed skins appear without restart.
@@ -1192,6 +1210,32 @@ def setup_tray(app, window, icon_pixmap):
         menu.addAction("Chat", toggle_chat)
     menu.addAction("Reminder…", window._open_reminder)
     menu.addAction("LLM…", window.open_llm_settings)
+
+    # One toggle action for focus sessions; its label is refreshed just before
+    # the menu opens (the tray menu is built once, unlike the context menu).
+    focus_controller = getattr(window, "focus_controller", None)
+    if focus_controller is not None:
+        def toggle_focus():
+            if focus_controller.state == focus.FOCUS:
+                focus_controller.stop()
+            elif focus_controller.state == focus.BREAK:
+                focus_controller.skip_break()
+            else:
+                focus_controller.start_focus()
+
+        focus_action = menu.addAction("Focus", toggle_focus)
+
+        def refresh_focus_label():
+            if focus_controller.state == focus.FOCUS:
+                focus_action.setText("Stop focus")
+            elif focus_controller.state == focus.BREAK:
+                focus_action.setText("Skip break")
+            else:
+                focus_action.setText(f"Focus {focus_controller.settings.focus_minutes} min")
+
+        refresh_focus_label()
+        menu.aboutToShow.connect(refresh_focus_label)
+
     if autostart.is_supported():
         menu.addSeparator()
         login_action = menu.addAction("Autostart")
