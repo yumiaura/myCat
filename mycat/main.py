@@ -24,7 +24,7 @@ from pathlib import Path
 
 # Allow running both as `python -m mycat` and `python mycat/main.py`
 if __package__:
-    from . import announcer, autostart, focus, llm, reminder, secret_store, skin_catalog
+    from . import announcer, autostart, focus, github_notify, llm, reminder, secret_store, skin_catalog
 else:
     import importlib
     repo_root = Path(__file__).resolve().parent.parent
@@ -37,6 +37,7 @@ else:
     autostart = importlib.import_module("mycat.autostart")
     announcer = importlib.import_module("mycat.announcer")
     focus = importlib.import_module("mycat.focus")
+    github_notify = importlib.import_module("mycat.github_notify")
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -571,6 +572,10 @@ class PixelCatWindow(QtWidgets.QWidget):
         # Pomodoro-style focus sessions: the cat settles down while you work,
         # a thin bar under it shows the remaining time, banners mark breaks.
         self.focus_controller = focus.FocusController(self, announcer=self.announcer)
+
+        # GitHub notifications (opt-in, BYO token): silent — zero network
+        # requests — until enabled in its settings dialog.
+        self.github_notifier = github_notify.GitHubNotifier(self, announcer=self.announcer)
     
     def _load_position(self) -> None:
         """Load window position from config; default to the bottom-right corner."""
@@ -751,6 +756,9 @@ class PixelCatWindow(QtWidgets.QWidget):
         reminder_action = menu.addAction("Reminder…")
         reminder_action.triggered.connect(self._open_reminder)
 
+        github_action = menu.addAction("GitHub…")
+        github_action.triggered.connect(self.open_github_settings)
+
         # Focus (pomodoro) — labels reflect the live session state; the menu
         # is rebuilt on every right-click so they are always current.
         focus_controller = getattr(self, "focus_controller", None)
@@ -803,6 +811,24 @@ class PixelCatWindow(QtWidgets.QWidget):
             return
         dialog = LLMSettingsDialog(self, parent=self)
         dialog.exec()
+
+    def open_github_settings(self) -> None:
+        """Open the GitHub notifier settings dialog (token, filters, test)."""
+        notifier = getattr(self, "github_notifier", None)
+        if notifier is None:
+            return
+        try:
+            if __package__:
+                from .github_ui import GitHubDialog
+            else:
+                import importlib
+                GitHubDialog = importlib.import_module("mycat.github_ui").GitHubDialog
+        except Exception:
+            logger.exception("Failed to import GitHub settings UI")
+            return
+        dialog = GitHubDialog(notifier, parent=self)
+        dialog.show()
+        dialog.raise_()
 
     def _open_shop(self) -> None:
         """Lazily import and show the shop dialog."""
@@ -1210,6 +1236,7 @@ def setup_tray(app, window, icon_pixmap):
         menu.addAction("Chat", toggle_chat)
     menu.addAction("Reminder…", window._open_reminder)
     menu.addAction("LLM…", window.open_llm_settings)
+    menu.addAction("GitHub…", window.open_github_settings)
 
     # One toggle action for focus sessions; its label is refreshed just before
     # the menu opens (the tray menu is built once, unlike the context menu).
