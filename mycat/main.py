@@ -29,6 +29,7 @@ if __package__:
         announcer,
         autostart,
         calendar_ics,
+        digest,
         focus,
         github_notify,
         llm,
@@ -51,6 +52,7 @@ else:
     github_notify = importlib.import_module("mycat.github_notify")
     calendar_ics = importlib.import_module("mycat.calendar_ics")
     activity = importlib.import_module("mycat.activity")
+    digest = importlib.import_module("mycat.digest")
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -630,6 +632,10 @@ class PixelCatWindow(QtWidgets.QWidget):
         # Activity diary (opt-in, local-only): counters, never content; the
         # collector shares activity.db with the focus session log above.
         self.activity_collector = activity.ActivityCollector(store=self.focus_controller.store)
+
+        # The morning newspaper: yesterday's stats once per day, first thing
+        # after 05:00 — another small reason the cat is running at dawn.
+        self.morning_digest = digest.MorningDigest(self.focus_controller.store, announcer=self.announcer)
     
     def _load_position(self) -> None:
         """Load window position from config; default to the bottom-right corner."""
