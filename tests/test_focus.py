@@ -146,5 +146,5 @@ def test_status_text_formats_clock(tmp_path, qapp):
     controller.start_focus()
     now.advance(minutes=7, seconds=18)
     text = controller.status_text()
-    assert text.startswith("Focus · 17:42 left")
-    assert "🍅" in text
+    # Agreed order: Focus · 🍅 N · duration · (⌨/🖱/% when stats exist)
+    assert text.startswith("Focus · 🍅 0 · 17:42 left")

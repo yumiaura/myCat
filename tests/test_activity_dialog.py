@@ -55,8 +55,7 @@ def test_now_line_mirrors_focus_tooltip(tmp_path, qapp):
     now.advance(minutes=7, seconds=18)
     dialog.refresh_now()
     text = dialog.now_label.text()
-    assert text.startswith("Now: Focus · 17:42 left")
-    assert "🍅" in text
+    assert text.startswith("Now: Focus · 🍅 0 · 17:42 left")
 
 
 def test_table_has_session_rows_and_totals(tmp_path, qapp):

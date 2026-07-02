@@ -144,6 +144,8 @@ def test_tooltip_carries_live_session_stats(tmp_path, qapp):
     now.advance(minutes=1)
     collector.sample()  # rollover: minute 2 flushed
     text = controller.status_text()
-    assert text.startswith("Focus ·")
+    # Agreed order: Focus · 🍅 N · duration · ⌨ keys · 🖱 clicks/path · % active
+    assert text.startswith("Focus · 🍅 0 ·")
     assert "⌨ 450" in text
+    assert "🖱" in text and "/" in text  # clicks and path share the mouse icon
     assert "% active" in text

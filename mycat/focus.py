@@ -196,15 +196,24 @@ class FocusController(QtCore.QObject):
         done = self.phase_planned_seconds - self.remaining_seconds()
         return min(1.0, max(0.0, done / self.phase_planned_seconds))
 
+    def period_parts(self, duration: str, stats: dict | None) -> str:
+        """The agreed tooltip order: 🍅×N · duration · ⌨ keys · 🖱 clicks/path · %."""
+        parts = [f"🍅 {self.today_count()}", duration]
+        if stats is not None:
+            parts.append(f"⌨ {stats['keys']:,}")
+            km = cursor_km_estimate(stats["mouse_px"])
+            path = f"{km:.1f} km" if km >= 0.1 else f"{int(km * 1000)} m"
+            parts.append(f"🖱 {stats['clicks']:,} / {path}")
+            parts.append(f"{stats['active_pct']}% active")
+        return " · ".join(parts)
+
     def status_text(self) -> str:
         minutes, seconds = divmod(self.remaining_seconds(), 60)
         clock = f"{minutes:02d}:{seconds:02d}"
         if self.state == FOCUS:
-            text = f"Focus · {clock} left · today {self.today_count()} 🍅"
-            live = self.live_session_stats()
-            return f"{text} · {live}" if live else text
+            return f"Focus · {self.period_parts(f'{clock} left', self.current_session_stats())}"
         if self.state == BREAK:
-            return f"Break · {clock} left · today {self.today_count()} 🍅"
+            return f"Break · {self.period_parts(f'{clock} left', self.current_session_stats())}"
         return ""
 
     def current_session_stats(self) -> dict | None:
@@ -236,21 +245,6 @@ class FocusController(QtCore.QObject):
             "observed": len(rows),
             "active_pct": min(100, round(100 * active / elapsed_minutes)),
         }
-
-    def live_session_stats(self) -> str:
-        """The current-period counters as a one-line tooltip fragment."""
-        stats = self.current_session_stats()
-        if stats is None:
-            return ""
-        parts = []
-        if stats["keys"]:
-            parts.append(f"⌨ {stats['keys']:,}")
-        if stats["mouse_px"]:
-            km = cursor_km_estimate(stats["mouse_px"])
-            parts.append(f"🖱 {km:.1f} km" if km >= 0.1 else f"🖱 {int(km * 1000)} m")
-        if stats["observed"]:
-            parts.append(f"{int(100 * stats['active'] / stats['observed'])}% active")
-        return " · ".join(parts)
 
     # -- clock ---------------------------------------------------------------
 
@@ -349,14 +343,7 @@ class FocusController(QtCore.QObject):
         minutes = stats["elapsed_minutes"]
         hours, mins = divmod(minutes, 60)
         elapsed = f"{hours} h {mins:02d} min" if hours else f"{mins} min"
-        parts = [f"Other · {elapsed}"]
-        if stats["keys"]:
-            parts.append(f"⌨ {stats['keys']:,}")
-        if stats["mouse_px"]:
-            km = cursor_km_estimate(stats["mouse_px"])
-            parts.append(f"🖱 {km:.1f} km" if km >= 0.1 else f"🖱 {int(km * 1000)} m")
-        parts.append(f"{stats['active_pct']}% active")
-        return " · ".join(parts)
+        return f"Other · {self.period_parts(elapsed, stats)}"
 
     def refresh_visuals(self) -> None:
         window = self.window
