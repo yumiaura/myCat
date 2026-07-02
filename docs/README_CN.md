@@ -56,7 +56,7 @@ mycat                 # 或者不安装直接运行：python3 mycat/main.py
 
 ## ✨ 功能
 
-- **动画悬浮窗** 🐱 —— 无边框、置顶、可拖动的猫咪。右键打开菜单（切换皮肤、退出）。
+- **动画悬浮窗** 🐱 —— 无边框、置顶、可拖动的猫咪。右键打开菜单（切换角色、退出）。
 - **提醒** 🛩️ —— 设置一条消息和时间（一次或每天），猫咪会驾驶小飞机拖着横幅从屏幕顶部飞过。右键 → *Reminder…* 设置消息、方向、飞机和颜色。
 - **聊天（Ollama）** 💬 —— 通过 **本地 [Ollama](https://ollama.com) 模型** 与猫咪聊天，无需账号或 API 密钥（见下文）。
 
@@ -82,7 +82,7 @@ mycat                 # 或者不安装直接运行：python3 mycat/main.py
 mycat --image ~/my-custom-cat.zip
 ```
 
-皮肤 **ZIP** 必须只含一个 `.gif`：第一帧为静态姿势，GIF 播放一次后回到该帧。超过 300×500 的图片会自动缩小。
+角色 **ZIP** 必须只含一个 `.gif`：第一帧为静态姿势，GIF 播放一次后回到该帧。超过 300×500 的图片会自动缩小。
 
 **`--pos <x> <y>`** 📍 —— 指定起始位置（否则猫咪出现在右下角并记住上次拖动的位置）：
 
@@ -97,10 +97,10 @@ mycat --pos 960 540        # 1920x1080 屏幕中心
 ### 操作
 
 - **左键拖动** 移动猫咪。
-- **右键** 打开菜单（皮肤、Reminder…、Ollama…、Chat、Quit）。
+- **右键** 打开菜单（角色、Reminder…、Ollama…、Chat、Quit）。
 - 从菜单 **退出**，或在终端按 Ctrl+C。
 
-猫咪会把位置和所选皮肤保存在 `~/.config/mycat/config.ini`。
+猫咪会把位置和所选角色保存在 `~/.config/mycat/config.ini`。
 
 ## 🎬 制作自己的猫咪 GIF
 
@@ -109,13 +109,13 @@ mycat --pos 960 540        # 1920x1080 屏幕中心
 sudo apt install imagemagick
 
 # 从精灵图生成动画 GIF
-convert images/cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 images/cat.gif
+convert cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 cat.gif
 
-# 打包为皮肤 ZIP
-zip images/cat.zip images/cat.gif
+# 打包为角色 ZIP
+zip cat.zip cat.gif
 ```
 
-把生成的 ZIP 放到其它皮肤旁边，从右键 **皮肤** 菜单选择它。
+把生成的 ZIP 放到其它角色旁边，从右键 **角色** 菜单选择它。
 
 ## 🐳 Docker
 
@@ -143,7 +143,7 @@ docker compose -f docker-compose.mac.yml up
 **窗口不置顶 / 不显示在任务栏** 📌
 - 某些窗口管理器会覆盖“置顶”设置 —— 重启桌面会话或检查 WM 设置。
 
-**自定义皮肤无法加载** ❌
+**自定义角色无法加载** ❌
 - ZIP 必须只含一个有效的 `.gif`。检查路径与文件是否损坏。
 
 **位置不保存** 💾
