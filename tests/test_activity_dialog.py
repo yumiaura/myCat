@@ -125,6 +125,18 @@ def test_current_row_says_rest_during_break(tmp_path, qapp):
     assert dialog.current_phase == "break"
 
 
+def test_long_break_labelled_big_break(tmp_path, qapp):
+    from mycat import activity_store
+
+    dialog, controller, now = make_dialog(tmp_path)
+    start = datetime(2026, 7, 2, 9, 0)
+    controller.store.record_session(activity_store.LONG_BREAK, start, start + timedelta(minutes=15), 900, True)
+    dialog.refresh_log()
+    assert dialog.table.item(0, 0).text() == "🛋 Big break"
+    segments, current, ws, we, marker = dialog.build_timeline()
+    assert segments[0]["kind"] == "long_break"
+
+
 def test_build_timeline_segments(tmp_path, qapp):
     from mycat import activity_store
 

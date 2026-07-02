@@ -58,9 +58,16 @@ def screen_dpi() -> float:
 
 SEGMENT_COLORS = {
     "focus": QtGui.QColor("#d94a4a"),        # matches the focus progress bar
-    "break": QtGui.QColor("#4caf50"),        # rest
+    "break": QtGui.QColor("#4caf50"),        # short rest
+    "long_break": QtGui.QColor("#2e7d32"),   # Big break — deeper green
     "interrupted": QtGui.QColor("#e0a52e"),  # 🍌 a stopped pomodoro
     "current": QtGui.QColor("#4a8fe2"),      # the live period
+}
+SEGMENT_LABELS = {
+    "focus": "Focus",
+    "break": "Break",
+    "long_break": "Big break",
+    "interrupted": "Interrupted",
 }
 TRACK_BG = QtGui.QColor("#e9e9ec")
 GRID_COLOR = QtGui.QColor("#c8c8cc")
@@ -142,7 +149,7 @@ class DayTimeline(QtWidgets.QWidget):
             rect = QtCore.QRectF(x0, track_y, max(2.0, x1 - x0), track_h)
             painter.setBrush(SEGMENT_COLORS.get(seg["kind"], TRACK_BG))
             painter.drawRoundedRect(rect, 2, 2)
-            label = "Interrupted" if seg["kind"] == "interrupted" else seg["kind"].capitalize()
+            label = SEGMENT_LABELS.get(seg["kind"], seg["kind"].capitalize())
             self.hit_areas.append(
                 (rect, f"{label}  {seg['start'].strftime('%H:%M')}–{seg['end'].strftime('%H:%M')}")
             )
@@ -240,6 +247,7 @@ class ActivityDialog(QtWidgets.QDialog):
         legend = QtWidgets.QLabel(
             "<span style='color:#d94a4a'>■</span> Work &nbsp;"
             "<span style='color:#4caf50'>■</span> Rest &nbsp;"
+            "<span style='color:#2e7d32'>■</span> Big break &nbsp;"
             "<span style='color:#e0a52e'>■</span> Interrupted &nbsp;"
             "<span style='color:#4a8fe2'>■</span> Current &nbsp;·&nbsp; │ now"
         )
@@ -316,9 +324,10 @@ class ActivityDialog(QtWidgets.QDialog):
                 return None
             if controller.state == "focus":
                 label, color, phase = "▶ Work", "#d94a4a", "focus"
+            elif getattr(controller, "on_long_break", False):
+                label, color, phase = "▶ Big break", "#2e7d32", "long_break"
             else:
-                rest = "Long rest" if getattr(controller, "on_long_break", False) else "Rest"
-                label, color, phase = f"▶ {rest}", "#4caf50", "break"
+                label, color, phase = "▶ Rest", "#4caf50", "break"
             return {**stats, "label": label, "color": color, "phase": phase}
         stats = self.collector.current_run_stats()
         if stats is None:
@@ -338,6 +347,8 @@ class ActivityDialog(QtWidgets.QDialog):
                 kind = "interrupted"
             elif session["kind"] == "focus":
                 kind = "focus"
+            elif session["kind"] == "long_break":
+                kind = "long_break"
             else:
                 kind = "break"
             segments.append({"start": session["start"], "end": end, "kind": kind})
@@ -345,7 +356,7 @@ class ActivityDialog(QtWidgets.QDialog):
         if is_today:
             period = self.current_period()
             if period is not None:
-                kind = period["phase"] if period["phase"] in ("focus", "break") else "current"
+                kind = period["phase"] if period["phase"] in ("focus", "break", "long_break") else "current"
                 current = {"start": period["start"], "end": now, "kind": kind}
         starts = [s["start"] for s in segments] + ([current["start"]] if current else [])
         ends = [s["end"] for s in segments] + ([current["end"]] if current else [])
@@ -409,6 +420,8 @@ class ActivityDialog(QtWidgets.QDialog):
                 label = "🍌 Interrupted"  # a stopped pomodoro
             elif session["kind"] == "focus":
                 label = "🍅 Focus"
+            elif session["kind"] == "long_break":
+                label = "🛋 Big break"
             else:
                 label = "☕ Break"
             window_minutes = session["duration_seconds"] // 60

@@ -205,7 +205,7 @@ class FocusController(QtCore.QObject):
             live = self.live_session_stats()
             return f"{text} · {live}" if live else text
         if self.state == BREAK:
-            label = "Long break" if self.on_long_break else "Break"
+            label = "Big break" if self.on_long_break else "Break"
             return f"{label} · {clock} left · today {self.today_count()} 🍅"
         return ""
 
@@ -283,7 +283,7 @@ class FocusController(QtCore.QObject):
             minutes = self.settings.long_break_minutes if long_break else self.settings.break_minutes
             if self.announcer is not None:
                 if long_break:
-                    text = f"Long break — you earned it! 🍅 ×{self.settings.sessions_before_long_break}"
+                    text = f"Big break — you earned it! 🍅 ×{self.settings.sessions_before_long_break}"
                 else:
                     text = f"Break time! 🍅 #{self.today_count()} done"
                 self.announcer.announce(text)
