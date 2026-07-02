@@ -5,9 +5,11 @@ The log speaks in honest wording ("away from the computer", not "not
 working"); the only place silence is praised is a pomodoro break.
 """
 
+import csv
 import logging
 from datetime import date, datetime, timedelta
 from datetime import time as day_time
+from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -62,15 +64,15 @@ def screen_dpi() -> float:
 #   not tracked  → transparent (the grey track shows through)
 #   tracked, idle→ green (a rest)
 #   tracked, busy→ red, the redder the more input that minute carried
-TRACK_BG = QtGui.QColor("#ffffff")       # past but "not tracked" — white
+TRACK_BG = QtGui.QColor("#ffffff")  # past but "not tracked" — white
 TRACK_BORDER = QtGui.QColor("#c4c4cc")
-FUTURE_BG = QtGui.QColor("#c4c4cc")       # hasn't happened yet — clear grey
+FUTURE_BG = QtGui.QColor("#c4c4cc")  # hasn't happened yet — clear grey
 GRID_COLOR = QtGui.QColor("#bcbcc2")
-NOW_COLOR = QtGui.QColor("#1f6feb")      # the "now" marker — a strong accent
+NOW_COLOR = QtGui.QColor("#1f6feb")  # the "now" marker — a strong accent
 AXIS_TEXT = QtGui.QColor("#888888")
-REST_COLOR = QtGui.QColor("#8bbf8b")     # tracked but no activity
-HEAT_LOW = (233, 179, 179)               # a little activity → pale red
-HEAT_HIGH = (192, 57, 43)                # lots of activity → deep red
+REST_COLOR = QtGui.QColor("#8bbf8b")  # tracked but no activity
+HEAT_LOW = (233, 179, 179)  # a little activity → pale red
+HEAT_HIGH = (192, 57, 43)  # lots of activity → deep red
 # One busy minute's input mapped to full saturation (keys + weighted clicks + px).
 BUSY_FULL = 300.0
 
@@ -99,7 +101,7 @@ class DayTimeline(QtWidgets.QWidget):
         super().__init__(parent)
         self.setMinimumHeight(50)
         self.setMouseTracking(True)
-        self.cells = []          # [(minute_dt, "rest"|"active", busy_pct)]
+        self.cells = []  # [(minute_dt, "rest"|"active", busy_pct)]
         self.window_start = None
         self.window_end = None
         self.now = None
@@ -167,8 +169,9 @@ class DayTimeline(QtWidgets.QWidget):
                 painter.setPen(QtGui.QPen(GRID_COLOR, 1))
                 painter.drawLine(QtCore.QPointF(hx, top), QtCore.QPointF(hx, top + track_h))
                 painter.setPen(QtGui.QPen(AXIS_TEXT))
-                painter.drawText(QtCore.QRectF(hx - 14, axis_y, 28, 12),
-                                 QtCore.Qt.AlignmentFlag.AlignCenter, hour.strftime("%H"))
+                painter.drawText(
+                    QtCore.QRectF(hx - 14, axis_y, 28, 12), QtCore.Qt.AlignmentFlag.AlignCenter, hour.strftime("%H")
+                )
                 painter.setPen(QtCore.Qt.PenStyle.NoPen)
             hour = hour + timedelta(hours=1)
 
@@ -179,11 +182,13 @@ class DayTimeline(QtWidgets.QWidget):
             painter.drawLine(QtCore.QPointF(nx, top - 5), QtCore.QPointF(nx, top + track_h + 2))
             painter.setPen(QtCore.Qt.PenStyle.NoPen)
             painter.setBrush(NOW_COLOR)
-            triangle = QtGui.QPolygonF([
-                QtCore.QPointF(nx - 4, top - 7),
-                QtCore.QPointF(nx + 4, top - 7),
-                QtCore.QPointF(nx, top - 1),
-            ])
+            triangle = QtGui.QPolygonF(
+                [
+                    QtCore.QPointF(nx - 4, top - 7),
+                    QtCore.QPointF(nx + 4, top - 7),
+                    QtCore.QPointF(nx, top - 1),
+                ]
+            )
             painter.drawPolygon(triangle)
         painter.end()
 
@@ -247,27 +252,24 @@ class ActivityDialog(QtWidgets.QDialog):
         self.keyboard_box.setChecked(settings.keyboard_enabled)
         layout.addWidget(self.keyboard_box)
 
-        retention_row = QtWidgets.QHBoxLayout()
-        retention_row.addWidget(QtWidgets.QLabel("Keep history for:"))
+        controls_row = QtWidgets.QHBoxLayout()
+        controls_row.addWidget(QtWidgets.QLabel("Keep history for:"))
         self.retention_spin = QtWidgets.QSpinBox()
         self.retention_spin.setRange(7, 3650)
         self.retention_spin.setValue(settings.retention_days)
         self.retention_spin.setSuffix(" days")
-        retention_row.addWidget(self.retention_spin)
-        retention_row.addStretch(1)
-        self.delete_button = QtWidgets.QPushButton("Delete all recorded data…")
-        self.delete_button.clicked.connect(self.delete_all)
-        retention_row.addWidget(self.delete_button)
-        layout.addLayout(retention_row)
-
-        day_row = QtWidgets.QHBoxLayout()
-        day_row.addWidget(QtWidgets.QLabel("Show:"))
+        controls_row.addWidget(self.retention_spin)
+        controls_row.addSpacing(16)
+        controls_row.addWidget(QtWidgets.QLabel("Show:"))
         self.day_combo = QtWidgets.QComboBox()
         self.day_combo.addItems(["Today", "Yesterday"])
         self.day_combo.currentIndexChanged.connect(self.refresh_log)
-        day_row.addWidget(self.day_combo)
-        day_row.addStretch(1)
-        layout.addLayout(day_row)
+        controls_row.addWidget(self.day_combo)
+        controls_row.addStretch(1)
+        self.delete_button = QtWidgets.QPushButton("Delete all recorded data…")
+        self.delete_button.clicked.connect(self.delete_all)
+        controls_row.addWidget(self.delete_button)
+        layout.addLayout(controls_row)
 
         # Day activity strip: red = active (deeper = busier), green = rest,
         # grey = not tracked.
@@ -300,8 +302,11 @@ class ActivityDialog(QtWidgets.QDialog):
         self.totals_label.setWordWrap(True)
         layout.addWidget(self.totals_label)
 
-        # Save / Close, same style as the other dialogs; Save keeps it open.
+        # Export (left) · Save, Close (right), same style as the other dialogs.
         button_row = QtWidgets.QHBoxLayout()
+        self.export_button = QtWidgets.QPushButton("Export CSV…")
+        self.export_button.clicked.connect(self.export_csv)
+        button_row.addWidget(self.export_button)
         button_row.addStretch(1)
         self.save_button = QtWidgets.QPushButton("Save")
         self.close_button = QtWidgets.QPushButton("Close")
@@ -432,11 +437,19 @@ class ActivityDialog(QtWidgets.QDialog):
 
         totals = {"keys": 0, "clicks": 0, "mouse_px": 0, "active": 0}
 
-        def emit(label, start_text, duration_text, keys, clicks, mouse_px,
-                 active_text, color=None, bold=False, italic=False):
+        def emit(
+            label, start_text, duration_text, keys, clicks, mouse_px, active_text, color=None, bold=False, italic=False
+        ):
             self.append_row(
-                [label, start_text, duration_text, f"{keys:,}", f"{clicks:,}",
-                 format_path(mouse_px, self.dpi), active_text],
+                [
+                    label,
+                    start_text,
+                    duration_text,
+                    f"{keys:,}",
+                    f"{clicks:,}",
+                    format_path(mouse_px, self.dpi),
+                    active_text,
+                ],
                 bold=bold,
                 italic=italic,
             )
@@ -452,9 +465,17 @@ class ActivityDialog(QtWidgets.QDialog):
             if period is not None:
                 elapsed = now - period["start"]
                 active = period.get("active_minutes", period.get("active", 0))
-                emit(period["label"], period["start"].strftime("%H:%M"), format_duration(elapsed.total_seconds()),
-                     period["keys"], period["clicks"], period["mouse_px"], f"{period['active_pct']}%",
-                     color=period["color"], italic=True)
+                emit(
+                    period["label"],
+                    period["start"].strftime("%H:%M"),
+                    format_duration(elapsed.total_seconds()),
+                    period["keys"],
+                    period["clicks"],
+                    period["mouse_px"],
+                    f"{period['active_pct']}%",
+                    color=period["color"],
+                    italic=True,
+                )
                 totals["active"] += active
                 self.current_row = 0
                 self.current_start = period["start"]
@@ -465,9 +486,17 @@ class ActivityDialog(QtWidgets.QDialog):
             mouse_px = current_run["mouse_px"] + int(self.collector.bucket_mouse_px)
             elapsed = now - current_run["start"]
             elapsed_minutes = max(1, int(elapsed.total_seconds() // 60))
-            emit("▶ Other", current_run["start"].strftime("%H:%M"), format_duration(elapsed.total_seconds()),
-                 keys, clicks, mouse_px, f"{min(100, round(100 * current_run['active_minutes'] / elapsed_minutes))}%",
-                 color="#555555", italic=True)
+            emit(
+                "▶ Other",
+                current_run["start"].strftime("%H:%M"),
+                format_duration(elapsed.total_seconds()),
+                keys,
+                clicks,
+                mouse_px,
+                f"{min(100, round(100 * current_run['active_minutes'] / elapsed_minutes))}%",
+                color="#555555",
+                italic=True,
+            )
             totals["active"] += current_run["active_minutes"]
             self.current_row = 0
             self.current_start = current_run["start"]
@@ -488,9 +517,16 @@ class ActivityDialog(QtWidgets.QDialog):
                 duration_seconds = (obj["end"] - obj["start"]).total_seconds()
                 color = "#777777"
             window_minutes = max(1, int(duration_seconds // 60))
-            emit(label, start.strftime("%H:%M"), format_duration(duration_seconds),
-                 obj["keys"], obj["clicks"], obj["mouse_px"],
-                 active_pct(obj["active_minutes"], window_minutes), color=color)
+            emit(
+                label,
+                start.strftime("%H:%M"),
+                format_duration(duration_seconds),
+                obj["keys"],
+                obj["clicks"],
+                obj["mouse_px"],
+                active_pct(obj["active_minutes"], window_minutes),
+                color=color,
+            )
             totals["active"] += obj["active_minutes"]
 
         # --- TOTAL = the sum of the rows above ---
@@ -533,6 +569,118 @@ class ActivityDialog(QtWidgets.QDialog):
 
     # -- actions ----------------------------------------------------------------
 
+    def period_rows(self):
+        """Finished Focus / Break / Other periods for the selected day, as
+        plain numbers in chronological order — the record behind the table,
+        ready for CSV. The still-running current period is left out (it lands
+        in the file once it ends)."""
+        day = self.selected_day()
+        store = self.collector.store
+        dpi = screen_dpi()
+        now = self.collector.now_fn()
+        is_today = self.day_combo.currentIndex() == 0
+
+        sessions = activity_mod.sessions_table(store, day)
+        windows = [(s["start"], s["start"] + timedelta(seconds=s["duration_seconds"])) for s in sessions]
+        controller = self.focus_controller
+        if is_today and controller is not None and controller.state in ("focus", "break"):
+            windows.append((controller.phase_started, now))
+        runs = activity_mod.activity_runs(store, day, windows)
+
+        rows = []
+        for session in sessions:
+            end = session["start"] + timedelta(seconds=session["duration_seconds"])
+            rows.append(
+                {
+                    "period": "Focus" if session["kind"] == "focus" else "Break",
+                    "start": session["start"],
+                    "end": end,
+                    "duration_seconds": session["duration_seconds"],
+                    "keys": session["keys"],
+                    "clicks": session["clicks"],
+                    "mouse_px": session["mouse_px"],
+                    "active_minutes": session["active_minutes"],
+                    "completed": bool(session["completed"]),
+                }
+            )
+        for run in runs:
+            duration_seconds = int((run["end"] - run["start"]).total_seconds())
+            rows.append(
+                {
+                    "period": "Other",
+                    "start": run["start"],
+                    "end": run["end"],
+                    "duration_seconds": duration_seconds,
+                    "keys": run["keys"],
+                    "clicks": run["clicks"],
+                    "mouse_px": run["mouse_px"],
+                    "active_minutes": run["active_minutes"],
+                    "completed": True,
+                }
+            )
+        rows.sort(key=lambda entry: entry["start"])
+        return rows, dpi
+
+    def write_csv(self, path: str) -> int:
+        """Write the selected day's periods to ``path``; returns rows written."""
+        rows, dpi = self.period_rows()
+        with open(path, "w", newline="", encoding="utf-8") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(
+                [
+                    "period",
+                    "start",
+                    "end",
+                    "duration_seconds",
+                    "keys",
+                    "clicks",
+                    "mouse_pixels",
+                    "mouse_meters",
+                    "active_minutes",
+                    "active_percent",
+                    "completed",
+                ]
+            )
+            for entry in rows:
+                meters = round(activity_mod.cursor_km(entry["mouse_px"], dpi) * 1000.0, 1)
+                window_minutes = max(1, entry["duration_seconds"] // 60)
+                percent = min(100, round(100 * entry["active_minutes"] / window_minutes))
+                writer.writerow(
+                    [
+                        entry["period"],
+                        entry["start"].isoformat(timespec="seconds"),
+                        entry["end"].isoformat(timespec="seconds"),
+                        entry["duration_seconds"],
+                        entry["keys"],
+                        entry["clicks"],
+                        entry["mouse_px"],
+                        meters,
+                        entry["active_minutes"],
+                        percent,
+                        int(entry["completed"]),
+                    ]
+                )
+        return len(rows)
+
+    def export_csv(self) -> None:
+        day = self.selected_day()
+        default_name = f"mycat-activity-{day.isoformat()}.csv"
+        path, chosen = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Export activity to CSV", default_name, "CSV files (*.csv)"
+        )
+        if not path:
+            return
+        if chosen and chosen.startswith("CSV") and not path.lower().endswith(".csv"):
+            path += ".csv"
+        try:
+            count = self.write_csv(path)
+        except OSError:
+            logger.exception("Failed to export activity CSV")
+            self.now_label.setText("Could not write the CSV file.")
+            return
+        logger.info("Activity exported to CSV (%d periods) -> %s", count, path)
+        self.now_label.setText(f"Exported {count} periods to {Path(path).name}.")
+
     def delete_all(self) -> None:
         answer = QtWidgets.QMessageBox.question(
             self,
@@ -561,7 +709,9 @@ class ActivityDialog(QtWidgets.QDialog):
         activity_mod.save_activity_settings(settings)
         self.collector.apply_settings(settings)
         logger.info("Activity settings saved (enabled=%s, keyboard=%s)", settings.enabled, settings.keyboard_enabled)
-        self.now_label.setText("Saved.")
+        track = "on" if settings.enabled else "off"
+        keys = "on" if settings.keyboard_enabled else "off"
+        self.now_label.setText(f"Saved: tracking {track}, keys + clicks {keys}, keep {settings.retention_days} days.")
 
 
 __all__ = ["ActivityDialog"]

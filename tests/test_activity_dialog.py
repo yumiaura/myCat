@@ -171,6 +171,41 @@ def test_no_current_row_when_idle(tmp_path, qapp):
     assert dialog.table.item(0, 0).text().startswith("TOTAL")
 
 
+def test_export_csv_writes_period_rows(tmp_path, qapp):
+    import csv
+
+    from mycat import activity_store
+
+    dialog, controller, now = make_dialog(tmp_path)
+    store = controller.store
+    start = datetime(2026, 7, 2, 9, 0)
+    store.record_session(activity_store.FOCUS, start, start + timedelta(minutes=25), 1500, True)
+    for offset in range(25):
+        store.record_minute(start + timedelta(minutes=offset), 4000, 200, 8, True)
+    # A second stretch with no timer → an "Other" period.
+    for offset in range(3):
+        store.record_minute(datetime(2026, 7, 2, 9, 40 + offset), 1000, 50, 2, True)
+    now.now = datetime(2026, 7, 2, 10, 0)
+
+    out = tmp_path / "activity.csv"
+    count = dialog.write_csv(str(out))
+    assert count == 2
+
+    rows = list(csv.DictReader(out.open()))
+    assert [r["period"] for r in rows] == ["Focus", "Other"]  # chronological
+    focus = rows[0]
+    assert focus["start"] == "2026-07-02T09:00:00"
+    assert focus["end"] == "2026-07-02T09:25:00"
+    assert focus["duration_seconds"] == "1500"
+    assert focus["keys"] == "5000"  # 25 min × 200
+    assert focus["clicks"] == "200"  # 25 min × 8
+    assert focus["active_minutes"] == "25"
+    assert focus["active_percent"] == "100"
+    assert focus["completed"] == "1"
+    assert rows[1]["period"] == "Other"
+    assert rows[1]["keys"] == "150"  # 3 min × 50
+
+
 def test_interrupted_session_shows_banana(tmp_path, qapp):
     from mycat import activity_store
 
