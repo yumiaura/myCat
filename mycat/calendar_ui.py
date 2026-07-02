@@ -62,14 +62,18 @@ class CalendarDialog(QtWidgets.QDialog):
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
 
-        buttons = QtWidgets.QDialogButtonBox(
-            QtWidgets.QDialogButtonBox.StandardButton.Save | QtWidgets.QDialogButtonBox.StandardButton.Cancel
-        )
-        self.test_button = buttons.addButton("Test", QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
+        # Test / Save / Close, in exactly that order; Save keeps the dialog open.
+        button_row = QtWidgets.QHBoxLayout()
+        button_row.addStretch(1)
+        self.test_button = QtWidgets.QPushButton("Test")
+        self.save_button = QtWidgets.QPushButton("Save")
+        self.close_button = QtWidgets.QPushButton("Close")
         self.test_button.clicked.connect(self.run_test)
-        buttons.accepted.connect(self.save_and_close)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        self.save_button.clicked.connect(self.save_settings)
+        self.close_button.clicked.connect(self.reject)
+        for button in (self.test_button, self.save_button, self.close_button):
+            button_row.addWidget(button)
+        layout.addLayout(button_row)
 
     def collect_settings(self) -> "calendar_ics.CalendarSettings":
         return calendar_ics.CalendarSettings(
@@ -79,12 +83,13 @@ class CalendarDialog(QtWidgets.QDialog):
             poll_minutes=self.poll_spin.value(),
         )
 
-    def save_and_close(self) -> None:
+    def save_settings(self) -> None:
+        """Persist + apply, but keep the dialog open (save → then test)."""
         settings = self.collect_settings()
         calendar_ics.save_calendar_settings(settings)
         self.controller.apply_settings(settings)
         logger.info("Calendar settings saved (enabled=%s)", settings.enabled)
-        self.accept()
+        self.status_label.setText("Saved.")
 
     def run_test(self) -> None:
         url = self.url_edit.text().strip()

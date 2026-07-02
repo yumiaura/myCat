@@ -81,14 +81,19 @@ class GitHubDialog(QtWidgets.QDialog):
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
 
-        buttons = QtWidgets.QDialogButtonBox(
-            QtWidgets.QDialogButtonBox.StandardButton.Save | QtWidgets.QDialogButtonBox.StandardButton.Cancel
-        )
-        self.test_button = buttons.addButton("Test", QtWidgets.QDialogButtonBox.ButtonRole.ActionRole)
+        # Test / Save / Close, in exactly that order. Save applies without
+        # closing, so the flow "save, then test" works in one open dialog.
+        button_row = QtWidgets.QHBoxLayout()
+        button_row.addStretch(1)
+        self.test_button = QtWidgets.QPushButton("Test")
+        self.save_button = QtWidgets.QPushButton("Save")
+        self.close_button = QtWidgets.QPushButton("Close")
         self.test_button.clicked.connect(self.run_test)
-        buttons.accepted.connect(self.save_and_close)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        self.save_button.clicked.connect(self.save_settings)
+        self.close_button.clicked.connect(self.reject)
+        for button in (self.test_button, self.save_button, self.close_button):
+            button_row.addWidget(button)
+        layout.addLayout(button_row)
 
     # -- actions ---------------------------------------------------------------
 
@@ -102,12 +107,13 @@ class GitHubDialog(QtWidgets.QDialog):
             reasons=reasons or github_notify.DEFAULT_REASONS,
         )
 
-    def save_and_close(self) -> None:
+    def save_settings(self) -> None:
+        """Persist + apply, but keep the dialog open (save → then test)."""
         settings = self.collect_settings()
         github_notify.save_github_settings(settings)
         self.notifier.apply_settings(settings)
         logger.info("GitHub notifier settings saved (enabled=%s)", settings.enabled)
-        self.accept()
+        self.status_label.setText("Saved.")
 
     def run_test(self) -> None:
         settings = self.collect_settings()

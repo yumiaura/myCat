@@ -192,16 +192,28 @@ def event_text(event: dict) -> str:
     repo = str((event.get("repo") or {}).get("name", "")).strip()
     payload = event.get("payload") or {}
     if kind == "IssuesEvent":
-        title = str((payload.get("issue") or {}).get("title", "")).strip()
+        issue = payload.get("issue") or {}
+        title = str(issue.get("title", "")).strip() or f"#{issue.get('number', '?')}"
         return f"🐞 {actor}: {title} ({repo})"
     if kind == "PullRequestEvent":
-        title = str((payload.get("pull_request") or {}).get("title", "")).strip()
+        pull = payload.get("pull_request") or {}
+        title = str(pull.get("title", "")).strip() or f"#{pull.get('number', '?')}"
         return f"PR by {actor}: {title} ({repo})"
     if kind == "ReleaseEvent":
         tag = str((payload.get("release") or {}).get("tag_name", "")).strip()
         return f"🚀 {repo} released {tag}"
-    label = EVENT_LABELS.get(kind, kind or "GitHub")
-    return f"{label.split()[0]} {actor} {label.split(' ', 1)[-1]} {repo}".strip()
+    if kind == "WatchEvent":
+        return f"⭐ {actor} starred {repo}"
+    if kind == "ForkEvent":
+        return f"🍴 {actor} forked {repo}"
+    if kind == "PushEvent":
+        return f"⬆ {actor} pushed to {repo}"
+    if kind == "CreateEvent":
+        ref_type = str(payload.get("ref_type", "")).strip() or "repo"
+        ref = str(payload.get("ref", "") or "").strip()
+        what = f"{ref_type} {ref}".strip()
+        return f"✨ {actor} created {what} ({repo})"
+    return f"{actor}: {kind or 'activity'} ({repo})"
 
 
 def event_html_url(event: dict) -> str:
