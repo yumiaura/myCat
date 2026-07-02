@@ -60,9 +60,10 @@ def screen_dpi() -> float:
 #   not tracked  → transparent (the grey track shows through)
 #   tracked, idle→ green (a rest)
 #   tracked, busy→ red, the redder the more input that minute carried
-TRACK_BG = QtGui.QColor("#d4d4d8")       # "not tracked" — a subtle grey
+TRACK_BG = QtGui.QColor("#cfcfd6")       # past but "not tracked" — a subtle grey
+FUTURE_BG = QtGui.QColor("#ebebf0")      # hasn't happened yet — a lighter grey
 GRID_COLOR = QtGui.QColor("#bcbcc2")
-NOW_COLOR = QtGui.QColor("#444444")
+NOW_COLOR = QtGui.QColor("#1f6feb")      # the "now" marker — a strong accent
 AXIS_TEXT = QtGui.QColor("#888888")
 REST_COLOR = QtGui.QColor("#8bbf8b")     # tracked but no activity
 HEAT_LOW = (233, 179, 179)               # a little activity → pale red
@@ -93,7 +94,7 @@ class DayTimeline(QtWidgets.QWidget):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setMinimumHeight(46)
+        self.setMinimumHeight(50)
         self.setMouseTracking(True)
         self.cells = []          # [(minute_dt, "rest"|"active", busy_pct)]
         self.window_start = None
@@ -119,23 +120,29 @@ class DayTimeline(QtWidgets.QWidget):
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
         painter.setPen(QtCore.Qt.PenStyle.NoPen)
 
-        left, top = 8, 6
+        left, top = 8, 9
         track_h = 22
         axis_y = top + track_h + 3
         usable_w = max(1, self.width() - 2 * left)
         track_rect = QtCore.QRectF(left, top, usable_w, track_h)
 
-        # Grey "not tracked" track.
+        # Grey "not tracked" (past) track.
         painter.setBrush(TRACK_BG)
         painter.drawRoundedRect(track_rect, 4, 4)
 
-        # Per-minute heat, clipped to the rounded track.
         span_minutes = max(1.0, (self.window_end - self.window_start).total_seconds() / 60.0)
         minute_w = usable_w / span_minutes
         clip = QtGui.QPainterPath()
         clip.addRoundedRect(track_rect, 4, 4)
         painter.save()
         painter.setClipPath(clip)
+
+        # The future (now → end) is a lighter grey: it simply hasn't happened.
+        if self.now is not None and self.now < self.window_end:
+            fx = self.x_for(self.now, left, usable_w)
+            painter.fillRect(QtCore.QRectF(fx, top, left + usable_w - fx, track_h), FUTURE_BG)
+
+        # Per-minute heat over the past.
         for minute_dt, kind, pct in self.cells:
             x0 = self.x_for(minute_dt, left, usable_w)
             color = REST_COLOR if kind == "rest" else heat_color(pct)
@@ -160,10 +167,19 @@ class DayTimeline(QtWidgets.QWidget):
                 painter.setPen(QtCore.Qt.PenStyle.NoPen)
             hour = hour + timedelta(hours=1)
 
+        # Prominent "now" marker: a thick accent line with a triangle on top.
         if self.now is not None:
             nx = self.x_for(self.now, left, usable_w)
-            painter.setPen(QtGui.QPen(NOW_COLOR, 1))
-            painter.drawLine(QtCore.QPointF(nx, top - 2), QtCore.QPointF(nx, top + track_h + 1))
+            painter.setPen(QtGui.QPen(NOW_COLOR, 2))
+            painter.drawLine(QtCore.QPointF(nx, top - 5), QtCore.QPointF(nx, top + track_h + 2))
+            painter.setPen(QtCore.Qt.PenStyle.NoPen)
+            painter.setBrush(NOW_COLOR)
+            triangle = QtGui.QPolygonF([
+                QtCore.QPointF(nx - 4, top - 7),
+                QtCore.QPointF(nx + 4, top - 7),
+                QtCore.QPointF(nx, top - 1),
+            ])
+            painter.drawPolygon(triangle)
         painter.end()
 
     def mouseMoveEvent(self, event) -> None:

@@ -290,17 +290,34 @@ class ActivityCollector(QtCore.QObject):
     def current_run(self, now=None):
         """The ongoing activity run {start}, or None when currently idle.
 
-        A run starts on input after ≥ IDLE_RESUME_MINUTES of silence and is
-        considered over once that much silence passes again — this is the
-        "текущий промежуток" shown live at the top of the Activity table,
-        independent of whether a pomodoro session is formally running.
+        Reconstructed from the recorded minutes in the database (plus the live
+        bucket), NOT from in-memory state — so closing and reopening the app
+        continues the same period instead of resetting it. A run is the last
+        contiguous block of active minutes (gaps under IDLE_RESUME_MINUTES
+        tolerated) reaching up to now.
         """
         now = now or self.now_fn()
-        if self.run_start is None or self.last_input_at is None:
+        cutoff = (now - timedelta(hours=6)).replace(second=0, microsecond=0)
+        try:
+            rows = self.store.minutes_between(cutoff, now + timedelta(minutes=1))
+        except Exception:  # noqa: BLE001 - a broken DB must not break the dialog
+            rows = []
+        active = [datetime.fromisoformat(row["minute"]) for row in rows if row["active"]]
+
+        # The not-yet-flushed current minute counts as active if there's input.
+        current_minute = now.replace(second=0, microsecond=0)
+        live = self.bucket_keys or self.bucket_clicks or self.bucket_mouse_px >= ACTIVE_MOUSE_PX_THRESHOLD
+        if live and (not active or active[-1] != current_minute):
+            active.append(current_minute)
+
+        if not active or now - active[-1] >= timedelta(minutes=IDLE_RESUME_MINUTES):
             return None
-        if now - self.last_input_at >= timedelta(minutes=IDLE_RESUME_MINUTES):
-            return None
-        return {"start": self.run_start}
+        run_start = active[-1]
+        index = len(active) - 1
+        while index > 0 and run_start - active[index - 1] <= timedelta(minutes=IDLE_RESUME_MINUTES):
+            index -= 1
+            run_start = active[index]
+        return {"start": run_start}
 
     def current_run_stats(self, now=None):
         """Live counters for the current run: keys, clicks, path, active %."""

@@ -68,6 +68,7 @@ def test_table_has_session_rows_and_totals(tmp_path, qapp):
     store.record_session(activity_store.FOCUS, start, start + timedelta(minutes=25), 1500, True)
     for offset in range(25):
         store.record_minute(start + timedelta(minutes=offset), 4000, 200, 8, True)
+    now.now = datetime(2026, 7, 2, 10, 0)  # well past the last activity → no current period
     dialog.refresh_log()
     # 1 finished session row + 1 TOTAL row (no session is active here).
     assert dialog.table.rowCount() == 2
