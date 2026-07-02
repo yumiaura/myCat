@@ -94,9 +94,9 @@ def test_current_row_reflects_activity_run(tmp_path, qapp):
     for offset in range(3):
         collector.store.record_minute(datetime(2026, 7, 2, 9, offset), 3000, 100, 4, True)
     dialog.refresh_log()
-    # Top row is the live Current period. No pomodoro running → "Working".
+    # Top row is the live Current period. No pomodoro running → "Active (no timer)".
     assert dialog.current_row == 0
-    assert dialog.table.item(0, 0).text() == "▶ Working"
+    assert dialog.table.item(0, 0).text() == "▶ Active (no timer)"
     assert dialog.table.item(0, 1).text() == "09:00"
     assert dialog.table.item(0, 2).text() == "Current"
     assert dialog.table.item(0, 3).text() == "300"  # 3 min × 100 keys
@@ -107,11 +107,11 @@ def test_current_row_reflects_activity_run(tmp_path, qapp):
     assert dialog.table.item(0, 3).text() == "342"
 
 
-def test_current_row_says_work_during_focus(tmp_path, qapp):
+def test_current_row_says_focus_during_focus(tmp_path, qapp):
     dialog, controller, now = make_dialog(tmp_path)
     controller.start_focus()  # a pomodoro focus is running
     dialog.refresh_log()
-    assert dialog.table.item(0, 0).text() == "▶ Work"
+    assert dialog.table.item(0, 0).text() == "▶ Focus"
     assert dialog.current_phase == "focus"
 
 
@@ -147,9 +147,9 @@ def test_timeline_cells_are_activity_heat(tmp_path, qapp):
     assert kinds["09:00"] == "active"
     assert kinds["09:01"] == "rest"
     assert "09:02" not in kinds  # unrecorded minute → no cell (grey gap)
-    # Full-day window for today: midnight → now.
+    # Full-day window even for today: midnight → next midnight, with a now marker.
     assert ws == datetime(2026, 7, 2, 0, 0)
-    assert we == now.now
+    assert we == datetime(2026, 7, 3, 0, 0)
     assert marker == now.now
 
 

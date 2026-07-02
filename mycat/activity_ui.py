@@ -329,7 +329,7 @@ class ActivityDialog(QtWidgets.QDialog):
             if stats is None:
                 return None
             if controller.state == "focus":
-                label, color, phase = "▶ Work", "#d94a4a", "focus"
+                label, color, phase = "▶ Focus", "#d94a4a", "focus"
             elif getattr(controller, "on_long_break", False):
                 label, color, phase = "▶ Big break", "#2e7d32", "long_break"
             else:
@@ -338,15 +338,15 @@ class ActivityDialog(QtWidgets.QDialog):
         stats = self.collector.current_run_stats()
         if stats is None:
             return None
-        return {**stats, "label": "▶ Working", "color": "#555555", "phase": "current"}
+        return {**stats, "label": "▶ Active (no timer)", "color": "#555555", "phase": "current"}
 
     def build_timeline(self):
         """(cells, window_start, window_end, now) — a per-minute activity heat.
 
-        The window is the FULL selected day: midnight→now for today (the strip
-        only reaches elapsed time), midnight→midnight for yesterday. Each
-        recorded minute becomes a cell — green when idle, red (by input) when
-        active; unrecorded minutes are gaps that show the grey track.
+        The window is always the FULL day, midnight→midnight, so the whole
+        day is visible; today's untracked/future minutes stay grey and the
+        "now" line marks how far along we are. Each recorded minute becomes a
+        cell — green when idle, red (by input) when active.
         """
         day = self.selected_day()
         store = self.collector.store
@@ -374,7 +374,7 @@ class ActivityDialog(QtWidgets.QDialog):
                 cells.append((current_minute, "active", max(pct, 0.12)))
 
         window_start = day_start
-        window_end = max(now, day_start + timedelta(minutes=1)) if is_today else day_start + timedelta(days=1)
+        window_end = day_start + timedelta(days=1)  # full day, both today and yesterday
         return cells, window_start, window_end, (now if is_today else None)
 
     def selected_day(self) -> date:
