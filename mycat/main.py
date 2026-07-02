@@ -1095,15 +1095,13 @@ class PixelCatWindow(QtWidgets.QWidget):
                 chat_action.setEnabled(bool(llm_is_enabled()))
             menu.addSeparator()
 
-        # "LLM…" — pick the chat vendor (Ollama / OpenAI / Grok / custom …) and
-        # model. Always available so the backend can be configured from scratch.
+        # Settings entries, in the agreed order: LLM, Calendar, Reminder,
+        # GitHub, Activity.
         llm_action = menu.addAction("LLM…")
         llm_action.triggered.connect(self.open_llm_settings)
 
-        # Shop temporarily hidden from the menu (work in progress). The dialog
-        # and its handler stay in the codebase; re-enable by uncommenting:
-        # shop_action = menu.addAction("Open Shop…")
-        # shop_action.triggered.connect(self._open_shop)
+        calendar_action = menu.addAction("Calendar…")
+        calendar_action.triggered.connect(self.open_calendar_settings)
 
         reminder_action = menu.addAction("Reminder…")
         reminder_action.triggered.connect(self._open_reminder)
@@ -1111,11 +1109,13 @@ class PixelCatWindow(QtWidgets.QWidget):
         github_action = menu.addAction("GitHub…")
         github_action.triggered.connect(self.open_github_settings)
 
-        calendar_action = menu.addAction("Calendar…")
-        calendar_action.triggered.connect(self.open_calendar_settings)
-
         activity_action = menu.addAction("Activity…")
         activity_action.triggered.connect(self.open_activity_dialog)
+
+        # Shop temporarily hidden from the menu (work in progress). The dialog
+        # and its handler stay in the codebase; re-enable by uncommenting:
+        # shop_action = menu.addAction("Open Shop…")
+        # shop_action.triggered.connect(self._open_shop)
 
         # Focus (pomodoro) — labels reflect the live session state; the menu
         # is rebuilt on every right-click so they are always current.
@@ -1220,7 +1220,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         except Exception:
             logger.exception("Failed to import activity UI")
             return
-        dialog = ActivityDialog(collector, parent=self)
+        dialog = ActivityDialog(collector, focus_controller=getattr(self, "focus_controller", None), parent=self)
         dialog.show()
         dialog.raise_()
 
@@ -1657,10 +1657,11 @@ def setup_tray(app, window, icon_pixmap):
     toggle_chat = getattr(window, "_toggle_llm_chat", None)
     if callable(toggle_chat):
         menu.addAction("Chat", toggle_chat)
-    menu.addAction("Reminder…", window._open_reminder)
+    # Same order as the context menu: LLM, Calendar, Reminder, GitHub, Activity.
     menu.addAction("LLM…", window.open_llm_settings)
-    menu.addAction("GitHub…", window.open_github_settings)
     menu.addAction("Calendar…", window.open_calendar_settings)
+    menu.addAction("Reminder…", window._open_reminder)
+    menu.addAction("GitHub…", window.open_github_settings)
     menu.addAction("Activity…", window.open_activity_dialog)
 
     # One toggle action for focus sessions; its label is refreshed just before

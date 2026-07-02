@@ -8,7 +8,7 @@ working"); the only place silence is praised is a pomodoro break.
 import logging
 from datetime import date, timedelta
 
-from PySide6 import QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 if __package__:
     from . import activity as activity_mod
@@ -35,15 +35,28 @@ def screen_dpi() -> float:
 class ActivityDialog(QtWidgets.QDialog):
     """Settings + the per-day interval log for the local activity diary."""
 
-    def __init__(self, collector, parent=None) -> None:
+    def __init__(self, collector, focus_controller=None, parent=None) -> None:
         super().__init__(parent)
         self.collector = collector
+        self.focus_controller = focus_controller
         self.setWindowTitle("Activity diary")
         self.setModal(False)
-        self.resize(520, 480)
+        self.resize(520, 500)
 
         settings = collector.settings
         layout = QtWidgets.QVBoxLayout(self)
+
+        # Live line: what the focus tooltip shows, refreshed every second
+        # while the dialog is open ("Focus · 17:42 left · ⌨ 1,204 · …").
+        self.now_label = QtWidgets.QLabel("")
+        self.now_label.setWordWrap(True)
+        self.now_label.setStyleSheet("font-weight: bold;")
+        layout.addWidget(self.now_label)
+        self.now_timer = QtCore.QTimer(self)
+        self.now_timer.setInterval(1000)
+        self.now_timer.timeout.connect(self.refresh_now)
+        self.now_timer.start()
+        self.refresh_now()
 
         self.enabled_box = QtWidgets.QCheckBox("Keep a private activity diary (everything stays on this computer)")
         self.enabled_box.setChecked(settings.enabled)
@@ -94,6 +107,15 @@ class ActivityDialog(QtWidgets.QDialog):
         self.refresh_log()
 
     # -- data -------------------------------------------------------------------
+
+    def refresh_now(self) -> None:
+        """Mirror the focus tooltip: countdown + interim session stats."""
+        controller = self.focus_controller
+        status = controller.status_text() if controller is not None else ""
+        if status:
+            self.now_label.setText(f"Now: {status}")
+        else:
+            self.now_label.setText("Now: idle — auto-pomodoro starts a session when you get going.")
 
     def selected_day(self) -> date:
         today = self.collector.now_fn().date()
