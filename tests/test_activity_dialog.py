@@ -94,9 +94,9 @@ def test_current_row_reflects_activity_run(tmp_path, qapp):
     for offset in range(3):
         collector.store.record_minute(datetime(2026, 7, 2, 9, offset), 3000, 100, 4, True)
     dialog.refresh_log()
-    # Top row is the live Current period.
+    # Top row is the live Current period. No pomodoro running → "Working".
     assert dialog.current_row == 0
-    assert dialog.table.item(0, 0).text() == "▶ Current"
+    assert dialog.table.item(0, 0).text() == "▶ Working"
     assert dialog.table.item(0, 1).text() == "09:00"
     assert dialog.table.item(0, 2).text() == "Current"
     assert dialog.table.item(0, 3).text() == "300"  # 3 min × 100 keys
@@ -105,6 +105,40 @@ def test_current_row_reflects_activity_run(tmp_path, qapp):
     collector.bucket_keys += 42
     dialog.refresh_now()
     assert dialog.table.item(0, 3).text() == "342"
+
+
+def test_current_row_says_work_during_focus(tmp_path, qapp):
+    dialog, controller, now = make_dialog(tmp_path)
+    controller.start_focus()  # a pomodoro focus is running
+    dialog.refresh_log()
+    assert dialog.table.item(0, 0).text() == "▶ Work"
+    assert dialog.current_phase == "focus"
+
+
+def test_current_row_says_rest_during_break(tmp_path, qapp):
+    dialog, controller, now = make_dialog(tmp_path)
+    controller.start_focus()
+    now.advance(seconds=controller.remaining_seconds() + 1)
+    controller.tick()  # focus → break
+    dialog.refresh_log()
+    assert dialog.table.item(0, 0).text() == "▶ Rest"
+    assert dialog.current_phase == "break"
+
+
+def test_build_timeline_segments(tmp_path, qapp):
+    from mycat import activity_store
+
+    dialog, controller, now = make_dialog(tmp_path)
+    start = datetime(2026, 7, 2, 9, 0)
+    controller.store.record_session(activity_store.FOCUS, start, start + timedelta(minutes=25), 1500, True)
+    controller.store.record_session(
+        activity_store.BREAK, start + timedelta(minutes=25), start + timedelta(minutes=30), 300, True
+    )
+    now.now = datetime(2026, 7, 2, 9, 40)
+    segments, current, ws, we, marker = dialog.build_timeline()
+    kinds = [s["kind"] for s in segments]
+    assert kinds == ["focus", "break"]
+    assert marker == now.now  # today shows the "now" marker
 
 
 def test_no_current_row_when_idle(tmp_path, qapp):

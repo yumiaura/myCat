@@ -226,14 +226,17 @@ class FocusController(QtCore.QObject):
         keys = sum(row["keys"] for row in rows) + int(getattr(collector, "bucket_keys", 0) or 0)
         clicks = sum(row["clicks"] for row in rows) + int(getattr(collector, "bucket_clicks", 0) or 0)
         mouse_px = sum(row["mouse_px"] for row in rows) + int(getattr(collector, "bucket_mouse_px", 0) or 0)
+        active = sum(row["active"] for row in rows)
+        elapsed_minutes = max(1, int((self.now_fn() - self.phase_started).total_seconds() // 60))
         return {
             "kind": self.state,
             "start": self.phase_started,
             "keys": keys,
             "clicks": clicks,
             "mouse_px": mouse_px,
-            "active": sum(row["active"] for row in rows),
+            "active": active,
             "observed": len(rows),
+            "active_pct": min(100, round(100 * active / elapsed_minutes)),
         }
 
     def live_session_stats(self) -> str:
