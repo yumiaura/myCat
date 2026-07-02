@@ -9,7 +9,11 @@ from mycat.github_notify import (
     GitHubNotifier,
     GitHubSettings,
     NotificationTracker,
+    PublicEventTracker,
+    event_html_url,
+    event_text,
     fetch_notifications,
+    interesting_public_event,
     load_github_settings,
     notification_text,
     parse_poll_interval,
@@ -208,12 +212,90 @@ def test_notifier_pauses_on_401_until_settings_change(qapp):
     assert notifier.auth_failed is False
 
 
-def test_notifier_never_polls_when_disabled_or_tokenless(qapp, monkeypatch):
+def test_notifier_never_polls_when_disabled_or_unconfigured(qapp, monkeypatch):
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     ann = AnnouncerStub()
     notifier = GitHubNotifier(None, announcer=ann, settings=GitHubSettings(enabled=False), start_timer=False)
     notifier.poll()
     assert notifier.polling is False
+    # No token AND no username → nothing to poll.
     notifier2 = GitHubNotifier(None, announcer=ann, settings=GitHubSettings(enabled=True), start_timer=False)
+    assert notifier2.mode() == ""
     notifier2.poll()
     assert notifier2.polling is False
+
+
+# -- tokenless public mode ---------------------------------------------------------
+
+
+def public_event(event_id, kind="WatchEvent", action="", title="T"):
+    payload = {}
+    if action:
+        payload["action"] = action
+    if kind == "IssuesEvent":
+        payload["issue"] = {"title": title, "html_url": "https://github.com/o/r/issues/1"}
+    if kind == "PullRequestEvent":
+        payload["pull_request"] = {"title": title, "html_url": "https://github.com/o/r/pull/2"}
+    return {
+        "id": event_id,
+        "type": kind,
+        "actor": {"login": "alice"},
+        "repo": {"name": "o/r"},
+        "payload": payload,
+    }
+
+
+def test_mode_selection(qapp, monkeypatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    with_token = GitHubNotifier(None, settings=GitHubSettings(enabled=True, token="t"), start_timer=False)
+    assert with_token.mode() == "notifications"
+    username_only = GitHubNotifier(None, settings=GitHubSettings(enabled=True, username="olya"), start_timer=False)
+    assert username_only.mode() == "public"
+
+
+def test_interesting_public_events_filter():
+    assert interesting_public_event(public_event("1", "WatchEvent"))
+    assert interesting_public_event(public_event("2", "IssuesEvent", action="opened"))
+    assert not interesting_public_event(public_event("3", "IssuesEvent", action="closed"))
+    assert not interesting_public_event(public_event("4", "PushEvent"))
+
+
+def test_event_text_and_url():
+    star = public_event("1", "WatchEvent")
+    assert event_text(star) == "⭐ alice starred o/r"
+    assert event_html_url(star) == "https://github.com/o/r"
+    issue = public_event("2", "IssuesEvent", action="opened", title="Bug!")
+    assert event_text(issue) == "🐞 alice: Bug! (o/r)"
+    assert event_html_url(issue) == "https://github.com/o/r/issues/1"
+
+
+def test_public_tracker_baselines_then_dedupes():
+    tracker = PublicEventTracker()
+    assert tracker.feed([public_event("1")]) == []  # baseline
+    fresh = tracker.feed([public_event("1"), public_event("2")])
+    assert [e["id"] for e in fresh] == ["2"]
+    assert tracker.feed([public_event("2")]) == []
+
+
+def test_notifier_public_mode_announces(qapp, monkeypatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    ann = AnnouncerStub()
+    notifier = GitHubNotifier(
+        None, announcer=ann, settings=GitHubSettings(enabled=True, username="olya"), start_timer=False
+    )
+    notifier.handle_result({"mode": "public", "status": 200, "items": [public_event("1")],
+                            "etag": "E1", "poll_seconds": 300})
+    assert ann.announced == []  # baseline
+    notifier.handle_result({"mode": "public", "status": 200,
+                            "items": [public_event("1"), public_event("2", "IssuesEvent", action="opened")],
+                            "etag": "E2", "poll_seconds": 300})
+    assert len(ann.announced) == 1
+    text, url = ann.announced[0]
+    assert "🐞" in text
+    assert url == "https://github.com/o/r/issues/1"
+
+
+def test_settings_username_round_trip(tmp_path):
+    cfg = tmp_path / "config.ini"
+    save_github_settings(GitHubSettings(enabled=True, username="olya"), cfg_file=cfg)
+    assert load_github_settings(cfg_file=cfg).username == "olya"

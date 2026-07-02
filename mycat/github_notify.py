@@ -40,6 +40,11 @@ CFG_FILE = CFG_DIR / "config.ini"
 
 API_URL = "https://api.github.com/notifications"
 DEFAULT_POLL_SECONDS = 60
+# Tokenless public mode polls the user's public received-events feed. The
+# unauthenticated rate limit is 60 req/h per IP, so poll gently (a 304 on the
+# ETag does not count against the limit).
+PUBLIC_EVENTS_URL = "https://api.github.com/users/{username}/received_events/public"
+PUBLIC_POLL_SECONDS = 300
 DEFAULT_REASONS = ("review_requested", "mention", "assign")
 
 REASON_LABELS = {
@@ -57,6 +62,7 @@ class GitHubSettings:
     enabled: bool = False
     token: str = ""  # literal token from config — takes priority
     token_env: str = "GITHUB_TOKEN"  # env var fallback when token is empty
+    username: str = ""  # for the tokenless public mode
     reasons: tuple = DEFAULT_REASONS
 
     def resolve_token(self) -> str:
@@ -80,6 +86,7 @@ def load_github_settings(cfg_file: Path = CFG_FILE) -> GitHubSettings:
         settings.enabled = section.getboolean("enabled", fallback=False)
         settings.token = section.get("token", "")
         settings.token_env = section.get("token_env", settings.token_env)
+        settings.username = section.get("username", "")
         raw_reasons = section.get("reasons", ",".join(DEFAULT_REASONS))
         reasons = tuple(reason.strip() for reason in raw_reasons.split(",") if reason.strip())
         settings.reasons = reasons or DEFAULT_REASONS
@@ -103,6 +110,7 @@ def save_github_settings(settings: GitHubSettings, cfg_file: Path = CFG_FILE) ->
         elif "token" in section:
             del section["token"]
         section["token_env"] = settings.token_env
+        section["username"] = settings.username
         section["reasons"] = ",".join(settings.reasons)
         with open(cfg_file, "w") as fh:
             config.write(fh)
@@ -167,6 +175,102 @@ class NotificationTracker:
         return fresh
 
 
+EVENT_LABELS = {
+    "WatchEvent": "⭐ starred",
+    "ForkEvent": "🍴 forked",
+    "IssuesEvent": "🐞 issue",
+    "PullRequestEvent": "PR",
+    "ReleaseEvent": "🚀 release",
+}
+PUBLIC_EVENT_TYPES = tuple(EVENT_LABELS)
+
+
+def event_text(event: dict) -> str:
+    """One public event as a banner line: '⭐ alice starred o/r'."""
+    kind = str(event.get("type", ""))
+    actor = str((event.get("actor") or {}).get("login", "")).strip() or "someone"
+    repo = str((event.get("repo") or {}).get("name", "")).strip()
+    payload = event.get("payload") or {}
+    if kind == "IssuesEvent":
+        title = str((payload.get("issue") or {}).get("title", "")).strip()
+        return f"🐞 {actor}: {title} ({repo})"
+    if kind == "PullRequestEvent":
+        title = str((payload.get("pull_request") or {}).get("title", "")).strip()
+        return f"PR by {actor}: {title} ({repo})"
+    if kind == "ReleaseEvent":
+        tag = str((payload.get("release") or {}).get("tag_name", "")).strip()
+        return f"🚀 {repo} released {tag}"
+    label = EVENT_LABELS.get(kind, kind or "GitHub")
+    return f"{label.split()[0]} {actor} {label.split(' ', 1)[-1]} {repo}".strip()
+
+
+def event_html_url(event: dict) -> str:
+    payload = event.get("payload") or {}
+    for key in ("issue", "pull_request", "release"):
+        url = str((payload.get(key) or {}).get("html_url", "") or "")
+        if url:
+            return url
+    repo = str((event.get("repo") or {}).get("name", "")).strip()
+    return f"https://github.com/{repo}" if repo else "https://github.com"
+
+
+def interesting_public_event(event: dict) -> bool:
+    """New things only: opened issues/PRs, stars, forks, releases."""
+    kind = str(event.get("type", ""))
+    if kind not in PUBLIC_EVENT_TYPES:
+        return False
+    action = str((event.get("payload") or {}).get("action", ""))
+    if kind in ("IssuesEvent", "PullRequestEvent") and action != "opened":
+        return False
+    return True
+
+
+class PublicEventTracker:
+    """Dedupe by event id; the first feed only baselines (like notifications)."""
+
+    def __init__(self) -> None:
+        self.seen: set[str] = set()
+        self.baselined = False
+
+    def feed(self, events: list) -> list:
+        fresh = []
+        for event in events:
+            event_id = str(event.get("id", ""))
+            if not event_id or event_id in self.seen:
+                continue
+            self.seen.add(event_id)
+            if self.baselined and interesting_public_event(event):
+                fresh.append(event)
+        self.baselined = True
+        return fresh
+
+
+def fetch_public_events(username: str, etag: str = "", opener=None) -> dict:
+    """One tokenless poll of the public received-events feed."""
+    request = urllib.request.Request(PUBLIC_EVENTS_URL.format(username=username))
+    request.add_header("Accept", "application/vnd.github+json")
+    request.add_header("X-GitHub-Api-Version", "2022-11-28")
+    request.add_header("User-Agent", "mycat-desktop-pet")
+    if etag:
+        request.add_header("If-None-Match", etag)  # a 304 is free rate-limit-wise
+
+    open_fn = opener or urllib.request.urlopen
+    result = {"status": 0, "items": [], "etag": etag, "poll_seconds": PUBLIC_POLL_SECONDS, "error": ""}
+    try:
+        with open_fn(request, timeout=15) as response:
+            result["status"] = response.status
+            result["etag"] = response.headers.get("ETag", etag) or etag
+            body = response.read()
+            result["items"] = json.loads(body.decode("utf-8")) if body else []
+    except urllib.error.HTTPError as exc:
+        result["status"] = exc.code
+        if exc.code != 304:
+            result["error"] = f"HTTP {exc.code}"
+    except Exception as exc:  # noqa: BLE001 - offline is a normal state, not a crash
+        result["error"] = str(exc)
+    return result
+
+
 def fetch_notifications(token: str, last_modified: str = "", opener=None) -> dict:
     """One poll. Returns {status, items, last_modified, poll_seconds, error}."""
     request = urllib.request.Request(API_URL)
@@ -214,24 +318,40 @@ def parse_poll_interval(raw) -> int:
 
 
 class PollWorker(QtCore.QRunnable):
-    """Runs one fetch off the UI thread and reports back via a signal."""
+    """Runs one fetch off the UI thread and reports back via a signal.
+
+    ``mode`` is "notifications" (token) or "public" (username only); the
+    matching cache header (Last-Modified / ETag) travels in ``cache_key``.
+    """
 
     class Emitter(QtCore.QObject):
         finished = QtCore.Signal(dict)
 
-    def __init__(self, token: str, last_modified: str) -> None:
+    def __init__(self, token: str, cache_key: str, mode: str = "notifications", username: str = "") -> None:
         super().__init__()
         self.token = token
-        self.last_modified = last_modified
+        self.cache_key = cache_key
+        self.mode = mode
+        self.username = username
         self.emitter = PollWorker.Emitter()
 
     def run(self) -> None:
-        result = fetch_notifications(self.token, self.last_modified)
+        if self.mode == "public":
+            result = fetch_public_events(self.username, self.cache_key)
+        else:
+            result = fetch_notifications(self.token, self.cache_key)
+        result["mode"] = self.mode
         self.emitter.finished.emit(result)
 
 
 class GitHubNotifier(QtCore.QObject):
-    """Polls GitHub (when enabled + token present) and feeds the announcer."""
+    """Polls GitHub and feeds the announcer.
+
+    Two modes: with a token — your private notification inbox (review
+    requests, mentions, assignments); without a token but with a username —
+    only PUBLIC activity from that account's public feed (stars, forks, new
+    issues/PRs, releases). No token and no username → zero requests.
+    """
 
     def __init__(self, window, announcer=None, settings=None, start_timer=True) -> None:
         super().__init__(window if isinstance(window, QtCore.QObject) else None)
@@ -239,7 +359,9 @@ class GitHubNotifier(QtCore.QObject):
         self.announcer = announcer
         self.settings = settings if settings is not None else load_github_settings()
         self.tracker = NotificationTracker(self.settings.reasons)
+        self.public_tracker = PublicEventTracker()
         self.last_modified = ""
+        self.etag = ""
         self.poll_seconds = DEFAULT_POLL_SECONDS
         self.polling = False  # a worker is in flight
         self.auth_failed = False
@@ -257,17 +379,30 @@ class GitHubNotifier(QtCore.QObject):
         """Called by the settings dialog after a save."""
         self.settings = settings
         self.tracker = NotificationTracker(settings.reasons)
+        self.public_tracker = PublicEventTracker()
         self.last_modified = ""
+        self.etag = ""
         self.auth_failed = False
+
+    def mode(self) -> str:
+        """"notifications" (token), "public" (username only) or "" (idle)."""
+        if self.settings.resolve_token():
+            return "notifications"
+        if self.settings.username.strip():
+            return "public"
+        return ""
 
     def poll(self) -> None:
         if self.polling or not self.settings.enabled or self.auth_failed:
             return
-        token = self.settings.resolve_token()
-        if not token:
+        mode = self.mode()
+        if not mode:
             return
         self.polling = True
-        worker = PollWorker(token, self.last_modified)
+        if mode == "public":
+            worker = PollWorker("", self.etag, mode="public", username=self.settings.username.strip())
+        else:
+            worker = PollWorker(self.settings.resolve_token(), self.last_modified)
         worker.emitter.finished.connect(self.handle_result)
         QtCore.QThreadPool.globalInstance().start(worker)
 
@@ -290,6 +425,15 @@ class GitHubNotifier(QtCore.QObject):
         if status == 304:
             return
 
+        if result.get("mode") == "public":
+            self.etag = str(result.get("etag", ""))
+            for event in self.public_tracker.feed(list(result.get("items", []))):
+                text = event_text(event)
+                logger.info("GitHub public event: %s", text)
+                if self.announcer is not None:
+                    self.announcer.announce(text, url=event_html_url(event))
+            return
+
         self.last_modified = str(result.get("last_modified", ""))
         fresh = self.tracker.feed(list(result.get("items", [])))
         for item in fresh:
@@ -304,10 +448,15 @@ __all__ = [
     "GitHubNotifier",
     "GitHubSettings",
     "NotificationTracker",
+    "PublicEventTracker",
     "load_github_settings",
     "save_github_settings",
     "fetch_notifications",
+    "fetch_public_events",
     "notification_text",
+    "event_text",
+    "event_html_url",
+    "interesting_public_event",
     "subject_html_url",
     "parse_poll_interval",
     "DEFAULT_REASONS",

@@ -47,10 +47,18 @@ class GitHubDialog(QtWidgets.QDialog):
         self.token_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
         self.token_edit.setPlaceholderText(f"fine-grained PAT (empty → ${settings.token_env})")
         form.addRow("Token:", self.token_edit)
+        self.username_edit = QtWidgets.QLineEdit(settings.username)
+        self.username_edit.setPlaceholderText("GitHub username (for the tokenless mode)")
+        form.addRow("Username:", self.username_edit)
         layout.addLayout(form)
 
         hint = QtWidgets.QLabel(
-            "A read-only fine-grained token with the <b>Notifications</b> permission is enough.<br>"
+            "<b>Why a token?</b> Your notification inbox (review requests, mentions,"
+            " assignments) is private API — GitHub only serves it with a token"
+            " (read-only, <b>Notifications</b> permission is enough).<br>"
+            "<b>Without a token</b> only <b>public</b> activity is tracked — stars,"
+            " forks, new issues/PRs and releases from the public feed of the"
+            " username above. Private repos and your inbox stay invisible.<br>"
             "Requests go straight to api.github.com — nowhere else."
         )
         hint.setWordWrap(True)
@@ -87,6 +95,7 @@ class GitHubDialog(QtWidgets.QDialog):
             enabled=self.enabled_box.isChecked(),
             token=self.token_edit.text().strip(),
             token_env=self.notifier.settings.token_env,
+            username=self.username_edit.text().strip(),
             reasons=reasons or github_notify.DEFAULT_REASONS,
         )
 
@@ -98,14 +107,18 @@ class GitHubDialog(QtWidgets.QDialog):
         self.accept()
 
     def run_test(self) -> None:
-        token = self.collect_settings().resolve_token()
-        if not token:
-            self.status_label.setText("No token: paste one above or export $GITHUB_TOKEN.")
+        settings = self.collect_settings()
+        token = settings.resolve_token()
+        if not token and not settings.username:
+            self.status_label.setText("Paste a token, or a username for the public-only mode.")
             return
         self.status_label.setText("Checking…")
         self.test_button.setEnabled(False)
 
-        worker = github_notify.PollWorker(token, "")
+        if token:
+            worker = github_notify.PollWorker(token, "")
+        else:
+            worker = github_notify.PollWorker("", "", mode="public", username=settings.username)
         worker.emitter.finished.connect(self.show_test_result)
         QtCore.QThreadPool.globalInstance().start(worker)
 
@@ -115,7 +128,13 @@ class GitHubDialog(QtWidgets.QDialog):
             self.status_label.setText(f"Failed: {result['error']}")
             return
         count = len(result.get("items", []))
-        self.status_label.setText(f"OK — {count} unread notification(s) visible to this token.")
+        if result.get("mode") == "public":
+            self.status_label.setText(
+                f"OK — public-only mode: {count} recent public event(s) in this feed. "
+                "Private repos and your inbox are NOT visible without a token."
+            )
+        else:
+            self.status_label.setText(f"OK — {count} unread notification(s) visible to this token.")
 
 
 __all__ = ["GitHubDialog"]
