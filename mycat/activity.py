@@ -482,6 +482,47 @@ def sessions_table(store, day: date) -> list:
     return rows
 
 
+def activity_runs(store, day: date, session_windows, gap_minutes: int = IDLE_RESUME_MINUTES) -> list:
+    """Contiguous active-minute runs OUTSIDE the given pomodoro windows.
+
+    Each run is a stretch you were at the computer without a running timer
+    (short gaps under ``gap_minutes`` merged). Returns dicts with start / end /
+    keys / clicks / mouse_px / active_minutes, oldest first.
+    """
+    day_start = datetime.combine(day, datetime.min.time())
+    minutes = store.minutes_between(day_start, day_start + timedelta(days=1))
+    runs = []
+    run = None
+    for row in minutes:
+        if not row["active"]:
+            continue
+        moment = datetime.fromisoformat(row["minute"])
+        if any(start <= moment < end for start, end in session_windows):
+            continue
+        if run is not None and moment - run["last"] <= timedelta(minutes=gap_minutes):
+            run["last"] = moment
+            run["keys"] += row["keys"]
+            run["clicks"] += row["clicks"]
+            run["mouse_px"] += row["mouse_px"]
+            run["active_minutes"] += 1
+        else:
+            if run is not None:
+                runs.append(run)
+            run = {
+                "start": moment,
+                "last": moment,
+                "keys": row["keys"],
+                "clicks": row["clicks"],
+                "mouse_px": row["mouse_px"],
+                "active_minutes": 1,
+            }
+    if run is not None:
+        runs.append(run)
+    for entry in runs:
+        entry["end"] = entry["last"] + timedelta(minutes=1)
+    return runs
+
+
 def day_summary(store, day: date, dpi: float = 96.0) -> dict:
     """Totals for banners and the dialog: km, keys, clicks, 🍅, best focus."""
     totals = store.day_totals(day)

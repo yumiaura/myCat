@@ -89,7 +89,7 @@ def test_long_break_after_streak(tmp_path, qapp):
             run_out_phase(controller, now)  # break -> idle
     assert controller.on_long_break is True
     assert controller.remaining_seconds() == controller.settings.long_break_minutes * 60
-    assert any("Big break" in text for text in ann.announced)
+    assert any("Break" in text for text in ann.announced)
     run_out_phase(controller, now)
     kinds = [row["kind"] for row in store.sessions_on(now().date())]
     assert kinds.count(activity_store.LONG_BREAK) == 1

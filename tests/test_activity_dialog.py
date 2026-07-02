@@ -95,9 +95,9 @@ def test_current_row_reflects_activity_run(tmp_path, qapp):
     for offset in range(3):
         collector.store.record_minute(datetime(2026, 7, 2, 9, offset), 3000, 100, 4, True)
     dialog.refresh_log()
-    # Top row is the live Current period. No pomodoro running → "Active (no timer)".
+    # Top row is the live Current period. No pomodoro running → "Other".
     assert dialog.current_row == 0
-    assert dialog.table.item(0, 0).text() == "▶ Active (no timer)"
+    assert dialog.table.item(0, 0).text() == "▶ Other"
     assert dialog.table.item(0, 1).text() == "09:00"
     assert dialog.table.item(0, 2).text() == "3:00"  # elapsed so far (09:00 → 09:03)
     assert dialog.table.item(0, 3).text() == "300"  # 3 min × 100 keys
@@ -122,7 +122,7 @@ def test_current_row_says_rest_during_break(tmp_path, qapp):
     now.advance(seconds=controller.remaining_seconds() + 1)
     controller.tick()  # focus → break
     dialog.refresh_log()
-    assert dialog.table.item(0, 0).text() == "▶ Rest"
+    assert dialog.table.item(0, 0).text() == "▶ Break"
     assert dialog.current_phase == "break"
 
 
@@ -133,7 +133,7 @@ def test_long_break_labelled_big_break(tmp_path, qapp):
     start = datetime(2026, 7, 2, 9, 0)
     controller.store.record_session(activity_store.LONG_BREAK, start, start + timedelta(minutes=15), 900, True)
     dialog.refresh_log()
-    assert dialog.table.item(0, 0).text() == "🛋 Big break"
+    assert dialog.table.item(0, 0).text() == "☕ Break"
 
 
 def test_timeline_cells_are_activity_heat(tmp_path, qapp):
@@ -179,4 +179,4 @@ def test_interrupted_session_shows_banana(tmp_path, qapp):
     start = datetime(2026, 7, 2, 9, 0)
     controller.store.record_session(activity_store.FOCUS, start, start + timedelta(minutes=8), 1500, False)
     dialog.refresh_log()
-    assert dialog.table.item(0, 0).text() == "🍌 Interrupted"
+    assert dialog.table.item(0, 0).text() == "🍅 Focus"

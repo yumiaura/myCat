@@ -62,7 +62,7 @@ def screen_dpi() -> float:
 #   tracked, busy→ red, the redder the more input that minute carried
 TRACK_BG = QtGui.QColor("#ffffff")       # past but "not tracked" — white
 TRACK_BORDER = QtGui.QColor("#c4c4cc")
-FUTURE_BG = QtGui.QColor("#d4d4da")       # hasn't happened yet — grey
+FUTURE_BG = QtGui.QColor("#c4c4cc")       # hasn't happened yet — clear grey
 GRID_COLOR = QtGui.QColor("#bcbcc2")
 NOW_COLOR = QtGui.QColor("#1f6feb")      # the "now" marker — a strong accent
 AXIS_TEXT = QtGui.QColor("#888888")
@@ -318,24 +318,10 @@ class ActivityDialog(QtWidgets.QDialog):
         else:
             self.now_label.setText("Now: idle — auto-pomodoro starts a session when you get going.")
 
-        # The Current row only lives on the Today view.
-        if self.day_combo.currentIndex() != 0:
-            return
-        period = self.current_period()
-        start = period["start"] if period else None
-        phase = period["phase"] if period else None
-        if start != self.current_start or phase != self.current_phase:
-            # A period began, ended, or flipped work↔rest — rebuild.
+        # On the Today view, rebuild every second so the live current row and
+        # the timeline stay current (the table is small — a rebuild is cheap).
+        if self.day_combo.currentIndex() == 0:
             self.refresh_log()
-            return
-        if period is not None and self.current_row is not None:
-            elapsed = (self.collector.now_fn() - period["start"]).total_seconds()
-            self.set_cell(self.current_row, 2, format_duration(elapsed))
-            self.set_cell(self.current_row, 3, f"{period['keys']:,}")
-            self.set_cell(self.current_row, 4, f"{period['clicks']:,}")
-            self.set_cell(self.current_row, 5, format_path(period["mouse_px"], self.dpi))
-            self.set_cell(self.current_row, 6, f"{period['active_pct']}%")
-            self.timeline.set_data(*self.build_timeline())
 
     def current_period(self):
         """The current period as a work/rest-labelled dict, or None.
@@ -351,15 +337,13 @@ class ActivityDialog(QtWidgets.QDialog):
                 return None
             if controller.state == "focus":
                 label, color, phase = "▶ Focus", "#d94a4a", "focus"
-            elif getattr(controller, "on_long_break", False):
-                label, color, phase = "▶ Big break", "#2e7d32", "long_break"
             else:
-                label, color, phase = "▶ Rest", "#4caf50", "break"
+                label, color, phase = "▶ Break", "#4caf50", "break"
             return {**stats, "label": label, "color": color, "phase": phase}
         stats = self.collector.current_run_stats()
         if stats is None:
             return None
-        return {**stats, "label": "▶ Active (no timer)", "color": "#555555", "phase": "current"}
+        return {**stats, "label": "▶ Other", "color": "#555555", "phase": "current"}
 
     def build_timeline(self):
         """(cells, window_start, window_end, now) — a per-minute activity heat.
@@ -418,95 +402,99 @@ class ActivityDialog(QtWidgets.QDialog):
             self.totals_label.setText("Could not read the activity database.")
             return
 
-        # The day-rhythm strip.
+        now = self.collector.now_fn()
+        is_today = self.day_combo.currentIndex() == 0
+
+        # The activity heat strip.
         self.timeline.set_data(*self.build_timeline())
 
-        current_keys = current_clicks = current_px = current_active = 0
+        # Pomodoro windows (finished + a running one) so their minutes are
+        # attributed to Focus/Break, not to Other activity runs.
+        windows = [(s["start"], s["start"] + timedelta(seconds=s["duration_seconds"])) for s in rows]
+        controller = self.focus_controller
+        running_session = is_today and controller is not None and controller.state in ("focus", "break")
+        if running_session:
+            windows.append((controller.phase_started, now))
+        runs = activity_mod.activity_runs(self.collector.store, day, windows)
 
-        # A live "Current period" row on top — labelled by phase (Focus / Rest
-        # / Big break / Active) with the elapsed time so far in Duration.
-        period = self.current_period() if self.day_combo.currentIndex() == 0 else None
-        if period is not None:
-            elapsed = (self.collector.now_fn() - period["start"]).total_seconds()
+        # The current "Other" run is the last run still reaching now.
+        current_run = None
+        if is_today and not running_session and runs:
+            if now - runs[-1]["last"] < timedelta(minutes=activity_mod.IDLE_RESUME_MINUTES):
+                current_run = runs.pop()
+
+        totals = {"keys": 0, "clicks": 0, "mouse_px": 0, "active": 0}
+
+        def emit(label, start_text, duration_text, keys, clicks, mouse_px,
+                 active_text, color=None, bold=False, italic=False):
             self.append_row(
-                [
-                    period["label"],
-                    period["start"].strftime("%H:%M"),
-                    format_duration(elapsed),
-                    f"{period['keys']:,}",
-                    f"{period['clicks']:,}",
-                    format_path(period["mouse_px"], self.dpi),
-                    f"{period['active_pct']}%",
-                ],
-                italic=True,
+                [label, start_text, duration_text, f"{keys:,}", f"{clicks:,}",
+                 format_path(mouse_px, self.dpi), active_text],
+                bold=bold,
+                italic=italic,
             )
-            self.table.item(0, 0).setForeground(QtGui.QColor(period["color"]))
+            if color is not None:
+                self.table.item(self.table.rowCount() - 1, 0).setForeground(QtGui.QColor(color))
+            totals["keys"] += keys
+            totals["clicks"] += clicks
+            totals["mouse_px"] += mouse_px
+
+        # --- current period on top (elapsed time in Duration) ---
+        if running_session:
+            period = self.current_period()
+            if period is not None:
+                elapsed = now - period["start"]
+                active = period.get("active_minutes", period.get("active", 0))
+                emit(period["label"], period["start"].strftime("%H:%M"), format_duration(elapsed.total_seconds()),
+                     period["keys"], period["clicks"], period["mouse_px"], f"{period['active_pct']}%",
+                     color=period["color"], italic=True)
+                totals["active"] += active
+                self.current_row = 0
+                self.current_start = period["start"]
+                self.current_phase = period["phase"]
+        elif current_run is not None:
+            keys = current_run["keys"] + int(self.collector.bucket_keys)
+            clicks = current_run["clicks"] + int(self.collector.bucket_clicks)
+            mouse_px = current_run["mouse_px"] + int(self.collector.bucket_mouse_px)
+            elapsed = now - current_run["start"]
+            elapsed_minutes = max(1, int(elapsed.total_seconds() // 60))
+            emit("▶ Other", current_run["start"].strftime("%H:%M"), format_duration(elapsed.total_seconds()),
+                 keys, clicks, mouse_px, f"{min(100, round(100 * current_run['active_minutes'] / elapsed_minutes))}%",
+                 color="#555555", italic=True)
+            totals["active"] += current_run["active_minutes"]
             self.current_row = 0
-            self.current_start = period["start"]
-            self.current_phase = period["phase"]
-            current_keys = period["keys"]
-            current_clicks = period["clicks"]
-            current_px = period["mouse_px"]
-            current_active = period.get("active_minutes", period.get("active", 0))
+            self.current_start = current_run["start"]
+            self.current_phase = "current"
 
-        # Finished sessions, newest first.
-        session_keys = session_clicks = session_px = session_active = 0
-        for session in reversed(rows):
-            if session["kind"] == "focus" and not session["completed"]:
-                label = "🍌 Interrupted"  # a stopped pomodoro
-            elif session["kind"] == "focus":
-                label = "🍅 Focus"
-            elif session["kind"] == "long_break":
-                label = "🛋 Big break"
+        # --- finished periods (Focus / Break / Other), newest first ---
+        finished = [(s["start"], "session", s) for s in rows]
+        finished += [(r["start"], "run", r) for r in runs]
+        finished.sort(key=lambda item: item[0], reverse=True)
+
+        for start, kind, obj in finished:
+            if kind == "session":
+                label = "🍅 Focus" if obj["kind"] == "focus" else "☕ Break"
+                duration_seconds = obj["duration_seconds"]
+                color = None
             else:
-                label = "☕ Break"
-            window_minutes = session["duration_seconds"] // 60
-            self.append_row(
-                [
-                    label,
-                    session["start"].strftime("%H:%M"),
-                    format_duration(session["duration_seconds"]),
-                    f"{session['keys']:,}",
-                    f"{session['clicks']:,}",
-                    format_path(session["mouse_px"], self.dpi),
-                    active_pct(session["active_minutes"], window_minutes),
-                ]
-            )
-            session_keys += session["keys"]
-            session_clicks += session["clicks"]
-            session_px += session["mouse_px"]
-            session_active += session["active_minutes"]
+                label = "▷ Other"
+                duration_seconds = (obj["end"] - obj["start"]).total_seconds()
+                color = "#777777"
+            window_minutes = max(1, int(duration_seconds // 60))
+            emit(label, start.strftime("%H:%M"), format_duration(duration_seconds),
+                 obj["keys"], obj["clicks"], obj["mouse_px"],
+                 active_pct(obj["active_minutes"], window_minutes), color=color)
+            totals["active"] += obj["active_minutes"]
 
-        # Everything you did that isn't a session (or the live period) — so the
-        # rows add up to the day total instead of silently dropping it.
-        other_keys = max(0, summary["keys"] - session_keys - current_keys)
-        other_clicks = max(0, summary["clicks"] - session_clicks - current_clicks)
-        other_px = max(0, summary["mouse_px_total"] - session_px - current_px)
-        other_active = max(0, summary["active_minutes"] - session_active - current_active)
-        if other_keys or other_clicks or other_px or other_active:
-            self.append_row(
-                [
-                    "▷ Other (no timer)",
-                    "",
-                    format_duration(other_active * 60),
-                    f"{other_keys:,}",
-                    f"{other_clicks:,}",
-                    format_path(other_px, self.dpi),
-                    "",
-                ]
-            )
-            self.table.item(self.table.rowCount() - 1, 0).setForeground(QtGui.QColor("#777777"))
-
-        # Bottom TOTAL row = the day totals, which now equal the sum of the
-        # rows above. Single space before 🍅; duration is total active time.
+        # --- TOTAL = the sum of the rows above ---
         self.append_row(
             [
                 f"TOTAL 🍅 {summary['focus_count']}",
                 "",
-                format_duration(summary["active_minutes"] * 60),
-                f"{summary['keys']:,}",
-                f"{summary['clicks']:,}",
-                format_path(summary["mouse_px_total"], self.dpi),
+                format_duration(totals["active"] * 60),
+                f"{totals['keys']:,}",
+                f"{totals['clicks']:,}",
+                format_path(totals["mouse_px"], self.dpi),
                 "",
             ],
             bold=True,
