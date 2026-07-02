@@ -74,6 +74,27 @@ class Announcer(QtCore.QObject):
 
     # -- public API -----------------------------------------------------------
 
+    def default_cosmetics(self) -> dict:
+        """Plane look from the saved Reminder settings, so every banner —
+        reminders, GitHub, digest — flies the same customized plane."""
+        try:
+            if __package__:
+                from . import reminder as reminder_mod
+            else:
+                import importlib
+
+                reminder_mod = importlib.import_module("mycat.reminder")
+            saved = reminder_mod.load_reminder()
+        except Exception:  # noqa: BLE001 - cosmetics must never break announcing
+            return {}
+        if saved is None:
+            return {}
+        return {
+            "plane_color": saved.plane_color,
+            "plane": saved.plane,
+            "plane_width": saved.plane_width,
+        }
+
     def announce(
         self,
         text: str,
@@ -83,7 +104,9 @@ class Announcer(QtCore.QObject):
     ) -> Announcement:
         """Queue a message. Urgent items keep FIFO order among themselves but
         go ahead of every normal item already waiting."""
-        item = Announcement(text=text, url=url, urgent=urgent, **cosmetics)
+        merged = self.default_cosmetics()
+        merged.update(cosmetics)
+        item = Announcement(text=text, url=url, urgent=urgent, **merged)
         if urgent:
             position = 0
             while position < len(self.queue) and self.queue[position].urgent:
