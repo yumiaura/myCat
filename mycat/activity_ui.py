@@ -282,6 +282,7 @@ class ActivityDialog(QtWidgets.QDialog):
             "&nbsp;&nbsp;&nbsp;<span style='color:#1f6feb'>│</span> now"
         )
         legend.setTextFormat(QtCore.Qt.TextFormat.RichText)
+        legend.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         # No style override — the legend text uses the dialog's main font; only
         # the swatch squares and the "now" bar are colour-coded (inline spans).
         layout.addWidget(legend)
