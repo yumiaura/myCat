@@ -204,3 +204,14 @@ def test_short_run_shows_banana(tmp_path, qapp):
     now.now = datetime(2026, 7, 2, 10, 0)
     dialog.refresh_log()
     assert dialog.table.item(0, 0).text() == "🍌 09:00"
+
+
+def test_brief_run_shows_neutral_dot(tmp_path, qapp):
+    dialog, controller, now = make_dialog(tmp_path)
+    store = controller.store
+    for offset in range(3):  # a 3-minute run — under 5, so a neutral • (still shown)
+        store.record_minute(datetime(2026, 7, 2, 9, offset), 4000, 200, 8, True)
+    now.now = datetime(2026, 7, 2, 10, 0)
+    dialog.refresh_log()
+    assert dialog.table.rowCount() == 1  # not hidden
+    assert dialog.table.item(0, 0).text() == "• 09:00"

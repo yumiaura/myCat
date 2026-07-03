@@ -507,11 +507,10 @@ class ActivityDialog(QtWidgets.QDialog):
                 self.current_start = period["start"]
                 self.current_phase = "focus"
 
-        # --- finished runs, newest first: 🍅 (earned ≥25 min) or 🍌 (fell short) ---
+        # --- finished runs, newest first: 🍅 (≥25 min), 🍌 (5–25 min), • (briefer) ---
+        grade_marks = {"focus": ("🍅", None), "banana": ("🍌", None), "minor": ("•", "#999999")}
         for run in sorted(runs, key=lambda r: r["start"], reverse=True):
-            if run["grade"] == "minor":
-                continue
-            label = "🍅" if run["grade"] == "focus" else "🍌"
+            label, mark_color = grade_marks[run["grade"]]
             duration_seconds = (run["end"] - run["start"]).total_seconds()
             emit(
                 label,
@@ -521,7 +520,7 @@ class ActivityDialog(QtWidgets.QDialog):
                 run["clicks"],
                 run["mouse_px"],
                 active_pct(run["active_minutes"], run["minutes"]),
-                color=None,
+                color=mark_color,
             )
             totals["active"] += run["active_minutes"]
             totals["elapsed"] += run["minutes"]
