@@ -278,7 +278,7 @@ class ActivityDialog(QtWidgets.QDialog):
         legend = QtWidgets.QLabel(
             "<span style='color:#8bbf8b'>rest</span>"
             " <span style='color:#888'>·</span> <span style='color:#c0392b'>active</span>"
-            " <span style='color:#888'>·</span> <span style='color:#a6a6ad'>not yet</span>"
+            " <span style='color:#888'>·</span> <span style='color:#a6a6ad'>future</span>"
             " <span style='color:#888'>·</span> <span style='color:#1f6feb'>now</span>"
         )
         legend.setTextFormat(QtCore.Qt.TextFormat.RichText)
