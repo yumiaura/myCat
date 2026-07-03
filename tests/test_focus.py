@@ -81,7 +81,7 @@ def test_active_run_sets_dnd_and_ticks_tooltip(tmp_path, qapp):
     controller.tick()
     assert ann.dnd_calls == [True]
     text = controller.status_text()
-    assert text.startswith("Focus · 🍅 0 · 7:18")
+    assert text.startswith("🍅 0 · 7:18")  # no "Focus" label, just the stats
     assert "⌨ 450" in text and "% active" in text
 
 
@@ -94,7 +94,7 @@ def test_earned_banner_fires_once_at_focus_minutes(tmp_path, qapp):
     now.advance(minutes=1)
     controller.tick()
     assert ann.announced == ["🍅 earned — time to rest"]
-    assert controller.status_text().startswith("🍅 Focus ·")  # now labelled as earned
+    assert controller.status_text().startswith("🍅 0 · 25:")  # tooltip is stats-only
     now.advance(minutes=10)
     controller.tick()
     assert ann.announced == ["🍅 earned — time to rest"]  # no re-fire before 50 min

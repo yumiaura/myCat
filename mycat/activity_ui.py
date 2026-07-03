@@ -32,7 +32,7 @@ KIND_ICONS = {"focus": "🍅", "break": "☕", "long_break": "☕", "work": "�
 # no text glyph so it stays a colour emoji; the cursor's travel uses a plain path
 # symbol (⤳) that always renders monochrome.
 MONO = "︎"
-TABLE_COLUMNS = ["Session", "Duration", f"⌨{MONO} Keys", f"🖱{MONO} / ⤳", "Active"]
+TABLE_COLUMNS = ["Session", "Duration", f"⌨{MONO} Keys", f"🖱{MONO} Mouse", "Active"]
 
 
 def active_pct(active_minutes: int, window_minutes: int) -> str:
@@ -218,7 +218,7 @@ class ActivityDialog(QtWidgets.QDialog):
         super().__init__(parent)
         self.collector = collector
         self.focus_controller = focus_controller
-        self.setWindowTitle("Activity diary")
+        self.setWindowTitle("Activity")
         self.setModal(False)
         self.setMinimumWidth(720)
         self.resize(760, 560)
@@ -243,22 +243,14 @@ class ActivityDialog(QtWidgets.QDialog):
         self.current_start = None
         self.dpi = 96.0
 
-        self.enabled_box = QtWidgets.QCheckBox("Track my activity")
+        self.enabled_box = QtWidgets.QCheckBox("Enable Activity")
         self.enabled_box.setToolTip(
-            "Record focus sessions and how much you use the mouse and keyboard.\n"
-            "A private diary kept only on this computer — nothing is ever sent anywhere.\n"
-            "Off = nothing is recorded."
+            "Record your focus and how much you use the mouse and keyboard — how many\n"
+            "keystrokes and clicks, never which keys. A private diary kept only on this\n"
+            "computer; nothing is ever sent anywhere. Off = nothing is recorded."
         )
         self.enabled_box.setChecked(settings.enabled)
         layout.addWidget(self.enabled_box)
-
-        self.keyboard_box = QtWidgets.QCheckBox("…count keys + clicks too")
-        self.keyboard_box.setToolTip(
-            "Also count keystrokes and mouse clicks — how many, never which keys.\n"
-            "Off = only cursor movement is measured."
-        )
-        self.keyboard_box.setChecked(settings.keyboard_enabled)
-        layout.addWidget(self.keyboard_box)
 
         controls_row = QtWidgets.QHBoxLayout()
         controls_row.addWidget(QtWidgets.QLabel("Keep history for:"))
@@ -716,16 +708,15 @@ class ActivityDialog(QtWidgets.QDialog):
         """Persist + apply, keeping the dialog open (matches GitHub/Calendar)."""
         settings = activity_mod.ActivitySettings(
             enabled=self.enabled_box.isChecked(),
-            keyboard_enabled=self.keyboard_box.isChecked(),
+            keyboard_enabled=self.enabled_box.isChecked(),  # one merged "Enable Activity" toggle
             retention_days=self.retention_spin.value(),
             prompted=True,
         )
         activity_mod.save_activity_settings(settings)
         self.collector.apply_settings(settings)
-        logger.info("Activity settings saved (enabled=%s, keyboard=%s)", settings.enabled, settings.keyboard_enabled)
+        logger.info("Activity settings saved (enabled=%s)", settings.enabled)
         track = "on" if settings.enabled else "off"
-        keys = "on" if settings.keyboard_enabled else "off"
-        self.set_status(f"Saved: tracking {track}, keys + clicks {keys}, keep {settings.retention_days} days.", ok=True)
+        self.set_status(f"Saved: tracking {track}, keep {settings.retention_days} days.", ok=True)
 
 
 __all__ = ["ActivityDialog"]

@@ -150,12 +150,14 @@ class FocusController(QtCore.QObject):
         return " · ".join(parts)
 
     def status_text(self) -> str:
-        """Tooltip for the ongoing run ("Focus · …", "🍅 Focus · …"), or "" when idle."""
+        """Tooltip for the ongoing run — stats only (no "Focus" label), or "" when idle.
+
+        The leading ``🍅 N`` is the day's earned count; the elapsed clock and the
+        input stats follow. Empty string means idle (no run)."""
         stats = self.current_run_stats()
         if stats is None:
             return ""
-        label = "🍅 Focus" if self.earned(stats) else "Focus"
-        return f"{label} · {self.period_parts(format_elapsed(self.run_elapsed_seconds(stats)), stats)}"
+        return self.period_parts(format_elapsed(self.run_elapsed_seconds(stats)), stats)
 
     # -- clock -----------------------------------------------------------------
 
