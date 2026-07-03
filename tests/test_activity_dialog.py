@@ -46,16 +46,18 @@ def make_dialog(tmp_path):
 def test_now_line_idle(tmp_path, qapp):
     dialog, controller, now = make_dialog(tmp_path)
     dialog.refresh_now()
-    assert dialog.now_label.text().startswith("Now: idle")
+    assert dialog.now_label.text().startswith("Current: idle")
 
 
 def test_now_line_mirrors_focus_tooltip(tmp_path, qapp):
     dialog, controller, now = make_dialog(tmp_path)
-    controller.start_focus()
-    now.advance(minutes=7, seconds=18)
+    store = controller.store
+    for offset in range(7):  # a 7-minute run reaching now
+        store.record_minute(datetime(2026, 7, 2, 9, offset), 4000, 200, 8, True)
+    now.now = datetime(2026, 7, 2, 9, 7, 18)
     dialog.refresh_now()
     text = dialog.now_label.text()
-    assert text.startswith("Now: Focus · 🍅 0 · 17:42 left")
+    assert text.startswith("Current: Focus · 🍅 0 · 7:18")
 
 
 def test_table_has_session_rows_and_totals(tmp_path, qapp):
@@ -69,19 +71,15 @@ def test_table_has_session_rows_and_totals(tmp_path, qapp):
         store.record_minute(start + timedelta(minutes=offset), 4000, 200, 8, True)
     now.now = datetime(2026, 7, 2, 10, 0)  # well past the last activity → no current period
     dialog.refresh_log()
-    # 1 finished session row + 1 TOTAL row (no session is active here).
-    assert dialog.table.rowCount() == 2
-    assert dialog.table.item(0, 0).text().startswith("🍅 Focus")
-    assert dialog.table.item(0, 1).text() == "09:00"  # start time on the session row
-    assert dialog.table.item(0, 2).text() == "25:00"  # duration
-    assert dialog.table.item(0, 3).text() == "5,000"  # 25 min × 200 keys
-    totals = dialog.table.item(1, 0).text()
-    assert totals.startswith("TOTAL")
-    assert "🍅 1" in totals
-    assert dialog.table.item(1, 1).text() == ""  # TOTAL row carries NO start time
-    assert dialog.table.item(1, 2).text() == "25:00"  # total duration, no "active"
-    assert "active" not in dialog.table.item(1, 2).text()
-    assert dialog.table.item(1, 3).text() == "5,000"
+    # Just the finished session row; the TOTAL is its own always-visible label.
+    assert dialog.table.rowCount() == 1
+    assert dialog.table.item(0, 0).text() == "🍅 09:00"  # icon + start, merged
+    assert dialog.table.item(0, 1).text() == "25:00"  # duration
+    assert dialog.table.item(0, 2).text() == "5,000"  # 25 min × 200 keys
+    assert dialog.totals_table.item(0, 0).text().startswith("TOTAL")
+    assert "🍅 1" in dialog.totals_table.item(0, 0).text()
+    assert dialog.totals_table.item(0, 1).text() == "25:00"  # total duration
+    assert dialog.totals_table.item(0, 2).text() == "5,000"  # total keys
 
 
 def test_current_row_reflects_activity_run(tmp_path, qapp):
@@ -94,45 +92,39 @@ def test_current_row_reflects_activity_run(tmp_path, qapp):
     for offset in range(3):
         collector.store.record_minute(datetime(2026, 7, 2, 9, offset), 3000, 100, 4, True)
     dialog.refresh_log()
-    # Top row is the live Current period. No pomodoro running → "Other".
+    # Top row is the live current run — under 25 min, so still "▶" (no 🍅 yet).
     assert dialog.current_row == 0
-    assert dialog.table.item(0, 0).text() == "▶ Other"
-    assert dialog.table.item(0, 1).text() == "09:00"
-    assert dialog.table.item(0, 2).text() == "3:00"  # elapsed so far (09:00 → 09:03)
-    assert dialog.table.item(0, 3).text() == "300"  # 3 min × 100 keys
-    assert dialog.table.item(0, 6).text().endswith("%")  # active percentage
-    # Typing moves the live cells without a full rebuild.
+    assert dialog.table.item(0, 0).text() == "▶ 09:00"  # marker + start, merged
+    assert dialog.table.item(0, 1).text() == "3:00"  # elapsed so far (09:00 → 09:03)
+    assert dialog.table.item(0, 2).text() == "300"  # 3 min × 100 keys
+    assert dialog.table.item(0, 3).text().startswith("12 / ")  # merged clicks / path
+    assert dialog.table.item(0, 4).text().endswith("%")  # active percentage
+    # Typing moves the live cells on the next refresh.
     collector.bucket_keys += 42
     dialog.refresh_now()
-    assert dialog.table.item(0, 3).text() == "342"
+    assert dialog.table.item(0, 2).text() == "342"
 
 
-def test_current_row_says_focus_during_focus(tmp_path, qapp):
+def test_current_row_says_focus_while_building(tmp_path, qapp):
     dialog, controller, now = make_dialog(tmp_path)
-    controller.start_focus()  # a pomodoro focus is running
+    store = controller.store
+    for offset in range(3):  # a short live run, under 25 min
+        store.record_minute(datetime(2026, 7, 2, 9, offset), 3000, 100, 4, True)
+    now.now = datetime(2026, 7, 2, 9, 3)
     dialog.refresh_log()
-    assert dialog.table.item(0, 0).text() == "▶ Focus"
+    assert dialog.table.item(0, 0).text() == "▶ 09:00"
     assert dialog.current_phase == "focus"
 
 
-def test_current_row_says_rest_during_break(tmp_path, qapp):
+def test_current_row_earns_tomato_past_25_min(tmp_path, qapp):
     dialog, controller, now = make_dialog(tmp_path)
-    controller.start_focus()
-    now.advance(seconds=controller.remaining_seconds() + 1)
-    controller.tick()  # focus → break
+    store = controller.store
+    for offset in range(26):  # a live run already past 25 min
+        store.record_minute(datetime(2026, 7, 2, 9, offset), 3000, 100, 4, True)
+    now.now = datetime(2026, 7, 2, 9, 26)
     dialog.refresh_log()
-    assert dialog.table.item(0, 0).text() == "▶ Break"
-    assert dialog.current_phase == "break"
-
-
-def test_long_break_labelled_big_break(tmp_path, qapp):
-    from mycat import activity_store
-
-    dialog, controller, now = make_dialog(tmp_path)
-    start = datetime(2026, 7, 2, 9, 0)
-    controller.store.record_session(activity_store.LONG_BREAK, start, start + timedelta(minutes=15), 900, True)
-    dialog.refresh_log()
-    assert dialog.table.item(0, 0).text() == "☕ Break"
+    assert dialog.table.item(0, 0).text() == "▶ 🍅 09:00"
+    assert "🍅 1" in dialog.totals_table.item(0, 0).text()  # counted in the TOTAL row
 
 
 def test_timeline_cells_are_activity_heat(tmp_path, qapp):
@@ -165,25 +157,22 @@ def test_timeline_window_full_day_for_yesterday(tmp_path, qapp):
 
 def test_no_current_row_when_idle(tmp_path, qapp):
     dialog, controller, now = make_dialog(tmp_path)
-    # No run started → no Current row, just the (empty) TOTAL row.
+    # No run started → no rows at all; the TOTAL label still shows (empty) totals.
     dialog.refresh_log()
     assert dialog.current_row is None
-    assert dialog.table.item(0, 0).text().startswith("TOTAL")
+    assert dialog.table.rowCount() == 0
+    assert dialog.totals_table.item(0, 0).text().startswith("TOTAL")
 
 
 def test_export_csv_writes_period_rows(tmp_path, qapp):
     import csv
 
-    from mycat import activity_store
-
     dialog, controller, now = make_dialog(tmp_path)
     store = controller.store
-    start = datetime(2026, 7, 2, 9, 0)
-    store.record_session(activity_store.FOCUS, start, start + timedelta(minutes=25), 1500, True)
+    # A 25-minute run → 🍅 (completed=1); a later 10-minute run → 🍌 (completed=0).
     for offset in range(25):
-        store.record_minute(start + timedelta(minutes=offset), 4000, 200, 8, True)
-    # A second stretch with no timer → an "Other" period.
-    for offset in range(3):
+        store.record_minute(datetime(2026, 7, 2, 9, offset), 4000, 200, 8, True)
+    for offset in range(10):
         store.record_minute(datetime(2026, 7, 2, 9, 40 + offset), 1000, 50, 2, True)
     now.now = datetime(2026, 7, 2, 10, 0)
 
@@ -192,25 +181,26 @@ def test_export_csv_writes_period_rows(tmp_path, qapp):
     assert count == 2
 
     rows = list(csv.DictReader(out.open()))
-    assert [r["period"] for r in rows] == ["Focus", "Other"]  # chronological
-    focus = rows[0]
-    assert focus["start"] == "2026-07-02T09:00:00"
-    assert focus["end"] == "2026-07-02T09:25:00"
-    assert focus["duration_seconds"] == "1500"
-    assert focus["keys"] == "5000"  # 25 min × 200
-    assert focus["clicks"] == "200"  # 25 min × 8
-    assert focus["active_minutes"] == "25"
-    assert focus["active_percent"] == "100"
-    assert focus["completed"] == "1"
-    assert rows[1]["period"] == "Other"
-    assert rows[1]["keys"] == "150"  # 3 min × 50
+    assert [r["period"] for r in rows] == ["Focus", "Focus"]  # chronological
+    tomato = rows[0]
+    assert tomato["start"] == "2026-07-02T09:00:00"
+    assert tomato["end"] == "2026-07-02T09:25:00"
+    assert tomato["duration_seconds"] == "1500"
+    assert tomato["keys"] == "5000"  # 25 min × 200
+    assert tomato["clicks"] == "200"  # 25 min × 8
+    assert tomato["active_minutes"] == "25"
+    assert tomato["active_percent"] == "100"
+    assert tomato["completed"] == "1"  # earned a 🍅
+    banana = rows[1]
+    assert banana["completed"] == "0"  # under 25 min → 🍌
+    assert banana["keys"] == "500"  # 10 min × 50
 
 
-def test_interrupted_session_shows_banana(tmp_path, qapp):
-    from mycat import activity_store
-
+def test_short_run_shows_banana(tmp_path, qapp):
     dialog, controller, now = make_dialog(tmp_path)
-    start = datetime(2026, 7, 2, 9, 0)
-    controller.store.record_session(activity_store.FOCUS, start, start + timedelta(minutes=8), 1500, False)
+    store = controller.store
+    for offset in range(8):  # an 8-minute run — under 25, so a 🍌
+        store.record_minute(datetime(2026, 7, 2, 9, offset), 4000, 200, 8, True)
+    now.now = datetime(2026, 7, 2, 10, 0)
     dialog.refresh_log()
-    assert dialog.table.item(0, 0).text() == "🍅 Focus"
+    assert dialog.table.item(0, 0).text() == "🍌 09:00"

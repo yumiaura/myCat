@@ -28,7 +28,11 @@ KIND_ICONS = {"focus": "🍅", "break": "☕", "long_break": "☕", "work": "�
 
 # Session table: start + duration per session, then the input counters and
 # how active that stretch was. The bottom TOTAL row carries NO start/end times.
-TABLE_COLUMNS = ["Session", "Start", "Duration", "⌨ Keys", "🖱 Clicks", "Cursor path", "Active"]
+# U+FE0E forces a monochrome (text) glyph — the keyboard obeys it. The mouse has
+# no text glyph so it stays a colour emoji; the cursor's travel uses a plain path
+# symbol (⤳) that always renders monochrome.
+MONO = "︎"
+TABLE_COLUMNS = ["Session", "Duration", f"⌨{MONO} Keys", f"🖱{MONO} / ⤳", "Active"]
 
 
 def active_pct(active_minutes: int, window_minutes: int) -> str:
@@ -41,13 +45,17 @@ def format_duration(seconds: int) -> str:
     minutes, secs = divmod(int(seconds), 60)
     hours, minutes = divmod(minutes, 60)
     if hours:
-        return f"{hours} h {minutes:02d} min"
+        return f"{hours}:{minutes:02d}:{secs:02d}"
     return f"{minutes}:{secs:02d}"
 
 
 def format_path(mouse_px: int, dpi: float) -> str:
     km = activity_mod.cursor_km(mouse_px, dpi)
     return f"{km:.2f} km" if km >= 0.1 else f"{int(km * 1000)} m"
+
+
+def format_meters(mouse_px: int, dpi: float) -> str:
+    return f"{int(activity_mod.cursor_km(mouse_px, dpi) * 1000):,} m"
 
 
 def screen_dpi() -> float:
@@ -266,7 +274,7 @@ class ActivityDialog(QtWidgets.QDialog):
         self.day_combo.currentIndexChanged.connect(self.refresh_log)
         controls_row.addWidget(self.day_combo)
         controls_row.addStretch(1)
-        self.delete_button = QtWidgets.QPushButton("Delete all recorded data…")
+        self.delete_button = QtWidgets.QPushButton("Delete all…")
         self.delete_button.clicked.connect(self.delete_all)
         controls_row.addWidget(self.delete_button)
         layout.addLayout(controls_row)
@@ -293,14 +301,42 @@ class ActivityDialog(QtWidgets.QDialog):
         # Never elide labels to "Focus …" — show them in full.
         self.table.setTextElideMode(QtCore.Qt.TextElideMode.ElideNone)
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
-        for column in range(1, len(TABLE_COLUMNS)):
-            header.setSectionResizeMode(column, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        # Even columns: every section shares the width equally so the grid reads
+        # tidily, instead of each numeric column hugging its content raggedly.
+        header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Stretch)
+        header.setDefaultAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.table, 1)
 
-        self.totals_label = QtWidgets.QLabel("")
-        self.totals_label.setWordWrap(True)
-        layout.addWidget(self.totals_label)
+        # TOTAL as a pinned one-row table under the columns — always visible, and
+        # its cells line up under the main table (widths kept in sync below).
+        self.totals_table = QtWidgets.QTableWidget(1, len(TABLE_COLUMNS))
+        self.totals_table.horizontalHeader().setVisible(False)
+        self.totals_table.verticalHeader().setVisible(False)
+        self.totals_table.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.totals_table.setShowGrid(False)  # no gridlines under the totals
+        # No border, and tight cell padding so the summary row sits compact.
+        self.totals_table.setStyleSheet(
+            "QTableWidget { border: none; background: #ffffff; color: #1c1c1c; }"
+            "QTableWidget::item { padding: 0px 6px; }"
+        )
+        self.totals_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.totals_table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
+        self.totals_table.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        self.totals_table.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.totals_table.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        for column in range(len(TABLE_COLUMNS)):
+            self.totals_table.horizontalHeader().setSectionResizeMode(column, QtWidgets.QHeaderView.ResizeMode.Fixed)
+        self.totals_table.verticalHeader().setDefaultSectionSize(22)
+        self.totals_table.setRowHeight(0, 22)
+        self.totals_table.setFixedHeight(22)
+        layout.addWidget(self.totals_table)
+        self.table.horizontalHeader().sectionResized.connect(self.sync_total_widths)
+        QtCore.QTimer.singleShot(0, self.sync_total_widths)
+
+        # Save/Export feedback sits right above the buttons (green on success).
+        self.status_label = QtWidgets.QLabel("")
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
 
         # Export (left) · Save, Close (right), same style as the other dialogs.
         button_row = QtWidgets.QHBoxLayout()
@@ -326,36 +362,40 @@ class ActivityDialog(QtWidgets.QDialog):
         controller = self.focus_controller
         status = controller.status_text() if controller is not None else ""
         if status:
-            self.now_label.setText(f"Now: {status}")
+            self.now_label.setText(f"Current: {status}")
         else:
-            self.now_label.setText("Now: idle — auto-pomodoro starts a session when you get going.")
+            self.now_label.setText("Current: idle — start working and a 🍅 builds after 25 min.")
 
         # On the Today view, rebuild every second so the live current row and
         # the timeline stay current (the table is small — a rebuild is cheap).
         if self.day_combo.currentIndex() == 0:
             self.refresh_log()
 
-    def current_period(self):
-        """The current period as a work/rest-labelled dict, or None.
-
-        Prefers the pomodoro phase (so the row plainly says Work or Rest);
-        falls back to the raw activity run ("Working", no timer) when no
-        session is running.
-        """
+    def focus_minutes(self) -> int:
         controller = self.focus_controller
-        if controller is not None and controller.state in ("focus", "break"):
-            stats = controller.current_session_stats()
-            if stats is None:
-                return None
-            if controller.state == "focus":
-                label, color, phase = "▶ Focus", "#d94a4a", "focus"
-            else:
-                label, color, phase = "▶ Break", "#4caf50", "break"
-            return {**stats, "label": label, "color": color, "phase": phase}
+        if controller is not None and getattr(controller, "settings", None) is not None:
+            return controller.settings.focus_minutes
+        return activity_mod.FOCUS_MINUTES
+
+    def min_banana_minutes(self) -> int:
+        controller = self.focus_controller
+        if controller is not None and getattr(controller, "settings", None) is not None:
+            return controller.settings.min_banana_minutes
+        return activity_mod.MIN_BANANA_MINUTES
+
+    def current_period(self):
+        """The live current activity run as a labelled dict, or None when idle.
+
+        Focus is purely activity-driven now: a run at/over ``focus_minutes``
+        has earned its 🍅; before that it is still building toward one.
+        """
         stats = self.collector.current_run_stats()
         if stats is None:
             return None
-        return {**stats, "label": "▶ Other", "color": "#555555", "phase": "current"}
+        elapsed = self.collector.now_fn() - stats["start"]
+        earned = elapsed.total_seconds() >= self.focus_minutes() * 60
+        label = "▶ 🍅" if earned else "▶"
+        return {**stats, "label": label, "color": "#d94a4a", "phase": "focus", "earned": earned}
 
     def build_timeline(self):
         """(cells, window_start, window_end, now) — a per-minute activity heat.
@@ -407,11 +447,10 @@ class ActivityDialog(QtWidgets.QDialog):
         self.current_start = None
         self.current_phase = None
         try:
-            rows = activity_mod.sessions_table(store, day)
-            summary = activity_mod.day_summary(store, day, dpi=self.dpi)
+            runs = activity_mod.graded_runs(store, day, self.focus_minutes(), self.min_banana_minutes())
         except Exception:  # noqa: BLE001 - a broken DB shows an empty table, not a crash
             logger.exception("Failed to build activity table")
-            self.totals_label.setText("Could not read the activity database.")
+            self.set_totals(["Could not read the activity database.", "", "", "", "", ""])
             return
 
         now = self.collector.now_fn()
@@ -420,34 +459,23 @@ class ActivityDialog(QtWidgets.QDialog):
         # The activity heat strip.
         self.timeline.set_data(*self.build_timeline())
 
-        # Pomodoro windows (finished + a running one) so their minutes are
-        # attributed to Focus/Break, not to Other activity runs.
-        windows = [(s["start"], s["start"] + timedelta(seconds=s["duration_seconds"])) for s in rows]
-        controller = self.focus_controller
-        running_session = is_today and controller is not None and controller.state in ("focus", "break")
-        if running_session:
-            windows.append((controller.phase_started, now))
-        runs = activity_mod.activity_runs(self.collector.store, day, windows)
-
-        # The current "Other" run is the last run still reaching now.
+        # The live current run is the last one still reaching now.
         current_run = None
-        if is_today and not running_session and runs:
-            if now - runs[-1]["last"] < timedelta(minutes=activity_mod.IDLE_RESUME_MINUTES):
-                current_run = runs.pop()
+        if is_today and runs and now - runs[-1]["last"] < timedelta(minutes=activity_mod.IDLE_RESUME_MINUTES):
+            current_run = runs.pop()
 
-        totals = {"keys": 0, "clicks": 0, "mouse_px": 0, "active": 0}
+        totals = {"keys": 0, "clicks": 0, "mouse_px": 0, "active": 0, "elapsed": 0}
 
         def emit(
             label, start_text, duration_text, keys, clicks, mouse_px, active_text, color=None, bold=False, italic=False
         ):
+            session = f"{label} {start_text}".strip() if start_text else label
             self.append_row(
                 [
-                    label,
-                    start_text,
+                    session,
                     duration_text,
                     f"{keys:,}",
-                    f"{clicks:,}",
-                    format_path(mouse_px, self.dpi),
+                    f"{clicks:,} / {format_path(mouse_px, self.dpi)}",
                     active_text,
                 ],
                 bold=bold,
@@ -459,12 +487,13 @@ class ActivityDialog(QtWidgets.QDialog):
             totals["clicks"] += clicks
             totals["mouse_px"] += mouse_px
 
-        # --- current period on top (elapsed time in Duration) ---
-        if running_session:
+        tomatoes = sum(1 for run in runs if run["grade"] == "focus")
+
+        # --- current run on top (elapsed time in Duration; 🍅 once earned) ---
+        if current_run is not None:
             period = self.current_period()
             if period is not None:
                 elapsed = now - period["start"]
-                active = period.get("active_minutes", period.get("active", 0))
                 emit(
                     period["label"],
                     period["start"].strftime("%H:%M"),
@@ -476,72 +505,66 @@ class ActivityDialog(QtWidgets.QDialog):
                     color=period["color"],
                     italic=True,
                 )
-                totals["active"] += active
+                totals["active"] += period.get("active_minutes", 0)
+                totals["elapsed"] += max(1, int(elapsed.total_seconds() // 60))
+                if period["earned"]:
+                    tomatoes += 1
                 self.current_row = 0
                 self.current_start = period["start"]
-                self.current_phase = period["phase"]
-        elif current_run is not None:
-            keys = current_run["keys"] + int(self.collector.bucket_keys)
-            clicks = current_run["clicks"] + int(self.collector.bucket_clicks)
-            mouse_px = current_run["mouse_px"] + int(self.collector.bucket_mouse_px)
-            elapsed = now - current_run["start"]
-            elapsed_minutes = max(1, int(elapsed.total_seconds() // 60))
-            emit(
-                "▶ Other",
-                current_run["start"].strftime("%H:%M"),
-                format_duration(elapsed.total_seconds()),
-                keys,
-                clicks,
-                mouse_px,
-                f"{min(100, round(100 * current_run['active_minutes'] / elapsed_minutes))}%",
-                color="#555555",
-                italic=True,
-            )
-            totals["active"] += current_run["active_minutes"]
-            self.current_row = 0
-            self.current_start = current_run["start"]
-            self.current_phase = "current"
+                self.current_phase = "focus"
 
-        # --- finished periods (Focus / Break / Other), newest first ---
-        finished = [(s["start"], "session", s) for s in rows]
-        finished += [(r["start"], "run", r) for r in runs]
-        finished.sort(key=lambda item: item[0], reverse=True)
-
-        for start, kind, obj in finished:
-            if kind == "session":
-                label = "🍅 Focus" if obj["kind"] == "focus" else "☕ Break"
-                duration_seconds = obj["duration_seconds"]
-                color = None
-            else:
-                label = "▷ Other"
-                duration_seconds = (obj["end"] - obj["start"]).total_seconds()
-                color = "#777777"
-            window_minutes = max(1, int(duration_seconds // 60))
+        # --- finished runs, newest first: 🍅 (earned ≥25 min) or 🍌 (fell short) ---
+        for run in sorted(runs, key=lambda r: r["start"], reverse=True):
+            if run["grade"] == "minor":
+                continue
+            label = "🍅" if run["grade"] == "focus" else "🍌"
+            duration_seconds = (run["end"] - run["start"]).total_seconds()
             emit(
                 label,
-                start.strftime("%H:%M"),
+                run["start"].strftime("%H:%M"),
                 format_duration(duration_seconds),
-                obj["keys"],
-                obj["clicks"],
-                obj["mouse_px"],
-                active_pct(obj["active_minutes"], window_minutes),
-                color=color,
+                run["keys"],
+                run["clicks"],
+                run["mouse_px"],
+                active_pct(run["active_minutes"], run["minutes"]),
+                color=None,
             )
-            totals["active"] += obj["active_minutes"]
+            totals["active"] += run["active_minutes"]
+            totals["elapsed"] += run["minutes"]
 
-        # --- TOTAL = the sum of the rows above ---
-        self.append_row(
+        # --- TOTAL = 🍅 earned today + summed activity of the rows above ---
+        # TOTAL lives in its own pinned row under the table, aligned to the
+        # columns, so it stays visible even when the rows scroll.
+        self.set_totals(
             [
-                f"TOTAL 🍅 {summary['focus_count']}",
-                "",
+                f"TOTAL 🍅 {tomatoes}",
                 format_duration(totals["active"] * 60),
                 f"{totals['keys']:,}",
-                f"{totals['clicks']:,}",
-                format_path(totals["mouse_px"], self.dpi),
-                "",
-            ],
-            bold=True,
+                f"{totals['clicks']:,} / {format_meters(totals['mouse_px'], self.dpi)}",
+                active_pct(totals["active"], totals["elapsed"]),
+            ]
         )
+
+    def sync_total_widths(self, *args) -> None:
+        """Keep the TOTAL row's columns lined up under the main table's."""
+        header = self.table.horizontalHeader()
+        for column in range(self.table.columnCount()):
+            self.totals_table.setColumnWidth(column, header.sectionSize(column))
+
+    def set_totals(self, cells) -> None:
+        """Fill the pinned TOTAL row (bold; centered like the main table)."""
+        for column, text in enumerate(cells):
+            item = self.totals_table.item(0, column)
+            if item is None:
+                item = QtWidgets.QTableWidgetItem()
+                font = item.font()
+                font.setBold(True)
+                item.setFont(font)
+                if column != 0:
+                    item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+                self.totals_table.setItem(0, column, item)
+            item.setText(text)
+        self.sync_total_widths()
 
     def append_row(self, cells, bold=False, italic=False) -> None:
         row = self.table.rowCount()
@@ -549,7 +572,8 @@ class ActivityDialog(QtWidgets.QDialog):
         for column, text in enumerate(cells):
             item = QtWidgets.QTableWidgetItem(text)
             if column != 0:
-                item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+                # Centered under the centered headers → an even, tidy grid.
+                item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             if bold or italic:
                 font = item.font()
                 font.setBold(bold)
@@ -570,52 +594,36 @@ class ActivityDialog(QtWidgets.QDialog):
     # -- actions ----------------------------------------------------------------
 
     def period_rows(self):
-        """Finished Focus / Break / Other periods for the selected day, as
-        plain numbers in chronological order — the record behind the table,
-        ready for CSV. The still-running current period is left out (it lands
-        in the file once it ends)."""
+        """Finished focus attempts for the selected day, as plain numbers in
+        chronological order — ready for CSV. Each is a 🍅 (``completed=1``, ran
+        ≥ focus_minutes) or a 🍌 (fell short). The still-running current run is
+        left out (it lands in the file once it ends); sub-threshold blips are
+        skipped."""
         day = self.selected_day()
         store = self.collector.store
         dpi = screen_dpi()
         now = self.collector.now_fn()
         is_today = self.day_combo.currentIndex() == 0
 
-        sessions = activity_mod.sessions_table(store, day)
-        windows = [(s["start"], s["start"] + timedelta(seconds=s["duration_seconds"])) for s in sessions]
-        controller = self.focus_controller
-        if is_today and controller is not None and controller.state in ("focus", "break"):
-            windows.append((controller.phase_started, now))
-        runs = activity_mod.activity_runs(store, day, windows)
+        runs = activity_mod.graded_runs(store, day, self.focus_minutes(), self.min_banana_minutes())
+        if is_today and runs and now - runs[-1]["last"] < timedelta(minutes=activity_mod.IDLE_RESUME_MINUTES):
+            runs.pop()  # still running — leave it out of the record
 
         rows = []
-        for session in sessions:
-            end = session["start"] + timedelta(seconds=session["duration_seconds"])
-            rows.append(
-                {
-                    "period": "Focus" if session["kind"] == "focus" else "Break",
-                    "start": session["start"],
-                    "end": end,
-                    "duration_seconds": session["duration_seconds"],
-                    "keys": session["keys"],
-                    "clicks": session["clicks"],
-                    "mouse_px": session["mouse_px"],
-                    "active_minutes": session["active_minutes"],
-                    "completed": bool(session["completed"]),
-                }
-            )
         for run in runs:
-            duration_seconds = int((run["end"] - run["start"]).total_seconds())
+            if run["grade"] == "minor":
+                continue
             rows.append(
                 {
-                    "period": "Other",
+                    "period": "Focus",
                     "start": run["start"],
                     "end": run["end"],
-                    "duration_seconds": duration_seconds,
+                    "duration_seconds": int((run["end"] - run["start"]).total_seconds()),
                     "keys": run["keys"],
                     "clicks": run["clicks"],
                     "mouse_px": run["mouse_px"],
                     "active_minutes": run["active_minutes"],
-                    "completed": True,
+                    "completed": run["grade"] == "focus",
                 }
             )
         rows.sort(key=lambda entry: entry["start"])
@@ -676,10 +684,16 @@ class ActivityDialog(QtWidgets.QDialog):
             count = self.write_csv(path)
         except OSError:
             logger.exception("Failed to export activity CSV")
-            self.now_label.setText("Could not write the CSV file.")
+            self.set_status("Could not write the CSV file.", ok=False)
             return
         logger.info("Activity exported to CSV (%d periods) -> %s", count, path)
-        self.now_label.setText(f"Exported {count} periods to {Path(path).name}.")
+        self.set_status(f"Exported {count} periods to {Path(path).name}.", ok=True)
+
+    def set_status(self, text: str, ok: bool | None = None) -> None:
+        """Status line above the buttons: green when ok, red when not."""
+        color = {True: "#1c7c2f", False: "#c0392b", None: "#555555"}[ok]
+        self.status_label.setStyleSheet(f"color: {color};")
+        self.status_label.setText(text)
 
     def delete_all(self) -> None:
         answer = QtWidgets.QMessageBox.question(
@@ -711,7 +725,7 @@ class ActivityDialog(QtWidgets.QDialog):
         logger.info("Activity settings saved (enabled=%s, keyboard=%s)", settings.enabled, settings.keyboard_enabled)
         track = "on" if settings.enabled else "off"
         keys = "on" if settings.keyboard_enabled else "off"
-        self.now_label.setText(f"Saved: tracking {track}, keys + clicks {keys}, keep {settings.retention_days} days.")
+        self.set_status(f"Saved: tracking {track}, keys + clicks {keys}, keep {settings.retention_days} days.", ok=True)
 
 
 __all__ = ["ActivityDialog"]
