@@ -260,6 +260,37 @@ class ActivityDialog(QtWidgets.QDialog):
         self.enabled_box.setChecked(settings.enabled)
         layout.addWidget(self.enabled_box)
 
+        # Two sub-tracks, indented under the master toggle: Mouse = cursor path +
+        # clicks, Keyboard = key counts. Greyed out while Activity is off.
+        self.mouse_box = QtWidgets.QCheckBox("Enable Mouse")
+        self.mouse_box.setToolTip("Cursor path and click count.")
+        self.mouse_box.setChecked(settings.mouse_enabled)
+        self.keyboard_box = QtWidgets.QCheckBox("Enable Keyboard")
+        self.keyboard_box.setToolTip("Keystroke count (never which keys).")
+        self.keyboard_box.setChecked(settings.keyboard_enabled)
+        for sub_box in (self.mouse_box, self.keyboard_box):
+            sub_row = QtWidgets.QHBoxLayout()
+            sub_row.setContentsMargins(0, 0, 0, 0)
+            sub_row.addSpacing(22)  # indent under the master checkbox
+            sub_row.addWidget(sub_box)
+            sub_row.addStretch(1)
+            layout.addLayout(sub_row)
+        self.enabled_box.toggled.connect(self.mouse_box.setEnabled)
+        self.enabled_box.toggled.connect(self.keyboard_box.setEnabled)
+        self.mouse_box.setEnabled(settings.enabled)
+        self.keyboard_box.setEnabled(settings.enabled)
+
+        # Cursor path works without pynput; only the counts need mycat[basic].
+        if not activity_mod.pynput_available():
+            hint = QtWidgets.QLabel(
+                "Key/click counts need <code>pip install mycat[basic]</code> — cursor path works without it."
+            )
+            hint.setTextFormat(QtCore.Qt.TextFormat.RichText)
+            hint.setWordWrap(True)
+            hint.setStyleSheet("color: #888888;")
+            hint.setContentsMargins(22, 0, 0, 0)
+            layout.addWidget(hint)
+
         controls_row = QtWidgets.QHBoxLayout()
         controls_row.addWidget(QtWidgets.QLabel("Keep history for:"))
         self.retention_spin = QtWidgets.QSpinBox()
@@ -707,15 +738,26 @@ class ActivityDialog(QtWidgets.QDialog):
         """Persist + apply, keeping the dialog open (matches GitHub/Calendar)."""
         settings = activity_mod.ActivitySettings(
             enabled=self.enabled_box.isChecked(),
-            keyboard_enabled=self.enabled_box.isChecked(),  # one merged "Enable Activity" toggle
+            mouse_enabled=self.mouse_box.isChecked(),
+            keyboard_enabled=self.keyboard_box.isChecked(),
             retention_days=self.retention_spin.value(),
             prompted=True,
         )
         activity_mod.save_activity_settings(settings)
         self.collector.apply_settings(settings)
-        logger.info("Activity settings saved (enabled=%s)", settings.enabled)
-        track = "on" if settings.enabled else "off"
-        self.set_status(f"Saved: tracking {track}, keep {settings.retention_days} days.", ok=True)
+        logger.info(
+            "Activity settings saved (enabled=%s mouse=%s keyboard=%s)",
+            settings.enabled,
+            settings.mouse_enabled,
+            settings.keyboard_enabled,
+        )
+        if settings.enabled:
+            mouse = "✓" if settings.mouse_enabled else "✗"
+            keyboard = "✓" if settings.keyboard_enabled else "✗"
+            status = f"Saved: activity on · mouse {mouse} · keyboard {keyboard}, keep {settings.retention_days} days."
+        else:
+            status = f"Saved: activity off, keep {settings.retention_days} days."
+        self.set_status(status, ok=True)
 
 
 __all__ = ["ActivityDialog"]

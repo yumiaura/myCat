@@ -206,6 +206,39 @@ def test_short_run_shows_banana(tmp_path, qapp):
     assert dialog.table.item(0, 0).text() == "🍌 09:00"
 
 
+def test_activity_checkboxes_reflect_and_gate(tmp_path, qapp):
+    dialog, controller, now = make_dialog(tmp_path)
+    # Defaults on; both sub-tracks enabled while Activity is on.
+    assert dialog.mouse_box.isChecked()
+    assert dialog.keyboard_box.isChecked()
+    assert dialog.mouse_box.isEnabled()
+    assert dialog.keyboard_box.isEnabled()
+    # Master off greys both sub-tracks; back on re-enables them.
+    dialog.enabled_box.setChecked(False)
+    assert not dialog.mouse_box.isEnabled()
+    assert not dialog.keyboard_box.isEnabled()
+    dialog.enabled_box.setChecked(True)
+    assert dialog.mouse_box.isEnabled()
+    assert dialog.keyboard_box.isEnabled()
+
+
+def test_save_writes_three_flags(tmp_path, qapp, monkeypatch):
+    dialog, controller, now = make_dialog(tmp_path)
+    saved = []
+    # Never touch the real ~/.config/mycat/config.ini from a test.
+    monkeypatch.setattr("mycat.activity.save_activity_settings", lambda settings, **kw: saved.append(settings))
+    dialog.enabled_box.setChecked(True)
+    dialog.mouse_box.setChecked(True)
+    dialog.keyboard_box.setChecked(False)
+    dialog.save_settings()
+    assert len(saved) == 1
+    assert saved[0].enabled is True
+    assert saved[0].mouse_enabled is True
+    assert saved[0].keyboard_enabled is False
+    assert "mouse ✓" in dialog.status_label.text()
+    assert "keyboard ✗" in dialog.status_label.text()
+
+
 def test_brief_run_is_a_banana(tmp_path, qapp):
     dialog, controller, now = make_dialog(tmp_path)
     store = controller.store

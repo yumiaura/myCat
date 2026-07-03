@@ -105,11 +105,16 @@ def test_collector_key_counts_make_minute_active(tmp_path):
 
 def test_activity_settings_round_trip(tmp_path):
     cfg = tmp_path / "config.ini"
+    # Each track flips independently: activity off, mouse on, keyboard off.
     save_activity_settings(
-        ActivitySettings(enabled=False, keyboard_enabled=False, retention_days=30, prompted=True), cfg_file=cfg
+        ActivitySettings(
+            enabled=False, mouse_enabled=True, keyboard_enabled=False, retention_days=30, prompted=True
+        ),
+        cfg_file=cfg,
     )
     loaded = load_activity_settings(cfg_file=cfg)
     assert loaded.enabled is False  # opt-out round-trips
+    assert loaded.mouse_enabled is True
     assert loaded.keyboard_enabled is False
     assert loaded.prompted is True
     assert loaded.retention_days == 30
@@ -119,7 +124,38 @@ def test_activity_settings_default_on(tmp_path):
     # The diary is core product behaviour: on by default (opt-out remains).
     loaded = load_activity_settings(cfg_file=tmp_path / "none.ini")
     assert loaded.enabled is True
+    assert loaded.mouse_enabled is True
     assert loaded.keyboard_enabled is True
+
+
+def test_mouse_disabled_skips_cursor_path(tmp_path):
+    # With the mouse track off, cursor motion is not accumulated even though the
+    # cursor keeps moving — the minute is a "rest" minute.
+    positions = [FakePoint(0, 0), FakePoint(30, 40), FakePoint(60, 80)]  # would be 50+50 px
+    collector, store, now = make_collector(tmp_path, positions)
+    collector.settings.mouse_enabled = False
+    collector.sample()
+    collector.sample()
+    collector.sample()
+    now.advance(minutes=1)
+    collector.sample()  # rollover flushes the previous minute
+    rows = store.minutes_between(datetime(2026, 7, 2), datetime(2026, 7, 3))
+    assert rows[0]["mouse_px"] == 0
+    assert rows[0]["active"] == 0
+
+
+def test_apply_settings_reconciles_each_hook_independently(tmp_path):
+    collector, store, now = make_collector(tmp_path, [FakePoint(0, 0)])
+    calls = []
+    collector.start_keyboard_hook = lambda: calls.append("start_kb")
+    collector.stop_keyboard_hook = lambda: calls.append("stop_kb")
+    collector.start_mouse_hook = lambda: calls.append("start_mouse")
+    collector.stop_mouse_hook = lambda: calls.append("stop_mouse")
+    # Already enabled with both tracks on; turn the keyboard off, keep mouse on.
+    collector.apply_settings(ActivitySettings(enabled=True, mouse_enabled=True, keyboard_enabled=False))
+    assert "stop_kb" in calls
+    assert "start_mouse" in calls
+    assert "start_kb" not in calls
 
 
 # -- analysis --------------------------------------------------------------------

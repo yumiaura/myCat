@@ -40,12 +40,15 @@ Two independent tiers:
 - **Tier 1 — cursor (no hooks, no OS permissions).** The cursor position is
   polled 10× per second; the Euclidean distance between consecutive samples
   is accumulated into the current minute.
-- **Tier 2 — keys and clicks (global hooks via pynput).** Key presses and
-  mouse clicks are *counted*. Where hooks can't work (Wayland, missing
-  macOS Input Monitoring permission) this tier silently degrades and only
-  the cursor tier keeps recording.
+- **Tier 2 — keys and clicks (global hooks via pynput, installed with
+  `mycat[basic]`).** Key presses and mouse clicks are *counted*. Where hooks
+  can't work (pynput not installed, Wayland, missing macOS Input Monitoring
+  permission) this tier silently degrades and only the cursor tier keeps
+  recording.
 
-Both are on by default; each has its own checkbox in the dialog.
+The dialog has three nested checkboxes: **Enable Activity** (master), and under
+it **Enable Mouse** (cursor path + clicks) and **Enable Keyboard** (key counts).
+All on by default; the sub-tracks grey out while Activity is off.
 
 ### When is a minute "active"?
 

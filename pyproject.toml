@@ -20,11 +20,6 @@ classifiers = [
 dependencies = [
     "pillow>=12.0.0",
     "pyside6>=6.10.0",
-    # Activity diary key/click COUNTS (identity discarded in the hook). The
-    # diary is on by default, so this is a main dependency; where global
-    # hooks can't work (Wayland, missing macOS permission) the collector
-    # degrades to cursor-distance-only at runtime.
-    "pynput>=1.7",
 ]
 
 [dependency-groups]
@@ -35,6 +30,11 @@ dev = [
 
 # Optional: store API keys in the OS keyring instead of plaintext config.
 [project.optional-dependencies]
+# Global key/click COUNTS via pynput (the key identity is discarded in the
+# hook — only an integer survives). Optional: the base install already records
+# cursor path, and where global hooks can't run (Wayland, missing macOS Input
+# Monitoring permission) this tier degrades to cursor-only anyway.
+basic = ["pynput>=1.7"]
 secure = ["keyring>=24"]
 # ICS calendar reminders: RRULE expansion (the daily standup) is a swamp not
 # worth hand-rolling, so the calendar feature needs these two small libs.

@@ -17,9 +17,13 @@ Two tiers:
 
 - Tier 1 (no dependencies, no OS permissions): cursor distance via
   ``QCursor.pos()`` polling at 10 Hz.
-- Tier 2 (``pynput``): key press and mouse click *counts* via global hooks.
-  On by default; where hooks can't work (Wayland, missing macOS Input
-  Monitoring permission) the collector degrades to tier 1 at runtime.
+- Tier 2 (``pynput``, installed with ``mycat[basic]``): key press and mouse
+  click *counts* via global hooks. Where hooks can't work (pynput not
+  installed, Wayland, missing macOS Input Monitoring permission) the collector
+  degrades to tier 1 at runtime.
+
+The mouse and keyboard tracks are independently switchable: ``mouse_enabled``
+covers the cursor path *and* click counts, ``keyboard_enabled`` the key counts.
 """
 
 import configparser
@@ -68,9 +72,23 @@ class ActivitySettings:
     # The diary is core product behaviour: on by default, with an opt-out,
     # a retention limit and a delete-everything button in the dialog.
     enabled: bool = True
-    keyboard_enabled: bool = True  # tier 2 (pynput); degrades silently without it
+    # Two independently switchable tracks. Mouse = cursor path (tier 1) + click
+    # counts (tier 2). Keyboard = key counts (tier 2). Tier 2 needs mycat[basic];
+    # without it these degrade silently to cursor-path-only.
+    mouse_enabled: bool = True
+    keyboard_enabled: bool = True
     retention_days: int = DEFAULT_RETENTION_DAYS
     prompted: bool = False  # kept for config compatibility (prompt removed)
+
+
+def pynput_available() -> bool:
+    """Whether the tier-2 hooks (mycat[basic]) can be imported at all."""
+    try:
+        import pynput  # noqa: F401
+
+        return True
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def load_activity_settings(cfg_file: Path = CFG_FILE) -> ActivitySettings:
@@ -84,6 +102,7 @@ def load_activity_settings(cfg_file: Path = CFG_FILE) -> ActivitySettings:
             return settings
         section = config["activity"]
         settings.enabled = section.getboolean("enabled", fallback=True)
+        settings.mouse_enabled = section.getboolean("mouse_enabled", fallback=True)
         settings.keyboard_enabled = section.getboolean("keyboard_enabled", fallback=True)
         settings.retention_days = section.getint("retention_days", fallback=DEFAULT_RETENTION_DAYS)
         settings.prompted = section.getboolean("prompted", fallback=False)
@@ -102,6 +121,7 @@ def save_activity_settings(settings: ActivitySettings, cfg_file: Path = CFG_FILE
             config.add_section("activity")
         section = config["activity"]
         section["enabled"] = "true" if settings.enabled else "false"
+        section["mouse_enabled"] = "true" if settings.mouse_enabled else "false"
         section["keyboard_enabled"] = "true" if settings.keyboard_enabled else "false"
         section["retention_days"] = str(settings.retention_days)
         section["prompted"] = "true" if settings.prompted else "false"
@@ -170,14 +190,18 @@ class ActivityCollector(QtCore.QObject):
     def start(self) -> None:
         if hasattr(self, "poll_timer"):
             self.poll_timer.start()
-        if self.settings.keyboard_enabled:
-            self.start_hooks()
-        logger.info("Activity collector started (keyboard=%s)", self.settings.keyboard_enabled)
+        self.reconcile_hooks()
+        logger.info(
+            "Activity collector started (mouse=%s keyboard=%s)",
+            self.settings.mouse_enabled,
+            self.settings.keyboard_enabled,
+        )
 
     def stop(self) -> None:
         if hasattr(self, "poll_timer"):
             self.poll_timer.stop()
-        self.stop_hooks()
+        self.stop_keyboard_hook()
+        self.stop_mouse_hook()
         self.flush()
         logger.info("Activity collector stopped")
 
@@ -189,49 +213,77 @@ class ActivityCollector(QtCore.QObject):
         elif not settings.enabled and was_enabled:
             self.stop()
         elif settings.enabled:
-            # Only the keyboard tier flipped.
-            if settings.keyboard_enabled:
-                self.start_hooks()
-            else:
-                self.stop_hooks()
+            # Still on — reconcile each tier to its own toggle.
+            self.reconcile_hooks()
 
-    # -- tier 2: pynput hooks (counts only) ---------------------------------------
+    def reconcile_hooks(self) -> None:
+        """Start/stop the keyboard and mouse click hooks to match the settings."""
+        if self.settings.keyboard_enabled:
+            self.start_keyboard_hook()
+        else:
+            self.stop_keyboard_hook()
+        if self.settings.mouse_enabled:
+            self.start_mouse_hook()
+        else:
+            self.stop_mouse_hook()
 
-    def start_hooks(self) -> None:
+    # -- tier 2: pynput hooks (counts only, need mycat[basic]) --------------------
+
+    def start_keyboard_hook(self) -> None:
         if self.key_listener is not None:
             return
         try:
-            from pynput import keyboard, mouse
+            from pynput import keyboard
         except Exception:  # noqa: BLE001 - optional dep, Wayland, missing perms…
-            logger.warning("pynput unavailable — key/click counting disabled (cursor distance still recorded)")
+            logger.warning("pynput unavailable — key counting off (install mycat[basic]); cursor path still recorded")
             return
 
         def on_press(key) -> None:
             # The key identity is dropped RIGHT HERE — only the count survives.
             self.bucket_keys += 1
 
+        try:
+            self.key_listener = keyboard.Listener(on_press=on_press)
+            self.key_listener.start()
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to start keyboard hook")
+            self.stop_keyboard_hook()
+
+    def start_mouse_hook(self) -> None:
+        if self.mouse_listener is not None:
+            return
+        try:
+            from pynput import mouse
+        except Exception:  # noqa: BLE001 - optional dep, Wayland, missing perms…
+            logger.warning("pynput unavailable — click counting off (install mycat[basic]); cursor path still recorded")
+            return
+
         def on_click(x, y, button, pressed) -> None:
             if pressed:
                 self.bucket_clicks += 1
 
         try:
-            self.key_listener = keyboard.Listener(on_press=on_press)
             self.mouse_listener = mouse.Listener(on_click=on_click)
-            self.key_listener.start()
             self.mouse_listener.start()
         except Exception:  # noqa: BLE001
-            logger.exception("Failed to start input hooks")
-            self.stop_hooks()
+            logger.exception("Failed to start mouse hook")
+            self.stop_mouse_hook()
 
-    def stop_hooks(self) -> None:
-        for listener_attr in ("key_listener", "mouse_listener"):
-            listener = getattr(self, listener_attr)
-            if listener is not None:
-                try:
-                    listener.stop()
-                except Exception:  # noqa: BLE001
-                    pass
-                setattr(self, listener_attr, None)
+    def stop_keyboard_hook(self) -> None:
+        if self.key_listener is not None:
+            try:
+                self.key_listener.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            self.key_listener = None
+
+    def stop_mouse_hook(self) -> None:
+        if self.mouse_listener is not None:
+            try:
+                self.mouse_listener.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            self.mouse_listener = None
 
     # -- tier 1: cursor sampling ---------------------------------------------------
 
@@ -246,7 +298,9 @@ class ActivityCollector(QtCore.QObject):
 
         moved = 0.0
         pos = self.cursor_pos_fn()
-        if pos is not None and self.last_pos is not None:
+        # Cursor path is part of the mouse track — skip it when the mouse is off,
+        # but keep last_pos current so re-enabling doesn't book a phantom jump.
+        if self.settings.mouse_enabled and pos is not None and self.last_pos is not None:
             dx = pos.x() - self.last_pos.x()
             dy = pos.y() - self.last_pos.y()
             moved = (dx * dx + dy * dy) ** 0.5
@@ -577,6 +631,7 @@ def day_summary(store, day: date, dpi: float = 96.0, focus_minutes: int = FOCUS_
 __all__ = [
     "ActivityCollector",
     "ActivitySettings",
+    "pynput_available",
     "load_activity_settings",
     "save_activity_settings",
     "classify_day",

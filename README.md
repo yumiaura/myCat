@@ -50,6 +50,10 @@ On **Linux** also install the Qt platform plugin once:
 sudo apt install -y libxcb-cursor0
 ```
 
+For keystroke/click **counts** in the activity diary (never which keys), install
+the optional extra: `pip install mycat[basic]`. Without it the diary still
+records cursor path — only the counts need it.
+
 Upgrade or remove later with `pip install -U mycat` / `pip uninstall mycat`.
 
 ### Option C — from source
