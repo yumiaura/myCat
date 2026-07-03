@@ -276,13 +276,13 @@ class ActivityDialog(QtWidgets.QDialog):
         self.timeline = DayTimeline()
         layout.addWidget(self.timeline)
         legend = QtWidgets.QLabel(
-            "<span style='color:#8bbf8b'>■</span> rest &nbsp;"
-            "<span style='color:#c0392b'>■</span> active <span style='color:#888'>(deeper = busier)</span> &nbsp;"
-            "<span style='color:#d4d4da'>■</span> not yet &nbsp;·&nbsp; white = not tracked &nbsp;·&nbsp;"
-            " <span style='color:#1f6feb'>│</span> now"
+            "<span style='color:#8bbf8b'>rest</span>"
+            " <span style='color:#888'>·</span> <span style='color:#c0392b'>active</span>"
+            " <span style='color:#888'>·</span> <span style='color:#a6a6ad'>not yet</span>"
+            " <span style='color:#888'>·</span> <span style='color:#1f6feb'>now</span>"
         )
         legend.setTextFormat(QtCore.Qt.TextFormat.RichText)
-        legend.setStyleSheet("color: #666; font-size: 10px;")
+        legend.setStyleSheet("font-size: 13px;")
         layout.addWidget(legend)
 
         self.table = QtWidgets.QTableWidget(0, len(TABLE_COLUMNS))
