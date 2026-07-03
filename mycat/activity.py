@@ -525,10 +525,8 @@ def activity_runs(store, day: date, session_windows, gap_minutes: int = IDLE_RES
 
 # Auto-focus grading: a continuous activity run (gaps ≤ IDLE_RESUME_MINUTES
 # merged) IS the focus session. A run that lasted at least FOCUS_MINUTES earned
-# a 🍅; one that ended sooner (but was a real attempt) is a 🍌; anything shorter
-# than MIN_BANANA_MINUTES is not a session at all.
+# a 🍅; any shorter finished run is a 🍌.
 FOCUS_MINUTES = 25
-MIN_BANANA_MINUTES = 5
 
 
 def run_minutes(run) -> int:
@@ -536,22 +534,17 @@ def run_minutes(run) -> int:
     return max(1, int((run["end"] - run["start"]).total_seconds() // 60))
 
 
-def grade_run(minutes: int, focus_minutes: int = FOCUS_MINUTES, min_banana_minutes: int = MIN_BANANA_MINUTES) -> str:
-    """A run's grade: "focus" (🍅), "banana" (🍌), or "minor" (ignored)."""
-    if minutes >= focus_minutes:
-        return "focus"
-    if minutes >= min_banana_minutes:
-        return "banana"
-    return "minor"
+def grade_run(minutes: int, focus_minutes: int = FOCUS_MINUTES) -> str:
+    """A run's grade: "focus" (🍅, ≥ focus_minutes) or "banana" (🍌, shorter)."""
+    return "focus" if minutes >= focus_minutes else "banana"
 
 
-def graded_runs(store, day: date, focus_minutes: int = FOCUS_MINUTES,
-                min_banana_minutes: int = MIN_BANANA_MINUTES) -> list:
+def graded_runs(store, day: date, focus_minutes: int = FOCUS_MINUTES) -> list:
     """The day's activity runs, each tagged with ``minutes`` and ``grade``."""
     runs = activity_runs(store, day, [])
     for run in runs:
         run["minutes"] = run_minutes(run)
-        run["grade"] = grade_run(run["minutes"], focus_minutes, min_banana_minutes)
+        run["grade"] = grade_run(run["minutes"], focus_minutes)
     return runs
 
 
@@ -597,7 +590,6 @@ __all__ = [
     "focus_count",
     "longest_focus_minutes",
     "FOCUS_MINUTES",
-    "MIN_BANANA_MINUTES",
     "IDLE_RESUME_MINUTES",
     "ACTIVE_MOUSE_PX_THRESHOLD",
 ]

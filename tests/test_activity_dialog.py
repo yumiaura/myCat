@@ -74,11 +74,11 @@ def test_table_has_session_rows_and_totals(tmp_path, qapp):
     # Just the finished session row; the TOTAL is its own always-visible label.
     assert dialog.table.rowCount() == 1
     assert dialog.table.item(0, 0).text() == "🍅 09:00"  # icon + start, merged
-    assert dialog.table.item(0, 1).text() == "25:00"  # duration
+    assert dialog.table.item(0, 1).text() == "25min"  # duration (compact h/min)
     assert dialog.table.item(0, 2).text() == "5,000"  # 25 min × 200 keys
     assert dialog.totals_table.item(0, 0).text().startswith("TOTAL")
     assert "🍅 1" in dialog.totals_table.item(0, 0).text()
-    assert dialog.totals_table.item(0, 1).text() == "25:00"  # total duration
+    assert dialog.totals_table.item(0, 1).text() == "25min"  # total duration
     assert dialog.totals_table.item(0, 2).text() == "5,000"  # total keys
 
 
@@ -206,12 +206,12 @@ def test_short_run_shows_banana(tmp_path, qapp):
     assert dialog.table.item(0, 0).text() == "🍌 09:00"
 
 
-def test_brief_run_shows_neutral_dot(tmp_path, qapp):
+def test_brief_run_is_a_banana(tmp_path, qapp):
     dialog, controller, now = make_dialog(tmp_path)
     store = controller.store
-    for offset in range(3):  # a 3-minute run — under 5, so a neutral • (still shown)
+    for offset in range(3):  # a 3-minute run — any finished run under 25 min is a 🍌
         store.record_minute(datetime(2026, 7, 2, 9, offset), 4000, 200, 8, True)
     now.now = datetime(2026, 7, 2, 10, 0)
     dialog.refresh_log()
     assert dialog.table.rowCount() == 1  # not hidden
-    assert dialog.table.item(0, 0).text() == "• 09:00"
+    assert dialog.table.item(0, 0).text() == "🍌 09:00"

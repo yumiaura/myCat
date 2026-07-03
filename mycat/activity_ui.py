@@ -42,11 +42,19 @@ def active_pct(active_minutes: int, window_minutes: int) -> str:
 
 
 def format_duration(seconds: int) -> str:
+    """Ticking clock for the live current row: M:SS, or H:MM:SS past an hour."""
     minutes, secs = divmod(int(seconds), 60)
     hours, minutes = divmod(minutes, 60)
     if hours:
         return f"{hours}:{minutes:02d}:{secs:02d}"
     return f"{minutes}:{secs:02d}"
+
+
+def format_hm(seconds: int) -> str:
+    """Compact length for finished rows and the TOTAL: "45min", "1h05min"."""
+    minutes = int(seconds // 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h{minutes:02d}min" if hours else f"{minutes}min"
 
 
 def format_path(mouse_px: int, dpi: float) -> str:
@@ -371,12 +379,6 @@ class ActivityDialog(QtWidgets.QDialog):
             return controller.settings.focus_minutes
         return activity_mod.FOCUS_MINUTES
 
-    def min_banana_minutes(self) -> int:
-        controller = self.focus_controller
-        if controller is not None and getattr(controller, "settings", None) is not None:
-            return controller.settings.min_banana_minutes
-        return activity_mod.MIN_BANANA_MINUTES
-
     def current_period(self):
         """The live current activity run as a labelled dict, or None when idle.
 
@@ -441,7 +443,7 @@ class ActivityDialog(QtWidgets.QDialog):
         self.current_start = None
         self.current_phase = None
         try:
-            runs = activity_mod.graded_runs(store, day, self.focus_minutes(), self.min_banana_minutes())
+            runs = activity_mod.graded_runs(store, day, self.focus_minutes())
         except Exception:  # noqa: BLE001 - a broken DB shows an empty table, not a crash
             logger.exception("Failed to build activity table")
             self.set_totals(["Could not read the activity database.", "", "", "", "", ""])
@@ -507,20 +509,19 @@ class ActivityDialog(QtWidgets.QDialog):
                 self.current_start = period["start"]
                 self.current_phase = "focus"
 
-        # --- finished runs, newest first: 🍅 (≥25 min), 🍌 (5–25 min), • (briefer) ---
-        grade_marks = {"focus": ("🍅", None), "banana": ("🍌", None), "minor": ("•", "#999999")}
+        # --- finished runs, newest first: 🍅 (≥25 min) or 🍌 (any shorter run) ---
         for run in sorted(runs, key=lambda r: r["start"], reverse=True):
-            label, mark_color = grade_marks[run["grade"]]
+            label = "🍅" if run["grade"] == "focus" else "🍌"
             duration_seconds = (run["end"] - run["start"]).total_seconds()
             emit(
                 label,
                 run["start"].strftime("%H:%M"),
-                format_duration(duration_seconds),
+                format_hm(duration_seconds),
                 run["keys"],
                 run["clicks"],
                 run["mouse_px"],
                 active_pct(run["active_minutes"], run["minutes"]),
-                color=mark_color,
+                color=None,
             )
             totals["active"] += run["active_minutes"]
             totals["elapsed"] += run["minutes"]
@@ -531,7 +532,7 @@ class ActivityDialog(QtWidgets.QDialog):
         self.set_totals(
             [
                 f"TOTAL 🍅 {tomatoes}",
-                format_duration(totals["active"] * 60),
+                format_hm(totals["active"] * 60),
                 f"{totals['keys']:,}",
                 f"{totals['clicks']:,} / {format_meters(totals['mouse_px'], self.dpi)}",
                 active_pct(totals["active"], totals["elapsed"]),
@@ -598,27 +599,24 @@ class ActivityDialog(QtWidgets.QDialog):
         now = self.collector.now_fn()
         is_today = self.day_combo.currentIndex() == 0
 
-        runs = activity_mod.graded_runs(store, day, self.focus_minutes(), self.min_banana_minutes())
+        runs = activity_mod.graded_runs(store, day, self.focus_minutes())
         if is_today and runs and now - runs[-1]["last"] < timedelta(minutes=activity_mod.IDLE_RESUME_MINUTES):
             runs.pop()  # still running — leave it out of the record
 
-        rows = []
-        for run in runs:
-            if run["grade"] == "minor":
-                continue
-            rows.append(
-                {
-                    "period": "Focus",
-                    "start": run["start"],
-                    "end": run["end"],
-                    "duration_seconds": int((run["end"] - run["start"]).total_seconds()),
-                    "keys": run["keys"],
-                    "clicks": run["clicks"],
-                    "mouse_px": run["mouse_px"],
-                    "active_minutes": run["active_minutes"],
-                    "completed": run["grade"] == "focus",
-                }
-            )
+        rows = [
+            {
+                "period": "Focus",
+                "start": run["start"],
+                "end": run["end"],
+                "duration_seconds": int((run["end"] - run["start"]).total_seconds()),
+                "keys": run["keys"],
+                "clicks": run["clicks"],
+                "mouse_px": run["mouse_px"],
+                "active_minutes": run["active_minutes"],
+                "completed": run["grade"] == "focus",
+            }
+            for run in runs
+        ]
         rows.sort(key=lambda entry: entry["start"])
         return rows, dpi
 

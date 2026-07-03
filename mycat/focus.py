@@ -66,8 +66,7 @@ def format_elapsed(seconds: float) -> str:
 
 @dataclass
 class FocusSettings:
-    focus_minutes: int = 25  # a run this long earns a 🍅
-    min_banana_minutes: int = 5  # a shorter run is not a session (see activity.grade_run)
+    focus_minutes: int = 25  # a run this long earns a 🍅; anything shorter is a 🍌
 
 
 def load_focus_settings() -> FocusSettings:
@@ -82,7 +81,6 @@ def load_focus_settings() -> FocusSettings:
             return settings
         section = config["focus"]
         settings.focus_minutes = section.getint("focus_minutes", fallback=settings.focus_minutes)
-        settings.min_banana_minutes = section.getint("min_banana_minutes", fallback=settings.min_banana_minutes)
     except Exception as exc:  # noqa: BLE001 - never let a bad config crash the app
         logger.error("Failed to load focus settings: %s", exc)
     return settings

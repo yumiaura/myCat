@@ -17,9 +17,8 @@ def test_grade_run_thresholds():
     assert grade_run(25) == "focus"
     assert grade_run(100) == "focus"
     assert grade_run(24) == "banana"
-    assert grade_run(5) == "banana"
-    assert grade_run(4) == "minor"
-    # Custom thresholds honoured.
+    assert grade_run(1) == "banana"  # any finished run under 25 min is a 🍌
+    # Custom threshold honoured.
     assert grade_run(30, focus_minutes=45) == "banana"
 
 
@@ -41,10 +40,10 @@ def test_short_run_is_a_banana_not_counted(tmp_path):
     assert longest_focus_minutes(store, DAY) == 0
 
 
-def test_tiny_blip_is_minor(tmp_path):
+def test_short_blip_is_a_banana(tmp_path):
     store = ActivityStore(db_path=tmp_path / "a.db")
-    record_run(store, datetime(2026, 7, 2, 9, 0), 3)
-    assert graded_runs(store, DAY)[0]["grade"] == "minor"
+    record_run(store, datetime(2026, 7, 2, 9, 0), 3)  # a 3-min run — still a 🍌 now
+    assert graded_runs(store, DAY)[0]["grade"] == "banana"
 
 
 def test_gap_over_five_minutes_splits_the_run(tmp_path):
