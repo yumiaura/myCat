@@ -23,20 +23,20 @@ class CalendarDialog(QtWidgets.QDialog):
     def __init__(self, controller, parent=None) -> None:
         super().__init__(parent)
         self.controller = controller
-        self.setWindowTitle("Calendar reminders")
+        self.setWindowTitle("Calendar")
         self.setModal(False)
         self.setStyleSheet(LIGHT_QSS)
 
         settings = controller.settings
         layout = QtWidgets.QVBoxLayout(self)
 
-        self.enabled_box = QtWidgets.QCheckBox("Enabled — the cat announces upcoming events")
+        self.enabled_box = QtWidgets.QCheckBox("Enabled — announces upcoming events")
         self.enabled_box.setChecked(settings.enabled)
         layout.addWidget(self.enabled_box)
 
         form = QtWidgets.QFormLayout()
         self.url_edit = QtWidgets.QLineEdit(settings.url)
-        self.url_edit.setPlaceholderText("https://…/basic.ics  (or webcal://…)")
+        self.url_edit.setPlaceholderText("https://…/basic.ics (or webcal://…)")
         form.addRow("ICS URL:", self.url_edit)
 
         self.remind_spin = QtWidgets.QSpinBox()
@@ -53,12 +53,13 @@ class CalendarDialog(QtWidgets.QDialog):
         layout.addLayout(form)
 
         hint = QtWidgets.QLabel(
-            "Google: Calendar settings → <i>Secret address in iCal format</i>. "
+            "Google Calendar → Settings → <i>Secret address in iCal format</i>. "
             "Apple/Outlook: any private calendar link works.<br>"
-            "Treat the URL as a password — it is stored in the owner-only config. "
-            "Calendar banners fly even during focus sessions."
+            "Treat the URL as a password — it's stored in the owner-only config. "
+            "Calendar banners fly even during a focus session."
         )
         hint.setWordWrap(True)
+        hint.setStyleSheet("color: #555;")
         layout.addWidget(hint)
 
         self.status_label = QtWidgets.QLabel("")
@@ -103,7 +104,7 @@ class CalendarDialog(QtWidgets.QDialog):
         url_note = "URL set" if settings.url else "no URL"
         self.set_status(
             f"Saved ({state}): {url_note}, remind {settings.remind_minutes} min before, "
-            f"poll every {settings.poll_minutes} min.",
+            f"refresh every {settings.poll_minutes} min.",
             ok=True,
         )
 
