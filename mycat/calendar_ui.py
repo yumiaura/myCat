@@ -87,6 +87,12 @@ class CalendarDialog(QtWidgets.QDialog):
             poll_minutes=self.poll_spin.value(),
         )
 
+    def set_status(self, text: str, ok: bool | None = None) -> None:
+        """Status line: green when ok, red when not, neutral otherwise."""
+        color = {True: "#1c7c2f", False: "#c0392b", None: "#555555"}[ok]
+        self.status_label.setStyleSheet(f"color: {color};")
+        self.status_label.setText(text)
+
     def save_settings(self) -> None:
         """Persist + apply, but keep the dialog open (save → then test)."""
         settings = self.collect_settings()
@@ -95,17 +101,18 @@ class CalendarDialog(QtWidgets.QDialog):
         logger.info("Calendar settings saved (enabled=%s)", settings.enabled)
         state = "on" if settings.enabled else "off"
         url_note = "URL set" if settings.url else "no URL"
-        self.status_label.setText(
+        self.set_status(
             f"Saved ({state}): {url_note}, remind {settings.remind_minutes} min before, "
-            f"poll every {settings.poll_minutes} min."
+            f"poll every {settings.poll_minutes} min.",
+            ok=True,
         )
 
     def run_test(self) -> None:
         url = self.url_edit.text().strip()
         if not url:
-            self.status_label.setText("Paste the secret ICS URL first.")
+            self.set_status("Paste the secret ICS URL first.", ok=False)
             return
-        self.status_label.setText("Fetching…")
+        self.set_status("Fetching…")
         self.test_button.setEnabled(False)
         worker = calendar_ics.FetchWorker(url, "")
         worker.emitter.finished.connect(self.show_test_result)
@@ -114,16 +121,16 @@ class CalendarDialog(QtWidgets.QDialog):
     def show_test_result(self, result: dict) -> None:
         self.test_button.setEnabled(True)
         if result.get("error"):
-            self.status_label.setText(f"Failed: {result['error']}")
+            self.set_status(f"Failed: {result['error']}", ok=False)
             return
         events = list(result.get("events", []))
         if not events:
-            self.status_label.setText("OK — feed reachable, no events in the next 24 h.")
+            self.set_status("OK — feed reachable, no events in the next 24 h.", ok=True)
             return
         nearest = events[0]
         when = nearest["start"].strftime("%H:%M")
         text = f"📅 {nearest['summary']} — at {when}"
-        self.status_label.setText(f"OK — {len(events)} event(s) in 24 h · {text}")
+        self.set_status(f"OK — {len(events)} event(s) in 24 h · {text}", ok=True)
         # Fly the nearest event as a real banner — same plane as every other
         # announcement (urgent only, so it clears a focus session's DND).
         announcer = getattr(self.controller, "announcer", None)

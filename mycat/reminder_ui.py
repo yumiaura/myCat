@@ -899,11 +899,12 @@ class ReminderDialog(QtWidgets.QDialog):
         buttons.addStretch(1)
         buttons.addWidget(save_btn)
         buttons.addWidget(close_btn)
-        layout.addLayout(buttons)
 
+        # Status sits ABOVE the buttons, matching the other dialogs.
         self.status_label = QtWidgets.QLabel("")
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
+        layout.addLayout(buttons)
 
     def _sync_timing_enabled(self) -> None:
         in_mode = self._in_radio.isChecked()
