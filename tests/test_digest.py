@@ -60,7 +60,7 @@ def test_delivers_once_after_morning_hour(tmp_path):
     assert text.startswith("Yesterday:")
     assert "🍅 1" in text
     assert "⌨ 13,200" in text  # 60 min × 220 keys
-    assert "best focus 25 min" in text
+    assert "best focus 60 min" in text  # one unbroken 60-min run = one long 🍅
     dig.tick()
     assert len(ann.announced) == 1  # once per day
 

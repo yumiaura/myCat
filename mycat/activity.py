@@ -523,7 +523,50 @@ def activity_runs(store, day: date, session_windows, gap_minutes: int = IDLE_RES
     return runs
 
 
-def day_summary(store, day: date, dpi: float = 96.0) -> dict:
+# Auto-focus grading: a continuous activity run (gaps ≤ IDLE_RESUME_MINUTES
+# merged) IS the focus session. A run that lasted at least FOCUS_MINUTES earned
+# a 🍅; one that ended sooner (but was a real attempt) is a 🍌; anything shorter
+# than MIN_BANANA_MINUTES is not a session at all.
+FOCUS_MINUTES = 25
+MIN_BANANA_MINUTES = 5
+
+
+def run_minutes(run) -> int:
+    """Elapsed length of a run in whole minutes (start → end)."""
+    return max(1, int((run["end"] - run["start"]).total_seconds() // 60))
+
+
+def grade_run(minutes: int, focus_minutes: int = FOCUS_MINUTES, min_banana_minutes: int = MIN_BANANA_MINUTES) -> str:
+    """A run's grade: "focus" (🍅), "banana" (🍌), or "minor" (ignored)."""
+    if minutes >= focus_minutes:
+        return "focus"
+    if minutes >= min_banana_minutes:
+        return "banana"
+    return "minor"
+
+
+def graded_runs(store, day: date, focus_minutes: int = FOCUS_MINUTES,
+                min_banana_minutes: int = MIN_BANANA_MINUTES) -> list:
+    """The day's activity runs, each tagged with ``minutes`` and ``grade``."""
+    runs = activity_runs(store, day, [])
+    for run in runs:
+        run["minutes"] = run_minutes(run)
+        run["grade"] = grade_run(run["minutes"], focus_minutes, min_banana_minutes)
+    return runs
+
+
+def focus_count(store, day: date, focus_minutes: int = FOCUS_MINUTES) -> int:
+    """How many 🍅 were earned on ``day`` (runs of at least ``focus_minutes``)."""
+    return sum(1 for run in activity_runs(store, day, []) if run_minutes(run) >= focus_minutes)
+
+
+def longest_focus_minutes(store, day: date, focus_minutes: int = FOCUS_MINUTES) -> int:
+    """Length of the day's longest earned 🍅, or 0 when none was earned."""
+    lengths = [run_minutes(run) for run in activity_runs(store, day, []) if run_minutes(run) >= focus_minutes]
+    return max(lengths) if lengths else 0
+
+
+def day_summary(store, day: date, dpi: float = 96.0, focus_minutes: int = FOCUS_MINUTES) -> dict:
     """Totals for banners and the dialog: km, keys, clicks, 🍅, best focus."""
     totals = store.day_totals(day)
     return {
@@ -533,8 +576,8 @@ def day_summary(store, day: date, dpi: float = 96.0) -> dict:
         "clicks": totals["clicks"],
         "active_minutes": totals["active_minutes"],
         "observed_minutes": totals["observed_minutes"],
-        "focus_count": store.completed_focus_count(day),
-        "best_focus_minutes": store.longest_completed_focus_minutes(day),
+        "focus_count": focus_count(store, day, focus_minutes),
+        "best_focus_minutes": longest_focus_minutes(store, day, focus_minutes),
     }
 
 
@@ -547,5 +590,14 @@ __all__ = [
     "day_summary",
     "cursor_km",
     "active_minutes_between",
+    "activity_runs",
+    "graded_runs",
+    "grade_run",
+    "run_minutes",
+    "focus_count",
+    "longest_focus_minutes",
+    "FOCUS_MINUTES",
+    "MIN_BANANA_MINUTES",
+    "IDLE_RESUME_MINUTES",
     "ACTIVE_MOUSE_PX_THRESHOLD",
 ]

@@ -1,33 +1,37 @@
 #!/usr/bin/env python3
-"""Pomodoro-style focus sessions delivered by the cat.
+"""Automatic focus, earned from activity — no timer, no button.
 
-Design rule: **the cat is boring while you focus** — it settles down and a
-thin progress bar under it is the only motion. All expressiveness happens at
-the phase boundaries (a flyby banner announces the break and the next focus).
+A *focus* is simply a continuous activity run: the activity collector already
+tracks it (contiguous active minutes with gaps under ``IDLE_RESUME_MINUTES``
+merged, reconstructed from the database so it survives a restart). This watcher
+reads the collector's current run once a second and:
 
-State machine: ``idle → focus → break → idle``; after every
-``sessions_before_long_break`` completed focus sessions the break is a long
-one. The break starts by itself (resting should need no click); the next
-focus is started deliberately by the user.
+- shows it in the cat's hover tooltip ("Focus · 12:34 · 🍅 2 · ⌨ … · %");
+- when the run reaches ``focus_minutes`` (25) you have **earned a 🍅** and a
+  banner flies ("🍅 earned — time to rest"); it re-fires every ``focus_minutes``
+  of unbroken work, but the run still counts as a single 🍅;
+- keeps do-not-disturb on while a run is active (non-urgent banners wait) and
+  releases it when you rest (idle past the gap).
 
-Only ``QtCore`` is imported here. Whether a session is running is readable
-from the cat's hover tooltip ("Focus · 17:42 left · …") and from the menu
-labels; outside a session the tooltip shows the current no-timer run.
+The 🍅 / 🍌 accounting lives in :mod:`mycat.activity` (runs graded by length);
+this class only drives the live tooltip, the rest banner and DND.
 """
 
 import configparser
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 from PySide6 import QtCore
 
 if __package__:
+    from . import activity as activity_mod
     from . import activity_store
 else:
     import importlib
 
+    activity_mod = importlib.import_module("mycat.activity")
     activity_store = importlib.import_module("mycat.activity_store")
 
 logger = logging.getLogger(__name__)
@@ -35,10 +39,6 @@ logger = logging.getLogger(__name__)
 # Same config file the rest of the app uses (see main.py / reminder.py).
 CFG_DIR = Path.home() / ".config" / "mycat"
 CFG_FILE = CFG_DIR / "config.ini"
-
-IDLE = "idle"
-FOCUS = "focus"
-BREAK = "break"
 
 
 def cursor_km_estimate(mouse_px: int) -> float:
@@ -54,21 +54,20 @@ def cursor_km_estimate(mouse_px: int) -> float:
         pass
     return mouse_px / dpi * 0.0254 / 1000.0
 
-# If a phase deadline was overshot by more than this (laptop lid closed,
-# suspend, hibernation), the moment has passed: finish the phase quietly with
-# no banner and no auto-break instead of celebrating hours later.
-OVERSHOOT_GRACE_SECONDS = 300
+
+def format_elapsed(seconds: float) -> str:
+    """Count-up clock for the current run: M:SS, or H:MM:SS past an hour."""
+    minutes, secs = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    return f"{minutes}:{secs:02d}"
 
 
 @dataclass
 class FocusSettings:
-    focus_minutes: int = 25
-    break_minutes: int = 5
-    long_break_minutes: int = 15
-    sessions_before_long_break: int = 4
-    # Auto-pomodoro: input after an idle stretch starts the countdown by
-    # itself (quietly — the bar and tooltip appear, no banner).
-    auto_start: bool = True
+    focus_minutes: int = 25  # a run this long earns a 🍅
+    min_banana_minutes: int = 5  # a shorter run is not a session (see activity.grade_run)
 
 
 def load_focus_settings() -> FocusSettings:
@@ -83,32 +82,21 @@ def load_focus_settings() -> FocusSettings:
             return settings
         section = config["focus"]
         settings.focus_minutes = section.getint("focus_minutes", fallback=settings.focus_minutes)
-        settings.break_minutes = section.getint("break_minutes", fallback=settings.break_minutes)
-        settings.long_break_minutes = section.getint("long_break_minutes", fallback=settings.long_break_minutes)
-        settings.sessions_before_long_break = section.getint(
-            "sessions_before_long_break", fallback=settings.sessions_before_long_break
-        )
-        settings.auto_start = section.getboolean("auto_start", fallback=settings.auto_start)
+        settings.min_banana_minutes = section.getint("min_banana_minutes", fallback=settings.min_banana_minutes)
     except Exception as exc:  # noqa: BLE001 - never let a bad config crash the app
         logger.error("Failed to load focus settings: %s", exc)
     return settings
 
 
 class FocusController(QtCore.QObject):
-    """Owns the session state, ticks the clock, drives DND, bar and banners.
+    """Watches the collector's current activity run and drives the tooltip,
+    the "time to rest" banner and do-not-disturb.
 
     ``announcer`` (an :class:`mycat.announcer.Announcer` or a stub) and
-    ``store``/``now_fn`` are injectable for tests.
+    ``store`` / ``now_fn`` are injectable for tests.
     """
 
-    def __init__(
-        self,
-        window,
-        announcer=None,
-        store=None,
-        now_fn=datetime.now,
-        start_timer=True,
-    ) -> None:
+    def __init__(self, window, announcer=None, store=None, now_fn=datetime.now, start_timer=True) -> None:
         super().__init__(window if isinstance(window, QtCore.QObject) else None)
         self.window = window
         self.announcer = announcer
@@ -116,17 +104,10 @@ class FocusController(QtCore.QObject):
         self.now_fn = now_fn
         self.settings = load_focus_settings()
 
-        self.state = IDLE
-        self.phase_started: datetime | None = None
-        self.phase_ends: datetime | None = None
-        self.phase_planned_seconds = 0
-        self.on_long_break = False
-        # Completed focus sessions since the last long break (not per day).
-        self.focus_streak = 0
-        # Auto-pomodoro: the activity collector (attached from main) emits an
-        # idle-resume edge; an explicit Stop blocks auto-starts for a while.
         self.collector = None
-        self.auto_blocked_until: datetime | None = None
+        self.run_start = None  # identity of the run we're currently watching
+        self.rests_nudged = 0  # how many "time to rest" nudges fired this run
+        self.dnd_on = False
 
         if start_timer:
             self.timer = QtCore.QTimer(self)
@@ -134,67 +115,28 @@ class FocusController(QtCore.QObject):
             self.timer.timeout.connect(self.tick)
             self.timer.start()
 
-    # -- public API -----------------------------------------------------------
-
-    def start_focus(self) -> None:
-        """Begin a focus session (from idle, or cutting a break short)."""
-        if self.state == BREAK:
-            self.record_phase(completed=False)
-        self.enter_phase(FOCUS, self.settings.focus_minutes * 60)
-        if self.announcer is not None:
-            self.announcer.set_dnd(True)
-        logger.info("Focus session started (%d min)", self.settings.focus_minutes)
-
-    def stop(self) -> None:
-        """Abandon the current phase and go idle (no banner — user's choice)."""
-        if self.state == IDLE:
-            return
-        was_focus = self.state == FOCUS
-        self.record_phase(completed=False)
-        if self.announcer is not None:
-            self.announcer.set_dnd(False)
-        self.leave_phase()
-        if was_focus:
-            # An explicit Stop means "not now" — don't let the very next
-            # keystroke auto-start a fresh session on top of that decision.
-            self.auto_blocked_until = self.now_fn() + timedelta(minutes=self.settings.break_minutes)
-        logger.info("Focus session stopped by user")
+    # -- wiring / reads --------------------------------------------------------
 
     def attach_collector(self, collector) -> None:
-        """Wire the activity collector: its idle-resume edge auto-starts focus."""
+        """The activity collector supplies the current run; no signals needed."""
         self.collector = collector
-        signal = getattr(collector, "resumed_after_idle", None)
-        if signal is not None:
-            signal.connect(self.maybe_auto_start)
-
-    def maybe_auto_start(self) -> None:
-        """Quietly start a focus session on input-after-idle (auto-pomodoro)."""
-        if not self.settings.auto_start or self.state != IDLE:
-            return
-        if self.auto_blocked_until is not None and self.now_fn() < self.auto_blocked_until:
-            return
-        logger.info("Auto-starting a focus session (input after idle)")
-        self.start_focus()
-
-    def skip_break(self) -> None:
-        """Cut the break short and dive into the next focus session."""
-        if self.state == BREAK:
-            self.start_focus()
 
     def today_count(self) -> int:
-        return self.store.completed_focus_count(self.now_fn().date())
+        return activity_mod.focus_count(self.store, self.now_fn().date(), self.settings.focus_minutes)
 
-    def remaining_seconds(self) -> int:
-        if self.phase_ends is None:
-            return 0
-        return max(0, int((self.phase_ends - self.now_fn()).total_seconds()))
+    def current_run_stats(self) -> dict | None:
+        """Live stats for the ongoing run, or None when idle (no run)."""
+        if self.collector is None or not hasattr(self.collector, "current_run_stats"):
+            return None
+        return self.collector.current_run_stats(self.now_fn())
 
-    def progress(self) -> float:
-        """0.0 at phase start, 1.0 at the deadline."""
-        if self.phase_planned_seconds <= 0:
-            return 0.0
-        done = self.phase_planned_seconds - self.remaining_seconds()
-        return min(1.0, max(0.0, done / self.phase_planned_seconds))
+    def run_elapsed_seconds(self, stats: dict) -> float:
+        return (self.now_fn() - stats["start"]).total_seconds()
+
+    def earned(self, stats: dict) -> bool:
+        return self.run_elapsed_seconds(stats) >= self.settings.focus_minutes * 60
+
+    # -- tooltip text ----------------------------------------------------------
 
     def period_parts(self, duration: str, stats: dict | None) -> str:
         """The agreed tooltip order: 🍅×N · duration · ⌨ keys · 🖱 clicks/path · %."""
@@ -208,158 +150,71 @@ class FocusController(QtCore.QObject):
         return " · ".join(parts)
 
     def status_text(self) -> str:
-        minutes, seconds = divmod(self.remaining_seconds(), 60)
-        clock = f"{minutes:02d}:{seconds:02d}"
-        if self.state == FOCUS:
-            return f"Focus · {self.period_parts(f'{clock} left', self.current_session_stats())}"
-        if self.state == BREAK:
-            return f"Break · {self.period_parts(f'{clock} left', self.current_session_stats())}"
-        return ""
-
-    def current_session_stats(self) -> dict | None:
-        """Interim counters for the CURRENT period, or None when idle.
-
-        Flushed minute buckets plus the collector's live bucket, so the values
-        move while you type. Shared by the focus tooltip and the Activity
-        dialog's live "Current" row.
-        """
-        if self.state == IDLE or self.phase_started is None:
-            return None
-        try:
-            rows = self.store.minutes_between(self.phase_started, self.now_fn())
-        except Exception:  # noqa: BLE001 - stats must never break the tooltip
-            rows = []
-        collector = self.collector
-        keys = sum(row["keys"] for row in rows) + int(getattr(collector, "bucket_keys", 0) or 0)
-        clicks = sum(row["clicks"] for row in rows) + int(getattr(collector, "bucket_clicks", 0) or 0)
-        mouse_px = sum(row["mouse_px"] for row in rows) + int(getattr(collector, "bucket_mouse_px", 0) or 0)
-        active = sum(row["active"] for row in rows)
-        elapsed_minutes = max(1, int((self.now_fn() - self.phase_started).total_seconds() // 60))
-        return {
-            "kind": self.state,
-            "start": self.phase_started,
-            "keys": keys,
-            "clicks": clicks,
-            "mouse_px": mouse_px,
-            "active": active,
-            "observed": len(rows),
-            "active_pct": min(100, round(100 * active / elapsed_minutes)),
-        }
-
-    # -- clock ---------------------------------------------------------------
-
-    def tick(self) -> None:
-        if self.state == IDLE:
-            # No timer — keep the hover tooltip tracking the current run.
-            self.refresh_visuals()
-            return
-        if self.phase_ends is not None and self.now_fn() >= self.phase_ends:
-            self.finish_phase()
-            return
-        self.refresh_visuals()
-
-    def finish_phase(self) -> None:
-        overshoot = 0.0
-        if self.phase_ends is not None:
-            overshoot = (self.now_fn() - self.phase_ends).total_seconds()
-        stale = overshoot > OVERSHOOT_GRACE_SECONDS
-
-        if self.state == FOCUS:
-            self.record_phase(completed=True)
-            self.focus_streak += 1
-            if self.announcer is not None:
-                self.announcer.set_dnd(False)
-            if stale:
-                # Machine slept through the deadline — no banner hours later.
-                self.leave_phase()
-                return
-            long_break = self.focus_streak % self.settings.sessions_before_long_break == 0
-            minutes = self.settings.long_break_minutes if long_break else self.settings.break_minutes
-            if self.announcer is not None:
-                if long_break:
-                    text = f"Break — you earned a long one! 🍅 ×{self.settings.sessions_before_long_break}"
-                else:
-                    text = f"Break time! 🍅 #{self.today_count()} done"
-                self.announcer.announce(text)
-            self.on_long_break = long_break
-            self.enter_phase(BREAK, minutes * 60)
-            return
-
-        # BREAK finished.
-        self.record_phase(completed=True)
-        if self.announcer is not None and not stale:
-            self.announcer.announce("Break's over — another focus? 🍅")
-        self.leave_phase()
-
-    # -- phase bookkeeping ----------------------------------------------------
-
-    def enter_phase(self, state: str, planned_seconds: int) -> None:
-        self.state = state
-        if state != BREAK:
-            self.on_long_break = False
-        self.phase_started = self.now_fn()
-        self.phase_planned_seconds = planned_seconds
-        self.phase_ends = self.phase_started + timedelta(seconds=planned_seconds)
-        self.refresh_visuals()
-
-    def leave_phase(self) -> None:
-        self.state = IDLE
-        self.phase_started = None
-        self.phase_ends = None
-        self.phase_planned_seconds = 0
-        self.on_long_break = False
-        self.refresh_visuals()
-
-    def record_phase(self, completed: bool) -> None:
-        if self.state == IDLE or self.phase_started is None:
-            return
-        if self.state == FOCUS:
-            kind = activity_store.FOCUS
-        elif self.on_long_break:
-            kind = activity_store.LONG_BREAK
-        else:
-            kind = activity_store.BREAK
-        try:
-            self.store.record_session(
-                kind=kind,
-                started_at=self.phase_started,
-                ended_at=self.now_fn(),
-                planned_seconds=self.phase_planned_seconds,
-                completed=completed,
-            )
-        except Exception:  # noqa: BLE001 - a broken DB must not kill the timer
-            logger.exception("Failed to record %s session", self.state)
-
-    # -- visuals: the cat's hover tooltip carries the current period -------------
-
-    def idle_run_text(self) -> str:
-        """Tooltip for the current no-timer activity run ("Other"), or ""."""
-        collector = self.collector
-        if collector is None or not hasattr(collector, "current_run_stats"):
-            return ""
-        stats = collector.current_run_stats()
+        """Tooltip for the ongoing run ("Focus · …", "🍅 Focus · …"), or "" when idle."""
+        stats = self.current_run_stats()
         if stats is None:
             return ""
-        minutes = stats["elapsed_minutes"]
-        hours, mins = divmod(minutes, 60)
-        elapsed = f"{hours} h {mins:02d} min" if hours else f"{mins} min"
-        return f"Other · {self.period_parts(elapsed, stats)}"
+        label = "🍅 Focus" if self.earned(stats) else "Focus"
+        return f"{label} · {self.period_parts(format_elapsed(self.run_elapsed_seconds(stats)), stats)}"
+
+    # -- clock -----------------------------------------------------------------
+
+    def tick(self) -> None:
+        stats = self.current_run_stats()
+        if stats is None:
+            # Idle: release DND and forget the run we were watching.
+            self.set_dnd(False)
+            self.run_start = None
+            self.rests_nudged = 0
+            self.refresh_visuals()
+            return
+
+        start = stats["start"]
+        if start != self.run_start:
+            # A fresh run — reset the rest-nudge counter.
+            self.run_start = start
+            self.rests_nudged = 0
+        self.set_dnd(True)
+
+        elapsed_minutes = int(self.run_elapsed_seconds(stats) // 60)
+        milestones = elapsed_minutes // self.settings.focus_minutes  # 0, 1, 2, …
+        if milestones > self.rests_nudged:
+            self.rests_nudged = milestones
+            self.announce_rest(milestones)
+
+        self.refresh_visuals()
+
+    def announce_rest(self, milestone: int) -> None:
+        if self.announcer is None:
+            return
+        text = "🍅 earned — time to rest" if milestone == 1 else "Still at it — time to rest 🍅"
+        # Urgent so it breaks through the DND this very run put up.
+        self.announcer.announce(text, urgent=True)
+        logger.info("Focus rest nudge (milestone %d, %d min)", milestone, milestone * self.settings.focus_minutes)
+
+    def set_dnd(self, active: bool) -> None:
+        if active == self.dnd_on:
+            return
+        self.dnd_on = active
+        if self.announcer is not None:
+            self.announcer.set_dnd(active)
+
+    # -- visuals: the cat's hover tooltip carries the current run --------------
 
     def refresh_visuals(self) -> None:
         window = self.window
         if window is None or not hasattr(window, "setToolTip"):
             return
-        # Session tooltip when a timer runs; the current "Other" run otherwise.
-        text = self.status_text() or self.idle_run_text()
+        text = self.status_text() or f"🍅 {self.today_count()} today · idle"
         window.setToolTip(text)
-        # While the tooltip is on screen, keep its countdown/stats ticking.
+        # While the tooltip is on screen, keep its clock/stats ticking.
         try:
             from PySide6 import QtGui, QtWidgets
 
-            if text and QtWidgets.QToolTip.isVisible() and window.underMouse():
+            if QtWidgets.QToolTip.isVisible() and window.underMouse():
                 QtWidgets.QToolTip.showText(QtGui.QCursor.pos(), text, window)
         except Exception:  # noqa: BLE001 - a tooltip must never break the timer
             pass
 
 
-__all__ = ["FocusController", "FocusSettings", "load_focus_settings", "IDLE", "FOCUS", "BREAK"]
+__all__ = ["FocusController", "FocusSettings", "load_focus_settings", "format_elapsed", "cursor_km_estimate"]

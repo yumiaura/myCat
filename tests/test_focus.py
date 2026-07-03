@@ -1,10 +1,9 @@
-"""Focus state machine: transitions, DND, session records, overshoot grace."""
+"""Auto-focus watcher: tooltip, the earned/rest banner, DND on active vs idle."""
 
 from datetime import datetime, timedelta
 
-from mycat import activity_store
 from mycat.activity_store import ActivityStore
-from mycat.focus import BREAK, FOCUS, IDLE, FocusController
+from mycat.focus import FocusController, format_elapsed
 
 
 class FakeNow:
@@ -30,121 +29,114 @@ class AnnouncerStub:
         self.announced.append(text)
 
 
-def make_controller(tmp_path, qapp):
+class FakeCollector:
+    """Hands the watcher whatever current run the test sets, like the real one."""
+
+    def __init__(self) -> None:
+        self.run = None
+
+    def current_run_stats(self, now=None):
+        return self.run
+
+
+def make(tmp_path):
     now = FakeNow()
     ann = AnnouncerStub()
-    store = ActivityStore(db_path=tmp_path / "activity.db")
+    store = ActivityStore(db_path=tmp_path / "a.db")
     controller = FocusController(None, announcer=ann, store=store, now_fn=now, start_timer=False)
-    return controller, ann, store, now
+    collector = FakeCollector()
+    controller.attach_collector(collector)
+    return controller, ann, store, now, collector
 
 
-def run_out_phase(controller, now):
-    now.advance(seconds=controller.remaining_seconds() + 1)
+def run_stats(start, active_minutes=1, keys=0, clicks=0, mouse_px=0, active_pct=100):
+    return {
+        "start": start,
+        "keys": keys,
+        "clicks": clicks,
+        "mouse_px": mouse_px,
+        "active_minutes": active_minutes,
+        "elapsed_minutes": active_minutes,
+        "active_pct": active_pct,
+    }
+
+
+def test_format_elapsed():
+    assert format_elapsed(7 * 60 + 18) == "7:18"
+    assert format_elapsed(3 * 3600 + 4 * 60 + 5) == "3:04:05"
+
+
+def test_idle_has_no_tooltip_and_no_dnd(tmp_path, qapp):
+    controller, ann, store, now, col = make(tmp_path)
+    col.run = None
     controller.tick()
-
-
-def test_starts_idle(tmp_path, qapp):
-    controller, ann, store, now = make_controller(tmp_path, qapp)
-    assert controller.state == IDLE
     assert controller.status_text() == ""
+    assert ann.dnd_calls == []  # DND was never switched on
 
 
-def test_start_focus_enables_dnd(tmp_path, qapp):
-    controller, ann, store, now = make_controller(tmp_path, qapp)
-    controller.start_focus()
-    assert controller.state == FOCUS
-    assert ann.dnd_calls == [True]
-    assert controller.remaining_seconds() == controller.settings.focus_minutes * 60
-
-
-def test_focus_runs_out_into_break_with_banner(tmp_path, qapp):
-    controller, ann, store, now = make_controller(tmp_path, qapp)
-    controller.start_focus()
-    run_out_phase(controller, now)
-    assert controller.state == BREAK
-    assert ann.dnd_calls == [True, False]
-    assert any("Break time" in text for text in ann.announced)
-    sessions = store.sessions_on(now().date())
-    assert [(row["kind"], row["completed"]) for row in sessions] == [(activity_store.FOCUS, 1)]
-
-
-def test_break_runs_out_into_idle(tmp_path, qapp):
-    controller, ann, store, now = make_controller(tmp_path, qapp)
-    controller.start_focus()
-    run_out_phase(controller, now)  # -> break
-    run_out_phase(controller, now)  # -> idle
-    assert controller.state == IDLE
-    assert any("Break's over" in text for text in ann.announced)
-    kinds = [row["kind"] for row in store.sessions_on(now().date())]
-    assert kinds == [activity_store.FOCUS, activity_store.BREAK]
-
-
-def test_long_break_after_streak(tmp_path, qapp):
-    controller, ann, store, now = make_controller(tmp_path, qapp)
-    per_long = controller.settings.sessions_before_long_break
-    for cycle in range(per_long):
-        controller.start_focus()
-        run_out_phase(controller, now)  # focus -> break
-        if cycle < per_long - 1:
-            run_out_phase(controller, now)  # break -> idle
-    assert controller.on_long_break is True
-    assert controller.remaining_seconds() == controller.settings.long_break_minutes * 60
-    assert any("Break" in text for text in ann.announced)
-    run_out_phase(controller, now)
-    kinds = [row["kind"] for row in store.sessions_on(now().date())]
-    assert kinds.count(activity_store.LONG_BREAK) == 1
-
-
-def test_stop_mid_focus_records_incomplete_and_lifts_dnd(tmp_path, qapp):
-    controller, ann, store, now = make_controller(tmp_path, qapp)
-    controller.start_focus()
-    now.advance(minutes=10)
-    controller.stop()
-    assert controller.state == IDLE
-    assert ann.dnd_calls == [True, False]
-    sessions = store.sessions_on(now().date())
-    assert [(row["kind"], row["completed"]) for row in sessions] == [(activity_store.FOCUS, 0)]
-    # No celebration banner for an abandoned session.
-    assert ann.announced == []
-
-
-def test_skip_break_starts_next_focus(tmp_path, qapp):
-    controller, ann, store, now = make_controller(tmp_path, qapp)
-    controller.start_focus()
-    run_out_phase(controller, now)  # -> break
-    controller.skip_break()
-    assert controller.state == FOCUS
-    kinds_completed = [(row["kind"], row["completed"]) for row in store.sessions_on(now().date())]
-    assert kinds_completed == [(activity_store.FOCUS, 1), (activity_store.BREAK, 0)]
-
-
-def test_today_count_counts_only_completed_focus(tmp_path, qapp):
-    controller, ann, store, now = make_controller(tmp_path, qapp)
-    controller.start_focus()
-    run_out_phase(controller, now)  # completed focus
-    controller.stop()  # abandon the break
-    controller.start_focus()
-    now.advance(minutes=1)
-    controller.stop()  # abandoned focus
-    assert controller.today_count() == 1
-
-
-def test_overshoot_after_suspend_finishes_quietly(tmp_path, qapp):
-    controller, ann, store, now = make_controller(tmp_path, qapp)
-    controller.start_focus()
-    # Lid closed: the deadline passed hours ago.
-    now.advance(hours=3)
-    controller.tick()
-    assert controller.state == IDLE  # no auto-break hours later
-    assert ann.announced == []  # and no stale banner
-    sessions = store.sessions_on(now().date())
-    assert [(row["kind"], row["completed"]) for row in sessions] == [(activity_store.FOCUS, 1)]
-
-
-def test_status_text_formats_clock(tmp_path, qapp):
-    controller, ann, store, now = make_controller(tmp_path, qapp)
-    controller.start_focus()
+def test_active_run_sets_dnd_and_ticks_tooltip(tmp_path, qapp):
+    controller, ann, store, now, col = make(tmp_path)
+    col.run = run_stats(now(), keys=450, active_pct=96)
     now.advance(minutes=7, seconds=18)
+    controller.tick()
+    assert ann.dnd_calls == [True]
     text = controller.status_text()
-    # Agreed order: Focus · 🍅 N · duration · (⌨/🖱/% when stats exist)
-    assert text.startswith("Focus · 🍅 0 · 17:42 left")
+    assert text.startswith("Focus · 🍅 0 · 7:18")
+    assert "⌨ 450" in text and "% active" in text
+
+
+def test_earned_banner_fires_once_at_focus_minutes(tmp_path, qapp):
+    controller, ann, store, now, col = make(tmp_path)
+    col.run = run_stats(now())
+    now.advance(minutes=24)
+    controller.tick()
+    assert ann.announced == []  # not yet 25 min
+    now.advance(minutes=1)
+    controller.tick()
+    assert ann.announced == ["🍅 earned — time to rest"]
+    assert controller.status_text().startswith("🍅 Focus ·")  # now labelled as earned
+    now.advance(minutes=10)
+    controller.tick()
+    assert ann.announced == ["🍅 earned — time to rest"]  # no re-fire before 50 min
+
+
+def test_rest_reminder_repeats_every_interval(tmp_path, qapp):
+    controller, ann, store, now, col = make(tmp_path)
+    col.run = run_stats(now())
+    now.advance(minutes=25)
+    controller.tick()
+    now.advance(minutes=25)
+    controller.tick()  # 50 min of unbroken work
+    assert ann.announced == ["🍅 earned — time to rest", "Still at it — time to rest 🍅"]
+
+
+def test_dnd_released_when_the_run_ends(tmp_path, qapp):
+    controller, ann, store, now, col = make(tmp_path)
+    col.run = run_stats(now())
+    controller.tick()
+    assert ann.dnd_calls == [True]
+    col.run = None  # rested past the gap
+    controller.tick()
+    assert ann.dnd_calls == [True, False]
+
+
+def test_a_fresh_run_can_earn_again(tmp_path, qapp):
+    controller, ann, store, now, col = make(tmp_path)
+    col.run = run_stats(now())
+    now.advance(minutes=25)
+    controller.tick()
+    col.run = None
+    controller.tick()  # rest
+    now.advance(minutes=10)
+    col.run = run_stats(now())  # brand-new run
+    now.advance(minutes=25)
+    controller.tick()
+    assert ann.announced == ["🍅 earned — time to rest", "🍅 earned — time to rest"]
+
+
+def test_today_count_reads_earned_runs_from_the_store(tmp_path, qapp):
+    controller, ann, store, now, col = make(tmp_path)
+    start = datetime(2026, 7, 2, 8, 0)
+    for offset in range(26):  # a 26-minute run → one 🍅
+        store.record_minute(start + timedelta(minutes=offset), 4000, 200, 8, True)
+    assert controller.today_count() == 1

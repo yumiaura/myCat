@@ -205,13 +205,13 @@ def test_day_summary_totals(tmp_path):
     store = ActivityStore(db_path=tmp_path / "a.db")
     day = date(2026, 7, 2)
     start = datetime(2026, 7, 2, 9, 0)
-    store.record_session(activity_store.FOCUS, start, start + timedelta(minutes=25), 1500, True)
-    fill_minutes(store, start, 10, active=True, mouse_px=1000, keys=100)
+    # A 25-minute continuous activity run earns one 🍅 (focus is derived from runs now).
+    fill_minutes(store, start, 25, active=True, mouse_px=1000, keys=100)
     summary = day_summary(store, day, dpi=96.0)
-    assert summary["keys"] == 1000
+    assert summary["keys"] == 2500
     assert summary["focus_count"] == 1
     assert summary["best_focus_minutes"] == 25
-    assert summary["active_minutes"] == 10
+    assert summary["active_minutes"] == 25
     assert summary["cursor_km"] > 0
 
 

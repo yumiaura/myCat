@@ -1127,18 +1127,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         # shop_action = menu.addAction("Open Shop…")
         # shop_action.triggered.connect(self._open_shop)
 
-        # Focus (pomodoro) — labels reflect the live session state; the menu
-        # is rebuilt on every right-click so they are always current.
-        focus_controller = getattr(self, "focus_controller", None)
-        if focus_controller is not None:
-            if focus_controller.state == focus.FOCUS:
-                menu.addAction("Stop focus", focus_controller.stop)
-            elif focus_controller.state == focus.BREAK:
-                menu.addAction("Skip break", focus_controller.skip_break)
-                menu.addAction("Stop session", focus_controller.stop)
-            else:
-                minutes = focus_controller.settings.focus_minutes
-                menu.addAction(f"Focus {minutes} min", focus_controller.start_focus)
+        # Focus is fully automatic now (earned from activity) — no menu action.
         menu.addSeparator()
 
         # Rebuild the list every time so freshly-installed chars appear without restart.
@@ -1681,30 +1670,7 @@ def setup_tray(app, window, icon_pixmap):
     menu.addAction("GitHub…", window.open_github_settings)
     menu.addAction("Activity…", window.open_activity_dialog)
 
-    # One toggle action for focus sessions; its label is refreshed just before
-    # the menu opens (the tray menu is built once, unlike the context menu).
-    focus_controller = getattr(window, "focus_controller", None)
-    if focus_controller is not None:
-        def toggle_focus():
-            if focus_controller.state == focus.FOCUS:
-                focus_controller.stop()
-            elif focus_controller.state == focus.BREAK:
-                focus_controller.skip_break()
-            else:
-                focus_controller.start_focus()
-
-        focus_action = menu.addAction("Focus", toggle_focus)
-
-        def refresh_focus_label():
-            if focus_controller.state == focus.FOCUS:
-                focus_action.setText("Stop focus")
-            elif focus_controller.state == focus.BREAK:
-                focus_action.setText("Skip break")
-            else:
-                focus_action.setText(f"Focus {focus_controller.settings.focus_minutes} min")
-
-        refresh_focus_label()
-        menu.aboutToShow.connect(refresh_focus_label)
+    # Focus is fully automatic now (earned from activity) — no tray toggle.
 
     if autostart.is_supported():
         menu.addSeparator()
