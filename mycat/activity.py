@@ -22,8 +22,9 @@ Two tiers:
   installed, Wayland, missing macOS Input Monitoring permission) the collector
   degrades to tier 1 at runtime.
 
-The mouse and keyboard tracks are independently switchable: ``mouse_enabled``
-covers the cursor path *and* click counts, ``keyboard_enabled`` the key counts.
+The two COUNT tracks switch independently (``mouse_enabled`` = click counts,
+``keyboard_enabled`` = key counts). The tier-1 cursor path always records while
+the diary is on — the cat's eyes track the cursor anyway — so it has no toggle.
 """
 
 import configparser
@@ -72,9 +73,9 @@ class ActivitySettings:
     # The diary is core product behaviour: on by default, with an opt-out,
     # a retention limit and a delete-everything button in the dialog.
     enabled: bool = True
-    # Two independently switchable tracks. Mouse = cursor path (tier 1) + click
-    # counts (tier 2). Keyboard = key counts (tier 2). Tier 2 needs mycat[basic];
-    # without it these degrade silently to cursor-path-only.
+    # Two switchable COUNT tracks (both tier 2, need mycat[basic]): mouse = click
+    # counts, keyboard = key counts. The tier-1 cursor path always records while
+    # the diary is on — the cat's eyes need the cursor anyway — so it has no toggle.
     mouse_enabled: bool = True
     keyboard_enabled: bool = True
     retention_days: int = DEFAULT_RETENTION_DAYS
@@ -298,9 +299,9 @@ class ActivityCollector(QtCore.QObject):
 
         moved = 0.0
         pos = self.cursor_pos_fn()
-        # Cursor path is part of the mouse track — skip it when the mouse is off,
-        # but keep last_pos current so re-enabling doesn't book a phantom jump.
-        if self.settings.mouse_enabled and pos is not None and self.last_pos is not None:
+        # Cursor path always records while the diary is on — the cat's eyes track
+        # the cursor anyway, so "Enable Mouse" gates only the click count, not this.
+        if pos is not None and self.last_pos is not None:
             dx = pos.x() - self.last_pos.x()
             dy = pos.y() - self.last_pos.y()
             moved = (dx * dx + dy * dy) ** 0.5

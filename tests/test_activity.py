@@ -128,10 +128,11 @@ def test_activity_settings_default_on(tmp_path):
     assert loaded.keyboard_enabled is True
 
 
-def test_mouse_disabled_skips_cursor_path(tmp_path):
-    # With the mouse track off, cursor motion is not accumulated even though the
-    # cursor keeps moving — the minute is a "rest" minute.
-    positions = [FakePoint(0, 0), FakePoint(30, 40), FakePoint(60, 80)]  # would be 50+50 px
+def test_mouse_disabled_keeps_cursor_path(tmp_path):
+    # Turning the mouse track (clicks) off does NOT stop cursor-path recording —
+    # the cat's eyes need the cursor anyway, so the path always accumulates while
+    # the diary is on, and cursor motion still marks the minute active.
+    positions = [FakePoint(0, 0), FakePoint(30, 40), FakePoint(30, 40)]  # 3-4-5 → 50 px
     collector, store, now = make_collector(tmp_path, positions)
     collector.settings.mouse_enabled = False
     collector.sample()
@@ -140,8 +141,8 @@ def test_mouse_disabled_skips_cursor_path(tmp_path):
     now.advance(minutes=1)
     collector.sample()  # rollover flushes the previous minute
     rows = store.minutes_between(datetime(2026, 7, 2), datetime(2026, 7, 3))
-    assert rows[0]["mouse_px"] == 0
-    assert rows[0]["active"] == 0
+    assert rows[0]["mouse_px"] == 50
+    assert rows[0]["active"] == 1
 
 
 def test_apply_settings_reconciles_each_hook_independently(tmp_path):

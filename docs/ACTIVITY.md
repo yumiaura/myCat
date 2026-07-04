@@ -47,8 +47,10 @@ Two independent tiers:
   recording.
 
 The dialog has three nested checkboxes: **Enable Activity** (master), and under
-it **Enable Mouse** (cursor path + clicks) and **Enable Keyboard** (key counts).
-All on by default; the sub-tracks grey out while Activity is off.
+it **Enable Mouse** (click count) and **Enable Keyboard** (key count). All on by
+default; the sub-tracks grey out while Activity is off. The tier-1 cursor path
+always records while Activity is on — the cat's eyes track the cursor anyway —
+so only the two *counts* are switchable.
 
 ### When is a minute "active"?
 

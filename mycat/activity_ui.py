@@ -260,10 +260,11 @@ class ActivityDialog(QtWidgets.QDialog):
         self.enabled_box.setChecked(settings.enabled)
         layout.addWidget(self.enabled_box)
 
-        # Two sub-tracks, indented under the master toggle: Mouse = cursor path +
-        # clicks, Keyboard = key counts. Greyed out while Activity is off.
+        # Two sub-tracks, indented under the master toggle: Mouse = click count,
+        # Keyboard = key count. Greyed out while Activity is off. (Cursor path
+        # always records while Activity is on — the cat's eyes need it.)
         self.mouse_box = QtWidgets.QCheckBox("Enable Mouse")
-        self.mouse_box.setToolTip("Cursor path and click count.")
+        self.mouse_box.setToolTip("Click count. Cursor path always records for the cat's eyes.")
         self.mouse_box.setChecked(settings.mouse_enabled)
         self.keyboard_box = QtWidgets.QCheckBox("Enable Keyboard")
         self.keyboard_box.setToolTip("Keystroke count (never which keys).")
