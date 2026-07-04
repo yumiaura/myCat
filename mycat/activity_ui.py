@@ -270,12 +270,17 @@ class ActivityDialog(QtWidgets.QDialog):
         self.keyboard_box = QtWidgets.QCheckBox("Enable Keyboard")
         self.keyboard_box.setToolTip("Keystroke count (never which keys).")
         self.keyboard_box.setChecked(settings.keyboard_enabled)
+        # Delete-all sits top-right, apart from the toggles — a destructive
+        # action kept away from the day-picker row, which is already crowded.
+        self.delete_button = QtWidgets.QPushButton("Delete all…")
+        self.delete_button.clicked.connect(self.delete_all)
         toggles_row = QtWidgets.QHBoxLayout()
         toggles_row.addWidget(self.enabled_box)
         toggles_row.addSpacing(16)
         toggles_row.addWidget(self.mouse_box)
         toggles_row.addWidget(self.keyboard_box)
         toggles_row.addStretch(1)
+        toggles_row.addWidget(self.delete_button)
         layout.addLayout(toggles_row)
         self.enabled_box.toggled.connect(self.mouse_box.setEnabled)
         self.enabled_box.toggled.connect(self.keyboard_box.setEnabled)
@@ -314,9 +319,6 @@ class ActivityDialog(QtWidgets.QDialog):
         self.goal_spin.setSuffix(" min")
         controls_row.addWidget(self.goal_spin)
         controls_row.addStretch(1)
-        self.delete_button = QtWidgets.QPushButton("Delete all…")
-        self.delete_button.clicked.connect(self.delete_all)
-        controls_row.addWidget(self.delete_button)
         layout.addLayout(controls_row)
 
         # Day activity strip: red = active (deeper = busier), green = rest,
