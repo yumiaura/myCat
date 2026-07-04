@@ -251,6 +251,10 @@ class ActivityDialog(QtWidgets.QDialog):
         self.current_start = None
         self.dpi = 96.0
 
+        # All three toggles on one line: master Enable Activity, then the two
+        # COUNT sub-tracks — Mouse = click count, Keyboard = key count — which
+        # grey out while Activity is off. (Cursor path always records while
+        # Activity is on — the cat's eyes need it.)
         self.enabled_box = QtWidgets.QCheckBox("Enable Activity")
         self.enabled_box.setToolTip(
             "Record your focus and how much you use the mouse and keyboard — how many\n"
@@ -258,24 +262,19 @@ class ActivityDialog(QtWidgets.QDialog):
             "computer; nothing is ever sent anywhere. Off = nothing is recorded."
         )
         self.enabled_box.setChecked(settings.enabled)
-        layout.addWidget(self.enabled_box)
-
-        # Two sub-tracks, indented under the master toggle: Mouse = click count,
-        # Keyboard = key count. Greyed out while Activity is off. (Cursor path
-        # always records while Activity is on — the cat's eyes need it.)
         self.mouse_box = QtWidgets.QCheckBox("Enable Mouse")
         self.mouse_box.setToolTip("Click count. Cursor path always records for the cat's eyes.")
         self.mouse_box.setChecked(settings.mouse_enabled)
         self.keyboard_box = QtWidgets.QCheckBox("Enable Keyboard")
         self.keyboard_box.setToolTip("Keystroke count (never which keys).")
         self.keyboard_box.setChecked(settings.keyboard_enabled)
-        for sub_box in (self.mouse_box, self.keyboard_box):
-            sub_row = QtWidgets.QHBoxLayout()
-            sub_row.setContentsMargins(0, 0, 0, 0)
-            sub_row.addSpacing(22)  # indent under the master checkbox
-            sub_row.addWidget(sub_box)
-            sub_row.addStretch(1)
-            layout.addLayout(sub_row)
+        toggles_row = QtWidgets.QHBoxLayout()
+        toggles_row.addWidget(self.enabled_box)
+        toggles_row.addSpacing(16)
+        toggles_row.addWidget(self.mouse_box)
+        toggles_row.addWidget(self.keyboard_box)
+        toggles_row.addStretch(1)
+        layout.addLayout(toggles_row)
         self.enabled_box.toggled.connect(self.mouse_box.setEnabled)
         self.enabled_box.toggled.connect(self.keyboard_box.setEnabled)
         self.mouse_box.setEnabled(settings.enabled)
@@ -289,7 +288,6 @@ class ActivityDialog(QtWidgets.QDialog):
             hint.setTextFormat(QtCore.Qt.TextFormat.RichText)
             hint.setWordWrap(True)
             hint.setStyleSheet("color: #888888;")
-            hint.setContentsMargins(22, 0, 0, 0)
             layout.addWidget(hint)
 
         controls_row = QtWidgets.QHBoxLayout()
