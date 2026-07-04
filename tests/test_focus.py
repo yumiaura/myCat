@@ -3,7 +3,15 @@
 from datetime import datetime, timedelta
 
 from mycat.activity_store import ActivityStore
-from mycat.focus import FocusController, format_elapsed
+from mycat.focus import FocusController, FocusSettings, format_elapsed, load_focus_settings, save_focus_settings
+
+
+def test_focus_goal_round_trip(tmp_path):
+    cfg = tmp_path / "config.ini"
+    save_focus_settings(FocusSettings(focus_minutes=30), cfg_file=cfg)
+    assert load_focus_settings(cfg_file=cfg).focus_minutes == 30
+    # Default (no file) is the 25-minute Pomodoro.
+    assert load_focus_settings(cfg_file=tmp_path / "none.ini").focus_minutes == 25
 
 
 class FakeNow:

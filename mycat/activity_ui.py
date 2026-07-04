@@ -15,11 +15,13 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 if __package__:
     from . import activity as activity_mod
+    from . import focus as focus_mod
     from .ui_theme import LIGHT_QSS
 else:
     import importlib
 
     activity_mod = importlib.import_module("mycat.activity")
+    focus_mod = importlib.import_module("mycat.focus")
     LIGHT_QSS = importlib.import_module("mycat.ui_theme").LIGHT_QSS
 
 logger = logging.getLogger(__name__)
@@ -291,18 +293,26 @@ class ActivityDialog(QtWidgets.QDialog):
             layout.addWidget(hint)
 
         controls_row = QtWidgets.QHBoxLayout()
-        controls_row.addWidget(QtWidgets.QLabel("Keep history for:"))
+        controls_row.addWidget(QtWidgets.QLabel("Show:"))
+        self.day_combo = QtWidgets.QComboBox()
+        self.day_combo.addItems(["Today", "Yesterday"])
+        self.day_combo.currentIndexChanged.connect(self.refresh_log)
+        controls_row.addWidget(self.day_combo)
+        controls_row.addSpacing(16)
+        controls_row.addWidget(QtWidgets.QLabel("History:"))
         self.retention_spin = QtWidgets.QSpinBox()
         self.retention_spin.setRange(7, 3650)
         self.retention_spin.setValue(settings.retention_days)
         self.retention_spin.setSuffix(" days")
         controls_row.addWidget(self.retention_spin)
         controls_row.addSpacing(16)
-        controls_row.addWidget(QtWidgets.QLabel("Show:"))
-        self.day_combo = QtWidgets.QComboBox()
-        self.day_combo.addItems(["Today", "Yesterday"])
-        self.day_combo.currentIndexChanged.connect(self.refresh_log)
-        controls_row.addWidget(self.day_combo)
+        # The Pomodoro goal: a run this long earns a 🍅 (persisted to [focus]).
+        controls_row.addWidget(QtWidgets.QLabel("Pomodoro goal:"))
+        self.goal_spin = QtWidgets.QSpinBox()
+        self.goal_spin.setRange(1, 240)
+        self.goal_spin.setValue(self.focus_minutes())
+        self.goal_spin.setSuffix(" min")
+        controls_row.addWidget(self.goal_spin)
         controls_row.addStretch(1)
         self.delete_button = QtWidgets.QPushButton("Delete all…")
         self.delete_button.clicked.connect(self.delete_all)
@@ -744,18 +754,31 @@ class ActivityDialog(QtWidgets.QDialog):
         )
         activity_mod.save_activity_settings(settings)
         self.collector.apply_settings(settings)
+
+        # Persist + apply the Pomodoro goal (lives in [focus]).
+        goal = self.goal_spin.value()
+        focus_mod.save_focus_settings(focus_mod.FocusSettings(focus_minutes=goal))
+        controller = self.focus_controller
+        if controller is not None and getattr(controller, "settings", None) is not None:
+            controller.settings.focus_minutes = goal
+        self.refresh_log()  # re-grade runs against the new goal right away
+
         logger.info(
-            "Activity settings saved (enabled=%s mouse=%s keyboard=%s)",
+            "Activity settings saved (enabled=%s mouse=%s keyboard=%s goal=%dmin)",
             settings.enabled,
             settings.mouse_enabled,
             settings.keyboard_enabled,
+            goal,
         )
         if settings.enabled:
             mouse = "✓" if settings.mouse_enabled else "✗"
             keyboard = "✓" if settings.keyboard_enabled else "✗"
-            status = f"Saved: activity on · mouse {mouse} · keyboard {keyboard}, keep {settings.retention_days} days."
+            status = (
+                f"Saved: activity on · mouse {mouse} · keyboard {keyboard} · "
+                f"goal {goal} min, keep {settings.retention_days} days."
+            )
         else:
-            status = f"Saved: activity off, keep {settings.retention_days} days."
+            status = f"Saved: activity off · goal {goal} min, keep {settings.retention_days} days."
         self.set_status(status, ok=True)
 
 

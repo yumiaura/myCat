@@ -225,8 +225,10 @@ def test_activity_checkboxes_reflect_and_gate(tmp_path, qapp):
 def test_save_writes_three_flags(tmp_path, qapp, monkeypatch):
     dialog, controller, now = make_dialog(tmp_path)
     saved = []
+    focus_saved = []
     # Never touch the real ~/.config/mycat/config.ini from a test.
     monkeypatch.setattr("mycat.activity.save_activity_settings", lambda settings, **kw: saved.append(settings))
+    monkeypatch.setattr("mycat.focus.save_focus_settings", lambda settings, **kw: focus_saved.append(settings))
     dialog.enabled_box.setChecked(True)
     dialog.mouse_box.setChecked(True)
     dialog.keyboard_box.setChecked(False)
@@ -237,6 +239,19 @@ def test_save_writes_three_flags(tmp_path, qapp, monkeypatch):
     assert saved[0].keyboard_enabled is False
     assert "mouse ✓" in dialog.status_label.text()
     assert "keyboard ✗" in dialog.status_label.text()
+
+
+def test_save_persists_and_applies_pomodoro_goal(tmp_path, qapp, monkeypatch):
+    dialog, controller, now = make_dialog(tmp_path)
+    focus_saved = []
+    monkeypatch.setattr("mycat.activity.save_activity_settings", lambda settings, **kw: None)
+    monkeypatch.setattr("mycat.focus.save_focus_settings", lambda settings, **kw: focus_saved.append(settings))
+    dialog.goal_spin.setValue(30)
+    dialog.save_settings()
+    assert len(focus_saved) == 1
+    assert focus_saved[0].focus_minutes == 30  # persisted
+    assert controller.settings.focus_minutes == 30  # applied live
+    assert "goal 30 min" in dialog.status_label.text()
 
 
 def test_brief_run_is_a_banana(tmp_path, qapp):

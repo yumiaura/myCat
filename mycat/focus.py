@@ -27,12 +27,13 @@ from PySide6 import QtCore
 
 if __package__:
     from . import activity as activity_mod
-    from . import activity_store
+    from . import activity_store, secret_store
 else:
     import importlib
 
     activity_mod = importlib.import_module("mycat.activity")
     activity_store = importlib.import_module("mycat.activity_store")
+    secret_store = importlib.import_module("mycat.secret_store")
 
 logger = logging.getLogger(__name__)
 
@@ -69,14 +70,14 @@ class FocusSettings:
     focus_minutes: int = 25  # a run this long earns a 🍅; anything shorter is a 🍌
 
 
-def load_focus_settings() -> FocusSettings:
+def load_focus_settings(cfg_file: Path = CFG_FILE) -> FocusSettings:
     """Read the ``[focus]`` section; every field falls back to the default."""
     settings = FocusSettings()
-    if not CFG_FILE.exists():
+    if not cfg_file.exists():
         return settings
     try:
         config = configparser.ConfigParser()
-        config.read(CFG_FILE)
+        config.read(cfg_file)
         if "focus" not in config:
             return settings
         section = config["focus"]
@@ -84,6 +85,23 @@ def load_focus_settings() -> FocusSettings:
     except Exception as exc:  # noqa: BLE001 - never let a bad config crash the app
         logger.error("Failed to load focus settings: %s", exc)
     return settings
+
+
+def save_focus_settings(settings: FocusSettings, cfg_file: Path = CFG_FILE) -> None:
+    """Persist the ``[focus]`` section (the Pomodoro goal), creating the file if needed."""
+    try:
+        cfg_file.parent.mkdir(parents=True, exist_ok=True)
+        config = configparser.ConfigParser()
+        if cfg_file.exists():
+            config.read(cfg_file)
+        if "focus" not in config:
+            config.add_section("focus")
+        config["focus"]["focus_minutes"] = str(settings.focus_minutes)
+        with open(cfg_file, "w") as fh:
+            config.write(fh)
+        secret_store.secure_file(cfg_file)
+    except Exception as exc:  # noqa: BLE001 - never let a bad config crash the app
+        logger.error("Failed to save focus settings: %s", exc)
 
 
 class FocusController(QtCore.QObject):
@@ -217,4 +235,11 @@ class FocusController(QtCore.QObject):
             pass
 
 
-__all__ = ["FocusController", "FocusSettings", "load_focus_settings", "format_elapsed", "cursor_km_estimate"]
+__all__ = [
+    "FocusController",
+    "FocusSettings",
+    "load_focus_settings",
+    "save_focus_settings",
+    "format_elapsed",
+    "cursor_km_estimate",
+]
