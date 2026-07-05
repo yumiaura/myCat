@@ -8,10 +8,14 @@ from mycat.focus import FocusController, FocusSettings, format_elapsed, load_foc
 
 def test_focus_goal_round_trip(tmp_path):
     cfg = tmp_path / "config.ini"
-    save_focus_settings(FocusSettings(focus_minutes=30), cfg_file=cfg)
-    assert load_focus_settings(cfg_file=cfg).focus_minutes == 30
-    # Default (no file) is the 25-minute Pomodoro.
-    assert load_focus_settings(cfg_file=tmp_path / "none.ini").focus_minutes == 25
+    save_focus_settings(FocusSettings(focus_minutes=30, tooltip_enabled=False), cfg_file=cfg)
+    loaded = load_focus_settings(cfg_file=cfg)
+    assert loaded.focus_minutes == 30
+    assert loaded.tooltip_enabled is False
+    # Defaults (no file): 25-minute Pomodoro, hover tooltip on.
+    default = load_focus_settings(cfg_file=tmp_path / "none.ini")
+    assert default.focus_minutes == 25
+    assert default.tooltip_enabled is True
 
 
 class FakeNow:
@@ -69,9 +73,39 @@ def run_stats(start, active_minutes=1, keys=0, clicks=0, mouse_px=0, active_pct=
     }
 
 
+class FakeWindow:
+    """Minimal cat-window stand-in: just captures the tooltip text."""
+
+    def __init__(self) -> None:
+        self.tip = None
+
+    def setToolTip(self, text) -> None:
+        self.tip = text
+
+    def underMouse(self) -> bool:
+        return False
+
+
 def test_format_elapsed():
     assert format_elapsed(7 * 60 + 18) == "7:18"
     assert format_elapsed(3 * 3600 + 4 * 60 + 5) == "3:04:05"
+
+
+def test_tooltip_toggle_controls_the_hover_tooltip(tmp_path, qapp):
+    now = FakeNow()
+    store = ActivityStore(db_path=tmp_path / "a.db")
+    window = FakeWindow()
+    controller = FocusController(window, announcer=AnnouncerStub(), store=store, now_fn=now, start_timer=False)
+    col = FakeCollector()
+    controller.attach_collector(col)
+    col.run = run_stats(now(), keys=100)
+    # On (default): the tooltip carries the live stats.
+    controller.refresh_visuals()
+    assert window.tip and "⌨ 100" in window.tip
+    # Off: the tooltip is cleared (empty string also kills the hover-show).
+    controller.settings.tooltip_enabled = False
+    controller.refresh_visuals()
+    assert window.tip == ""
 
 
 def test_idle_has_no_tooltip_and_no_dnd(tmp_path, qapp):

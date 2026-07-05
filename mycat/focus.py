@@ -68,6 +68,7 @@ def format_elapsed(seconds: float) -> str:
 @dataclass
 class FocusSettings:
     focus_minutes: int = 25  # a run this long earns a 🍅; anything shorter is a 🍌
+    tooltip_enabled: bool = True  # show the live stats tooltip when hovering the cat
 
 
 def load_focus_settings(cfg_file: Path = CFG_FILE) -> FocusSettings:
@@ -82,13 +83,14 @@ def load_focus_settings(cfg_file: Path = CFG_FILE) -> FocusSettings:
             return settings
         section = config["focus"]
         settings.focus_minutes = section.getint("focus_minutes", fallback=settings.focus_minutes)
+        settings.tooltip_enabled = section.getboolean("tooltip_enabled", fallback=settings.tooltip_enabled)
     except Exception as exc:  # noqa: BLE001 - never let a bad config crash the app
         logger.error("Failed to load focus settings: %s", exc)
     return settings
 
 
 def save_focus_settings(settings: FocusSettings, cfg_file: Path = CFG_FILE) -> None:
-    """Persist the ``[focus]`` section (the Pomodoro goal), creating the file if needed."""
+    """Persist the ``[focus]`` section (Pomodoro goal + tooltip), creating the file if needed."""
     try:
         cfg_file.parent.mkdir(parents=True, exist_ok=True)
         config = configparser.ConfigParser()
@@ -97,6 +99,7 @@ def save_focus_settings(settings: FocusSettings, cfg_file: Path = CFG_FILE) -> N
         if "focus" not in config:
             config.add_section("focus")
         config["focus"]["focus_minutes"] = str(settings.focus_minutes)
+        config["focus"]["tooltip_enabled"] = "true" if settings.tooltip_enabled else "false"
         with open(cfg_file, "w") as fh:
             config.write(fh)
         secret_store.secure_file(cfg_file)
@@ -222,6 +225,17 @@ class FocusController(QtCore.QObject):
     def refresh_visuals(self) -> None:
         window = self.window
         if window is None or not hasattr(window, "setToolTip"):
+            return
+        if not self.settings.tooltip_enabled:
+            # Off: clear the tooltip (an empty string also stops the hover-show in
+            # the window's enterEvent) and dismiss any that is currently on screen.
+            window.setToolTip("")
+            try:
+                from PySide6 import QtWidgets
+
+                QtWidgets.QToolTip.hideText()
+            except Exception:  # noqa: BLE001 - a tooltip must never break the timer
+                pass
             return
         text = self.status_text() or f"🍅 {self.today_count()} today · idle"
         window.setToolTip(text)

@@ -254,6 +254,19 @@ def test_save_persists_and_applies_pomodoro_goal(tmp_path, qapp, monkeypatch):
     assert "goal 30 min" in dialog.status_label.text()
 
 
+def test_save_persists_and_applies_tooltip_toggle(tmp_path, qapp, monkeypatch):
+    dialog, controller, now = make_dialog(tmp_path)
+    focus_saved = []
+    monkeypatch.setattr("mycat.activity.save_activity_settings", lambda settings, **kw: None)
+    monkeypatch.setattr("mycat.focus.save_focus_settings", lambda settings, **kw: focus_saved.append(settings))
+    assert dialog.tooltip_box.isChecked()  # on by default
+    dialog.tooltip_box.setChecked(False)
+    dialog.save_settings()
+    assert focus_saved[0].tooltip_enabled is False  # persisted
+    assert controller.settings.tooltip_enabled is False  # applied live
+    assert "tooltip ✗" in dialog.status_label.text()
+
+
 def test_brief_run_is_a_banana(tmp_path, qapp):
     dialog, controller, now = make_dialog(tmp_path)
     store = controller.store

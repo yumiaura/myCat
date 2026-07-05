@@ -270,17 +270,20 @@ class ActivityDialog(QtWidgets.QDialog):
         self.keyboard_box = QtWidgets.QCheckBox("Enable Keyboard")
         self.keyboard_box.setToolTip("Keystroke count (never which keys).")
         self.keyboard_box.setChecked(settings.keyboard_enabled)
-        # Delete-all sits top-right, apart from the toggles — a destructive
-        # action kept away from the day-picker row, which is already crowded.
-        self.delete_button = QtWidgets.QPushButton("Delete all…")
-        self.delete_button.clicked.connect(self.delete_all)
+        # Independent of the tracking tracks: whether hovering the cat shows the
+        # live stats tooltip (driven by the FocusController).
+        self.tooltip_box = QtWidgets.QCheckBox("Enable Tooltip")
+        self.tooltip_box.setToolTip("Show the live focus/activity stats when you hover over the cat.")
+        self.tooltip_box.setChecked(self.tooltip_enabled())
+        # Four toggles share the top row; the destructive Delete-all lives in the
+        # bottom bar (next to Export) so this row never runs out of width.
         toggles_row = QtWidgets.QHBoxLayout()
         toggles_row.addWidget(self.enabled_box)
         toggles_row.addSpacing(16)
         toggles_row.addWidget(self.mouse_box)
         toggles_row.addWidget(self.keyboard_box)
+        toggles_row.addWidget(self.tooltip_box)
         toggles_row.addStretch(1)
-        toggles_row.addWidget(self.delete_button)
         layout.addLayout(toggles_row)
         self.enabled_box.toggled.connect(self.mouse_box.setEnabled)
         self.enabled_box.toggled.connect(self.keyboard_box.setEnabled)
@@ -382,11 +385,14 @@ class ActivityDialog(QtWidgets.QDialog):
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
 
-        # Export (left) · Save, Close (right), same style as the other dialogs.
+        # Export · Delete-all (left) · Save, Close (right), same style as the others.
         button_row = QtWidgets.QHBoxLayout()
         self.export_button = QtWidgets.QPushButton("Export CSV…")
         self.export_button.clicked.connect(self.export_csv)
         button_row.addWidget(self.export_button)
+        self.delete_button = QtWidgets.QPushButton("Delete all…")
+        self.delete_button.clicked.connect(self.delete_all)
+        button_row.addWidget(self.delete_button)
         button_row.addStretch(1)
         self.save_button = QtWidgets.QPushButton("Save")
         self.close_button = QtWidgets.QPushButton("Close")
@@ -420,6 +426,12 @@ class ActivityDialog(QtWidgets.QDialog):
         if controller is not None and getattr(controller, "settings", None) is not None:
             return controller.settings.focus_minutes
         return activity_mod.FOCUS_MINUTES
+
+    def tooltip_enabled(self) -> bool:
+        controller = self.focus_controller
+        if controller is not None and getattr(controller, "settings", None) is not None:
+            return controller.settings.tooltip_enabled
+        return True
 
     def current_period(self):
         """The live current activity run as a labelled dict, or None when idle.
@@ -757,30 +769,39 @@ class ActivityDialog(QtWidgets.QDialog):
         activity_mod.save_activity_settings(settings)
         self.collector.apply_settings(settings)
 
-        # Persist + apply the Pomodoro goal (lives in [focus]).
+        # Persist + apply the Pomodoro goal and the hover tooltip (both [focus]).
         goal = self.goal_spin.value()
-        focus_mod.save_focus_settings(focus_mod.FocusSettings(focus_minutes=goal))
+        tooltip_on = self.tooltip_box.isChecked()
+        focus_mod.save_focus_settings(focus_mod.FocusSettings(focus_minutes=goal, tooltip_enabled=tooltip_on))
         controller = self.focus_controller
         if controller is not None and getattr(controller, "settings", None) is not None:
             controller.settings.focus_minutes = goal
+            controller.settings.tooltip_enabled = tooltip_on
+            if hasattr(controller, "refresh_visuals"):
+                controller.refresh_visuals()  # show/clear the cat's tooltip right away
         self.refresh_log()  # re-grade runs against the new goal right away
 
         logger.info(
-            "Activity settings saved (enabled=%s mouse=%s keyboard=%s goal=%dmin)",
+            "Activity settings saved (enabled=%s mouse=%s keyboard=%s goal=%dmin tooltip=%s)",
             settings.enabled,
             settings.mouse_enabled,
             settings.keyboard_enabled,
             goal,
+            tooltip_on,
         )
+        tooltip = "✓" if tooltip_on else "✗"
         if settings.enabled:
             mouse = "✓" if settings.mouse_enabled else "✗"
             keyboard = "✓" if settings.keyboard_enabled else "✗"
             status = (
                 f"Saved: activity on · mouse {mouse} · keyboard {keyboard} · "
-                f"goal {goal} min, keep {settings.retention_days} days."
+                f"goal {goal} min · tooltip {tooltip}, keep {settings.retention_days} days."
             )
         else:
-            status = f"Saved: activity off · goal {goal} min, keep {settings.retention_days} days."
+            status = (
+                f"Saved: activity off · goal {goal} min · tooltip {tooltip}, "
+                f"keep {settings.retention_days} days."
+            )
         self.set_status(status, ok=True)
 
 
