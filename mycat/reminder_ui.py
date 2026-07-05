@@ -120,6 +120,25 @@ def _tinted_pixmap(base: QtGui.QPixmap, tint: QtGui.QColor) -> QtGui.QPixmap:
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 PLANES_DIR = ASSETS_DIR / "planes"
 CANOPY_FRACS = (0.485, 0.103, 0.118, 0.230)  # cx, cy, rx, ry (right-facing)
+# Push the cat down this fraction of the plane height so it sits deeper in the
+# cockpit and only the top of the head pokes above the fuselage.
+CAT_SINK_FRAC = 0.13
+# Blink cadence while the plane flies: swap to the closed-eyes frame for
+# BLINK_DUR_S every BLINK_PERIOD_S (only if the char provides a blink frame).
+BLINK_PERIOD_S = 1.7
+BLINK_DUR_S = 0.15
+
+
+def crop_cat_head(pixmap, target_h):
+    """Top 75% of a char frame (head + shoulders + chest), scaled to ``target_h``.
+
+    Shared by the awake and blink frames so both land at the same size/position;
+    returns None for a missing/null pixmap."""
+    if pixmap is None or pixmap.isNull():
+        return None
+    head_h = max(8, int(pixmap.height() * 0.75))
+    head = pixmap.copy(0, 0, pixmap.width(), head_h)
+    return head.scaledToHeight(target_h, QtCore.Qt.TransformationMode.FastTransformation)
 
 
 def available_planes() -> list:
@@ -149,7 +168,7 @@ class FlybyWindow(QtWidgets.QWidget):
     so the message bends with the cloth without unreadable distortion.
     """
 
-    def __init__(self, cat_pixmap, reminder, parent=None) -> None:
+    def __init__(self, cat_pixmap, reminder, parent=None, blink_pixmap=None) -> None:
         flags = QtCore.Qt.WindowType.FramelessWindowHint | QtCore.Qt.WindowType.Tool
         app = QtWidgets.QApplication.instance()
         platform_name = (app.platformName() or "").lower() if app is not None else ""
@@ -247,12 +266,11 @@ class FlybyWindow(QtWidgets.QWidget):
         # still lands at the same width (~48 px at ph=82) but yields a 36%
         # taller sprite — chest/neck now fills the cockpit area under the face
         # instead of leaving empty fuselage there.
-        self._cat_face_pixmap = None
-        if cat_pixmap is not None and not cat_pixmap.isNull():
-            head_h = max(8, int(cat_pixmap.height() * 0.75))
-            head = cat_pixmap.copy(0, 0, cat_pixmap.width(), head_h)
-            target_h = int(self._plane_height * 0.46)
-            self._cat_face_pixmap = head.scaledToHeight(target_h, QtCore.Qt.TransformationMode.FastTransformation)
+        target_h = int(self._plane_height * 0.46)
+        self._cat_face_pixmap = crop_cat_head(cat_pixmap, target_h)
+        # The closed-eyes frame (same crop/scale) — the cat blinks mid-flight when
+        # the char provides one; otherwise the awake face is shown throughout.
+        self.cat_blink_pixmap = crop_cat_head(blink_pixmap, target_h)
 
         # Geometry: cover the full primary screen so the user can drag the plane
         # vertically anywhere on it. The plane normally sits inside a band at
@@ -390,9 +408,9 @@ class FlybyWindow(QtWidgets.QWidget):
         flag_x = flag_attach.x() - self._banner_w if flag_dir < 0 else flag_attach.x()
         flag_rect = QtCore.QRectF(flag_x, flag_attach.y() - self._flag_h / 2, self._banner_w, self._flag_h)
         if self._plane_sprite is not None:
-            # Cat head pokes above the plane top — include that area in the mask
-            # so the click-region matches what's actually drawn on screen.
-            cat_top = plane_rect.y() - self._plane_height * 0.30
+            # Cat head pokes a little above the plane top — include that area in
+            # the mask so the click-region matches what's actually drawn on screen.
+            cat_top = plane_rect.y() - self._plane_height * 0.10
             union_rect = plane_rect.united(flag_rect)
             union_rect.setTop(min(union_rect.top(), cat_top))
         else:
@@ -560,18 +578,22 @@ class FlybyWindow(QtWidgets.QWidget):
     # -- cat face inside the cockpit ---------------------------------------
 
     def _draw_cat_face(self, painter, plane_rect, facing_right) -> None:
-        """Stamp the cat head at the cockpit. No clip, no glass, no rim — the
-        plane sprite is drawn AFTER this so it covers most of the cat; only the
-        top of the head pokes above the plane's silhouette."""
-        if self._cat_face_pixmap is None or self._cat_face_pixmap.isNull():
+        """Stamp the cat head at the cockpit, sunk ``CAT_SINK_FRAC`` into the plane
+        so only the top of the head pokes above the fuselage. The eyes blink on a
+        cycle when a closed-eyes frame is available. No clip, no glass, no rim —
+        the plane sprite is drawn AFTER this so it covers most of the cat."""
+        # Blink: briefly swap to the closed-eyes frame on a slow cycle.
+        elapsed = 0.0 if self._start_time is None else max(0.0, time.monotonic() - self._start_time)
+        blinking = self.cat_blink_pixmap is not None and (elapsed % BLINK_PERIOD_S) < BLINK_DUR_S
+        cat = self.cat_blink_pixmap if blinking else self._cat_face_pixmap
+        if cat is None or cat.isNull():
             return
         x, y, w, h = plane_rect.x(), plane_rect.y(), plane_rect.width(), plane_rect.height()
-        cx_frac_r, cy_frac, _rx_frac, _ry_frac = self._canopy_fracs
+        cx_frac_r, cy_frac, canopy_rx, canopy_ry = self._canopy_fracs
         cx_frac = cx_frac_r if facing_right else (1.0 - cx_frac_r)
         canopy_cx = x + w * cx_frac
-        canopy_cy = y + h * cy_frac
+        canopy_cy = y + h * cy_frac + h * CAT_SINK_FRAC  # sink deeper into the plane
 
-        cat = self._cat_face_pixmap
         if not facing_right:
             cat = cat.transformed(QtGui.QTransform().scale(-1, 1))
         cw, ch = cat.width(), cat.height()
