@@ -15,11 +15,15 @@ It's a lightweight Python + Qt app — no borders, and you can drag it around ea
 Shows static first frame for 5 seconds, then plays GIF animation once, then loops back to static.<br>
 If you like it, maybe I'll share an [AnimeGirl](https://github.com/yumiaura/mycat/discussions/1) version next time~ 😉<br>
 
-<img width="1440" height="900" alt="image" src="https://github.com/user-attachments/assets/5bc3c45b-83ef-4fcb-8977-781eaf7b045b" />
+<img width="640" height="360" alt="image" src="https://github.com/user-attachments/assets/332494c9-8e39-4774-a85c-808839229106" />
 
-<img width="395" height="255" alt="image" src="https://github.com/user-attachments/assets/f2eefbc5-f6be-47c8-8ff1-d957c0ab6ed1" />
+### LLM Chat, Reminders, GitHub Integration & Tracking Activity
+<img width="280" height="200" alt="image" src="https://github.com/user-attachments/assets/9554bd7d-f06b-4acb-abb1-9c525103ac42" />
+<img width="280" height="200" alt="image" src="https://github.com/user-attachments/assets/022d5d14-fa75-4940-bbaa-ea6cd2a72a77" />
+<br />
+<img width="280" height="200" alt="image" src="https://github.com/user-attachments/assets/0a1d078e-77f4-4f16-a09f-a94c5deff086" />
+<img width="280" height="200" alt="image" src="https://github.com/user-attachments/assets/d9f4cce9-bf3c-4d64-a28e-1cac7d050a8c" />
 
-<img width="395" height="395" alt="image" src="https://github.com/user-attachments/assets/41851fd0-8738-490b-a31f-850b47772402" />
 
 
 ## 🚀 Quick start
