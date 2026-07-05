@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Changed
+- **The cat now blinks in the plane cockpit and sits deeper in it.** On the banner flyby (plane1) the cat is sunk further into the fuselage so only the top of the head peeks out instead of the whole head sticking up, and its eyes blink on a slow cycle using the char's closed-eyes frame (the same frames the demo GIF uses) — GIF chars with no blink frame just stay awake. Tuning: `CAT_SINK_FRAC`, `BLINK_PERIOD_S`, `BLINK_DUR_S` in `reminder_ui.py` (branch `feat/flyby-cat-sink-blink`).
+
 ## [0.1.7] - 2026-07-02
 
 ### Added

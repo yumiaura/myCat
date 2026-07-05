@@ -194,7 +194,11 @@ class Announcer(QtCore.QObject):
             return None
 
         cat_pixmap = getattr(self.window, "first_frame_pixmap", None)
-        flyby = FlybyWindow(cat_pixmap, item)
+        # Interactive char packs carry a closed-eyes frame — hand it over so the
+        # cat blinks in the cockpit (GIF chars have none, so it just stays awake).
+        pack = getattr(self.window, "char_pack", None)
+        blink_pixmap = getattr(pack, "blink", None) if pack is not None else None
+        flyby = FlybyWindow(cat_pixmap, item, blink_pixmap=blink_pixmap)
         flyby.destroyed.connect(lambda _=None: self.flyby_gone())
         flyby.start()
         return flyby
