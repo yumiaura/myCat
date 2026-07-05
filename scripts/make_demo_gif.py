@@ -12,9 +12,10 @@ demo matches what the app actually draws:
   the pupils so the gaze converges).
 - ``blink.png`` is the same body with the eyes closed.
 
-Two frames, looped forever: gaze for 4 s, blink for 0.5 s. Writes
-``docs/cat.gif`` — a 200x200, 1-bit-transparent GIF (same format as
-``docs/classic.gif``).
+Two frames, looped forever: gaze for 4 s, blink for 0.5 s. The cat is
+tight-cropped and centred with a uniform ``PAD``-px transparent border on every
+side (a shared crop box across both frames keeps it from jumping). Writes
+``docs/cat.gif`` — a 1-bit-transparent GIF (same format as ``docs/classic.gif``).
 """
 
 import io
@@ -22,13 +23,14 @@ import json
 import zipfile
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageFilter
 
 REPO = Path(__file__).resolve().parent.parent
 CAT_ZIP = REPO / "mycat" / "chars" / "cat.zip"
 OUTPUT = REPO / "docs" / "cat.gif"
 
-CANVAS = 200          # final GIF is CANVAS x CANVAS, like docs/cat.gif
+PAD = 10              # uniform transparent border around the cat, in final px
+CONTENT_MAX = 180     # longest side of the cat inside that border (→ ≤200 px total)
 GAZE_MS = 4000        # eyes aimed between them
 BLINK_MS = 500        # eyes closed
 ALPHA_CUTOFF = 128    # GIF transparency is 1-bit; threshold the soft alpha edge
@@ -66,12 +68,38 @@ def gaze_between_eyes_frame(config, images):
     return frame
 
 
-def fit_canvas(frame):
-    """Scale into a CANVAS x CANVAS square, aspect preserved, centred."""
-    scaled = frame.copy()
-    scaled.thumbnail((CANVAS, CANVAS), Image.LANCZOS)
-    canvas = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
-    canvas.alpha_composite(scaled, ((CANVAS - scaled.width) // 2, (CANVAS - scaled.height) // 2))
+def union_content_bbox(frames):
+    """Bounding box of the non-transparent pixels across ALL frames.
+
+    Shared across frames so every frame is cropped identically — the cat stays
+    put while only the eyes change."""
+    box = None
+    for frame in frames:
+        mask = frame.getchannel("A").point(lambda a: 255 if a >= ALPHA_CUTOFF else 0)
+        # Morphological opening (erode then dilate) drops isolated stray pixels —
+        # static.png has a couple of opaque specks in the corners that would
+        # otherwise blow the bounding box out to the full canvas.
+        mask = mask.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.MaxFilter(3))
+        found = mask.getbbox()
+        if found is None:
+            continue
+        box = found if box is None else (
+            min(box[0], found[0]),
+            min(box[1], found[1]),
+            max(box[2], found[2]),
+            max(box[3], found[3]),
+        )
+    return box
+
+
+def crop_scale_pad(frame, box, scale):
+    """Crop to the shared content box, scale, then pad PAD px on every side."""
+    content = frame.crop(box)
+    width = max(1, round(content.width * scale))
+    height = max(1, round(content.height * scale))
+    content = content.resize((width, height), Image.LANCZOS)
+    canvas = Image.new("RGBA", (width + 2 * PAD, height + 2 * PAD), (0, 0, 0, 0))
+    canvas.alpha_composite(content, (PAD, PAD))
     return canvas
 
 
@@ -87,13 +115,24 @@ def to_transparent_palette(frame):
 
 def main():
     config, images = load_pack(CAT_ZIP)
-    gaze = to_transparent_palette(fit_canvas(gaze_between_eyes_frame(config, images)))
-    blink = to_transparent_palette(fit_canvas(images["blink.png"]))
+    gaze_full = gaze_between_eyes_frame(config, images)
+    blink_full = images["blink.png"]
+    box = union_content_bbox([gaze_full, blink_full])
+    scale = CONTENT_MAX / max(box[2] - box[0], box[3] - box[1])
+    gaze_frame = crop_scale_pad(gaze_full, box, scale)
+    blink_frame = crop_scale_pad(blink_full, box, scale)
+    gaze = to_transparent_palette(gaze_frame)
+    blink = to_transparent_palette(blink_frame)
 
     if __import__("os").environ.get("PREVIEW"):
-        preview = Image.new("RGBA", (CANVAS * 2 + 20, CANVAS), (235, 235, 240, 255))
-        preview.alpha_composite(fit_canvas(gaze_between_eyes_frame(config, images)), (0, 0))
-        preview.alpha_composite(fit_canvas(images["blink.png"]), (CANVAS + 20, 0))
+        gap = 20
+        preview = Image.new(
+            "RGBA",
+            (gaze_frame.width + blink_frame.width + gap, max(gaze_frame.height, blink_frame.height)),
+            (235, 235, 240, 255),
+        )
+        preview.alpha_composite(gaze_frame, (0, 0))
+        preview.alpha_composite(blink_frame, (gaze_frame.width + gap, 0))
         preview_path = Path(__import__("os").environ["PREVIEW"])
         preview.convert("RGB").save(preview_path)
         print(f"Wrote preview {preview_path}")
