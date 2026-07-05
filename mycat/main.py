@@ -948,13 +948,16 @@ class PixelCatWindow(QtWidgets.QWidget):
         save_config(config)
 
     def _reset_position(self) -> None:
-        """Recenter the cat to the bottom-right of the primary screen.
+        """Snap the cat to the bottom-right corner, 40px in from each edge.
 
         A rescue for when the cat wanders off-screen or gets lost across
         multiple monitors.
         """
-        default_x, default_y = self.bottom_right_position(self.width(), self.height())
-        self.move(default_x, default_y)
+        margin = 40
+        rect = usable_screen_rect()
+        x = rect.x() + rect.width() - self.width() - margin
+        y = rect.y() + rect.height() - self.height() - margin
+        self.move(x, y)
         self._save_position()
 
     def _load_image(self, image_name: str) -> None:
