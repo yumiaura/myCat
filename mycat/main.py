@@ -948,13 +948,15 @@ class PixelCatWindow(QtWidgets.QWidget):
         save_config(config)
 
     def _reset_position(self) -> None:
-        """Snap the cat to the bottom-right corner, 40px in from each edge.
+        """Snap the cat to the bottom-right corner, an equal inset from each edge.
 
-        A rescue for when the cat wanders off-screen or gets lost across
-        multiple monitors.
+        Measured from the true screen corner (full geometry, not the
+        panel-aware area) so the cat sits right by the edge. A rescue for when
+        it wanders off-screen or gets lost across multiple monitors.
         """
-        margin = 40
-        rect = usable_screen_rect()
+        margin = 18
+        screen = QtWidgets.QApplication.primaryScreen()
+        rect = screen.geometry() if screen is not None else usable_screen_rect()
         x = rect.x() + rect.width() - self.width() - margin
         y = rect.y() + rect.height() - self.height() - margin
         self.move(x, y)
