@@ -2,12 +2,14 @@ EN | [RU](https://github.com/yumiaura/myCat/blob/main/docs/README_RU.md) | [CN](
 
 ## Desktop Cat: QT Overlay 🐱
 
-[<img src="https://raw.githubusercontent.com/yumiaura/yumiaura/refs/heads/main/images/cat.gif" width="164" alt="cat.gif"/>](https://github.com/yumiaura)
+[<img src="https://raw.githubusercontent.com/yumiaura/myCat/refs/heads/main/docs/cat.gif" width="164" alt="cat.gif"/>](https://github.com/yumiaura)
 
 <p class="badges">
   <img src="https://img.shields.io/pypi/pyversions/mycat?color=brightgreen" alt="Python Versions">
   <a href="https://pypi.org/project/mycat/"><img src="https://img.shields.io/pypi/v/mycat?color=brightgreen" alt="PyPI Version"></a>
   <a href="https://pypi.org/project/mycat/"><img src="https://img.shields.io/pepy/dt/mycat?label=pypi%20%7C%20downloads&color=brightgreen" alt="Pepy Total Downloads"/></a>
+  <a href="https://buymeacoffee.com/yumiaura"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=000" alt="Buy Me a Coffee"></a>
+  <a href="https://www.patreon.com/yumiaura"><img src="https://img.shields.io/badge/Patreon-support-F96854?logo=patreon&logoColor=fff" alt="Patreon"></a>
 </p>
 
 I made a cute little animated cat 🐈 for your desktop.<br>
@@ -50,6 +52,10 @@ On **Linux** also install the Qt platform plugin once:
 sudo apt install -y libxcb-cursor0
 ```
 
+For keystroke/click **counts** in the activity diary (never which keys), install
+the optional extra: `pip install mycat[basic]`. Without it the diary still
+records cursor path — only the counts need it.
+
 Upgrade or remove later with `pip install -U mycat` / `pip uninstall mycat`.
 
 ### Option C — from source
@@ -63,7 +69,7 @@ mycat                 # or, without installing:  python3 mycat/main.py
 
 ## ✨ Features
 
-- **Animated overlay** 🐱 — a frameless, always-on-top, draggable cat. Right-click for the menu (switch skin, settings, reset position, quit).
+- **Animated overlay** 🐱 — a frameless, always-on-top, draggable cat. Right-click for the menu (switch char, quit).
 - **Reminder** 🛩️ — set a message and a time (one-shot or daily) and the cat flies a little banner plane across the top of your screen. Right-click → *Reminder…* to set the message, direction, plane and color.
 - **Chat (Ollama)** 💬 — talk to the cat through a **local [Ollama](https://ollama.com) model**, no account or API key needed (see below).
 
@@ -89,7 +95,7 @@ Run `mycat` (or `python3 mycat/main.py` from source) and customise it with comma
 mycat --image ~/my-custom-cat.zip
 ```
 
-A skin **ZIP** must contain exactly one `.gif`: its first frame is the static pose, then the GIF plays once and returns to that frame. Images larger than 300×500 are scaled down automatically.
+A char **ZIP** must contain exactly one `.gif`: its first frame is the static pose, then the GIF plays once and returns to that frame. Images larger than 300×500 are scaled down automatically.
 
 **`--pos <x> <y>`** 📍 — start at a specific screen position (otherwise the cat appears bottom-right and remembers where you last dragged it):
 
@@ -104,10 +110,10 @@ mycat --pos 960 540        # center of a 1920x1080 screen
 ### Controls
 
 - **Left-drag** the cat to move it.
-- **Right-click** the cat or the system tray icon for the menu (Skins, Reminder…, Settings…, Reset Position, Ollama…, Chat, Quit).
+- **Right-click** the cat for the menu (Chars, Reminder…, Ollama…, Chat, Quit).
 - **Quit** from the menu or with Ctrl+C in the terminal.
 
-The cat remembers its position and selected skin between sessions in `~/.config/mycat/config.ini`.
+The cat remembers its position and selected char between sessions in `~/.config/mycat/config.ini`.
 
 ## 🎬 Make your own cat GIF
 
@@ -116,13 +122,13 @@ The cat remembers its position and selected skin between sessions in `~/.config/
 sudo apt install imagemagick
 
 # Build an animated GIF from a sprite sheet
-convert images/cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 images/cat.gif
+convert cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 cat.gif
 
-# Package it as a skin ZIP
-zip images/cat.zip images/cat.gif
+# Package it as a char ZIP
+zip cat.zip cat.gif
 ```
 
-Drop the resulting ZIP next to the others and pick it from the right-click **skins** menu.
+Drop the resulting ZIP next to the others and pick it from the right-click **Chars** menu.
 
 ## 🐳 Docker
 
@@ -150,7 +156,7 @@ docker compose -f docker-compose.mac.yml up
 **Window doesn't stay on top / doesn't show in the taskbar** 📌
 - Some window managers override "always on top" — restart the desktop session or check the WM settings.
 
-**Custom skin doesn't load** ❌
+**Custom char doesn't load** ❌
 - The ZIP must contain exactly one valid `.gif`. Check the path and that the file isn't corrupted.
 
 **Position not saving** 💾

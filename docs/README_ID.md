@@ -2,12 +2,14 @@
 
 # Kucing Desktop: Aplikasi Mengambang QT 🐱
 
-[<img src="https://raw.githubusercontent.com/yumiaura/yumiaura/refs/heads/main/images/cat.gif" width="164" alt="cat.gif"/>](https://github.com/yumiaura)
+[<img src="https://raw.githubusercontent.com/yumiaura/myCat/refs/heads/main/docs/cat.gif" width="164" alt="cat.gif"/>](https://github.com/yumiaura)
 
 <p class="badges">
   <img src="https://img.shields.io/pypi/pyversions/mycat?color=brightgreen" alt="Python Versions">
   <a href="https://pypi.org/project/mycat/"><img src="https://img.shields.io/pypi/v/mycat?color=brightgreen" alt="PyPI Version"></a>
   <a href="https://pypi.org/project/mycat/"><img src="https://img.shields.io/pepy/dt/mycat?label=pypi%20%7C%20downloads&color=brightgreen" alt="Pepy Total Downloads"/></a>
+  <a href="https://buymeacoffee.com/yumiaura"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=000" alt="Buy Me a Coffee"></a>
+  <a href="https://www.patreon.com/yumiaura"><img src="https://img.shields.io/badge/Patreon-support-F96854?logo=patreon&logoColor=fff" alt="Patreon"></a>
 </p>
 
 Saya membuat animasi kucing kecil yang lucu 🐈 untuk menemani desktop Anda.<br>
@@ -56,7 +58,7 @@ mycat                 # atau tanpa instal: python3 mycat/main.py
 
 ## ✨ Fitur
 
-- **Overlay animasi** 🐱 — kucing tanpa bingkai, selalu di atas, bisa diseret. Klik kanan untuk menu (ganti skin, keluar).
+- **Overlay animasi** 🐱 — kucing tanpa bingkai, selalu di atas, bisa diseret. Klik kanan untuk menu (ganti char, keluar).
 - **Pengingat** 🛩️ — atur pesan dan waktu (sekali atau harian), dan kucing terbang dengan pesawat berspanduk melintasi atas layar. Klik kanan → *Reminder…* untuk pesan, arah, pesawat, dan warna.
 - **Obrolan (Ollama)** 💬 — mengobrol dengan kucing lewat **model [Ollama](https://ollama.com) lokal**, tanpa akun atau kunci API (lihat di bawah).
 
@@ -82,7 +84,7 @@ Jalankan `mycat` (atau `python3 mycat/main.py` dari sumber) dan sesuaikan dengan
 mycat --image ~/my-custom-cat.zip
 ```
 
-ZIP **skin** harus berisi tepat satu `.gif`: bingkai pertamanya menjadi pose statis, lalu GIF diputar sekali dan kembali ke bingkai itu. Gambar lebih besar dari 300×500 diperkecil otomatis.
+ZIP **char** harus berisi tepat satu `.gif`: bingkai pertamanya menjadi pose statis, lalu GIF diputar sekali dan kembali ke bingkai itu. Gambar lebih besar dari 300×500 diperkecil otomatis.
 
 **`--pos <x> <y>`** 📍 — mulai di posisi layar tertentu (jika tidak, kucing muncul di kanan-bawah dan mengingat posisi terakhir):
 
@@ -97,10 +99,10 @@ mycat --pos 960 540        # tengah layar 1920x1080
 ### Kontrol
 
 - **Seret kiri** untuk memindahkan kucing.
-- **Klik kanan** untuk menu (skin, Reminder…, Ollama…, Chat, Quit).
+- **Klik kanan** untuk menu (Chars, Reminder…, Ollama…, Chat, Quit).
 - **Keluar** dari menu atau dengan Ctrl+C di terminal.
 
-Kucing mengingat posisi dan skin di `~/.config/mycat/config.ini`.
+Kucing mengingat posisi dan char di `~/.config/mycat/config.ini`.
 
 ## 🎬 Buat GIF kucing sendiri
 
@@ -109,13 +111,13 @@ Kucing mengingat posisi dan skin di `~/.config/mycat/config.ini`.
 sudo apt install imagemagick
 
 # Bangun GIF animasi dari sprite sheet
-convert images/cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 images/cat.gif
+convert cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 cat.gif
 
-# Kemas sebagai ZIP skin
-zip images/cat.zip images/cat.gif
+# Kemas sebagai ZIP char
+zip cat.zip cat.gif
 ```
 
-Letakkan ZIP hasilnya di samping yang lain dan pilih dari menu **skin** klik-kanan.
+Letakkan ZIP hasilnya di samping yang lain dan pilih dari menu **Chars** klik-kanan.
 
 ## 🐳 Docker
 
@@ -143,7 +145,7 @@ docker compose -f docker-compose.mac.yml up
 **Jendela tidak di atas / tidak muncul di taskbar** 📌
 - Beberapa window manager menimpa "selalu di atas" — mulai ulang sesi desktop atau periksa pengaturan WM.
 
-**Skin kustom tidak dimuat** ❌
+**Char kustom tidak dimuat** ❌
 - ZIP harus berisi tepat satu `.gif` yang valid. Periksa path dan pastikan file tidak rusak.
 
 **Posisi tidak tersimpan** 💾

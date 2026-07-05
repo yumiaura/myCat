@@ -10,26 +10,9 @@ import time
 from PySide6 import QtCore, QtWidgets
 
 from . import llm_ollama, llm_openai_compat, llm_prompt, llm_vendors
+from .ui_theme import LIGHT_QSS
 
 logger = logging.getLogger(__name__)
-
-LIGHT_QSS = (
-    "QDialog { background: #ffffff; color: #1c1c1c; }"
-    "QLabel, QCheckBox { color: #1c1c1c; background: transparent; }"
-    "QLineEdit, QSpinBox, QComboBox {"
-    " color: #1c1c1c; background: #ffffff;"
-    " border: 1px solid #c0c0c0; border-radius: 4px; padding: 3px 5px;"
-    " selection-color: white; selection-background-color: #ff6f91; }"
-    "QLineEdit:read-only { background: #f3f3f3; color: #666666; }"
-    "QComboBox QAbstractItemView {"
-    " color: #1c1c1c; background: #ffffff;"
-    " selection-color: white; selection-background-color: #ff6f91; }"
-    "QPushButton {"
-    " color: #1c1c1c; background: #f0f0f0;"
-    " border: 1px solid #c0c0c0; border-radius: 4px; padding: 5px 14px; }"
-    "QPushButton:hover { background: #e7e7e7; }"
-    "QPushButton:disabled { color: #9a9a9a; background: #f5f5f5; }"
-)
 
 STATUS_OK = "color: #1c7c2f;"
 STATUS_ERR = "color: #c0392b;"
@@ -133,7 +116,7 @@ class LLMSettingsDialog(QtWidgets.QDialog):
         self.status_label.setWordWrap(True)
         self.test_btn = QtWidgets.QPushButton("Test")
         self.save_btn = QtWidgets.QPushButton("Save")
-        cancel_btn = QtWidgets.QPushButton("Cancel")
+        close_btn = QtWidgets.QPushButton("Close")
 
         form = QtWidgets.QFormLayout()
         form.addRow(self.enabled_box)
@@ -147,11 +130,12 @@ class LLMSettingsDialog(QtWidgets.QDialog):
         model_row.addWidget(self.load_btn)
         form.addRow("Model", model_row)
 
+        # Test (left) · Save, Close (right) — same order in every dialog.
         buttons = QtWidgets.QHBoxLayout()
         buttons.addWidget(self.test_btn)
         buttons.addStretch(1)
-        buttons.addWidget(cancel_btn)
         buttons.addWidget(self.save_btn)
+        buttons.addWidget(close_btn)
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.addLayout(form)
@@ -169,7 +153,7 @@ class LLMSettingsDialog(QtWidgets.QDialog):
         self.model_combo.currentTextChanged.connect(self.on_model_changed)
         self.test_btn.clicked.connect(self.on_test)
         self.save_btn.clicked.connect(self.on_save)
-        cancel_btn.clicked.connect(self.reject)
+        close_btn.clicked.connect(self.reject)
 
         # Select the active vendor and prime its fields.
         active = llm_vendors.active_vendor_name()
@@ -303,8 +287,11 @@ class LLMSettingsDialog(QtWidgets.QDialog):
         self.test_btn.setEnabled(False)
         self.set_status(f"Testing {model}…", STATUS_INFO)
         worker = TestWorker(
-            self.kind_value(), self.base_url_edit.text().strip(), self.effective_key(),
-            model, self.request_timeout(),
+            self.kind_value(),
+            self.base_url_edit.text().strip(),
+            self.effective_key(),
+            model,
+            self.request_timeout(),
         )
         worker.signals.tested.connect(self.on_tested)
         worker.signals.error.connect(self.on_test_error)
@@ -359,8 +346,8 @@ class LLMSettingsDialog(QtWidgets.QDialog):
             logger.exception("Failed to apply LLM settings live")
             self.set_status(f"Saved, but live apply failed: {exc}", STATUS_ERR)
             return
-        self.set_status("Saved ✓", STATUS_OK)
-        self.accept()
+        state = "on" if enabled else "off"
+        self.set_status(f"Saved ✓ ({state}): {vendor.name} · {vendor.model}", STATUS_OK)
 
     def apply_live(self, vendor: llm_vendors.Vendor, enabled: bool) -> None:
         from . import llm, llm_ui
@@ -381,8 +368,11 @@ class LLMSettingsDialog(QtWidgets.QDialog):
             return
 
         context = llm.LLMContext(
-            backend_name=vendor.name, backend=backend,
-            settings=llm_prompt.load_llm_settings(), enabled=enabled, vendor=vendor,
+            backend_name=vendor.name,
+            backend=backend,
+            settings=llm_prompt.load_llm_settings(),
+            enabled=enabled,
+            vendor=vendor,
         )
         llm_ui.attach_chat(self.host_window, context, enabled=enabled)
 

@@ -2,12 +2,14 @@
 
 # Десктопный котик: оверлей на QT 🐱
 
-[<img src="https://raw.githubusercontent.com/yumiaura/yumiaura/refs/heads/main/images/cat.gif" width="164" alt="cat.gif"/>](https://github.com/yumiaura)
+[<img src="https://raw.githubusercontent.com/yumiaura/myCat/refs/heads/main/docs/cat.gif" width="164" alt="cat.gif"/>](https://github.com/yumiaura)
 
 <p class="badges">
   <img src="https://img.shields.io/pypi/pyversions/mycat?color=brightgreen" alt="Python Versions">
   <a href="https://pypi.org/project/mycat/"><img src="https://img.shields.io/pypi/v/mycat?color=brightgreen" alt="PyPI Version"></a>
   <a href="https://pypi.org/project/mycat/"><img src="https://img.shields.io/pepy/dt/mycat?label=pypi%20%7C%20downloads&color=brightgreen" alt="Pepy Total Downloads"/></a>
+  <a href="https://buymeacoffee.com/yumiaura"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=000" alt="Buy Me a Coffee"></a>
+  <a href="https://www.patreon.com/yumiaura"><img src="https://img.shields.io/badge/Patreon-support-F96854?logo=patreon&logoColor=fff" alt="Patreon"></a>
 </p>
 
 Я сделала милого анимированного котика 🐈 для рабочего стола.<br>
@@ -56,7 +58,7 @@ mycat                 # или без установки: python3 mycat/main.py
 
 ## ✨ Возможности
 
-- **Анимированный оверлей** 🐱 — котик без рамки, поверх окон, перетаскивается. Правый клик — меню (сменить скин, выход).
+- **Анимированный оверлей** 🐱 — котик без рамки, поверх окон, перетаскивается. Правый клик — меню (сменить персонаж, выход).
 - **Напоминание** 🛩️ — задай сообщение и время (разово или ежедневно), и котик пролетит на самолётике с баннером по верху экрана. Правый клик → *Reminder…* (сообщение, направление, самолёт, цвет).
 - **Чат (Ollama)** 💬 — общайся с котиком через **локальную модель [Ollama](https://ollama.com)**, без аккаунта и API-ключа (см. ниже).
 
@@ -82,7 +84,7 @@ mycat                 # или без установки: python3 mycat/main.py
 mycat --image ~/my-custom-cat.zip
 ```
 
-ZIP-**скин** должен содержать ровно один `.gif`: первый кадр — статичная поза, потом GIF проигрывается один раз и возвращается к нему. Картинки больше 300×500 уменьшаются автоматически.
+ZIP-**персонаж** должен содержать ровно один `.gif`: первый кадр — статичная поза, потом GIF проигрывается один раз и возвращается к нему. Картинки больше 300×500 уменьшаются автоматически.
 
 **`--pos <x> <y>`** 📍 — стартовая позиция (иначе котик появляется снизу-справа и запоминает последнее положение):
 
@@ -97,10 +99,10 @@ mycat --pos 960 540        # центр экрана 1920x1080
 ### Управление
 
 - **Левая кнопка** — перетаскивать котика.
-- **Правая кнопка** — меню (скины, Reminder…, Ollama…, Chat, Quit).
+- **Правая кнопка** — меню (персонажи, Reminder…, Ollama…, Chat, Quit).
 - **Выход** — из меню или Ctrl+C в терминале.
 
-Котик запоминает позицию и выбранный скин в `~/.config/mycat/config.ini`.
+Котик запоминает позицию и выбранный персонаж в `~/.config/mycat/config.ini`.
 
 ## 🎬 Свой GIF котика
 
@@ -109,13 +111,13 @@ mycat --pos 960 540        # центр экрана 1920x1080
 sudo apt install imagemagick
 
 # Собрать анимированный GIF из спрайт-листа
-convert images/cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 images/cat.gif
+convert cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 cat.gif
 
-# Упаковать как ZIP-скин
-zip images/cat.zip images/cat.gif
+# Упаковать как ZIP-персонаж
+zip cat.zip cat.gif
 ```
 
-Положи получившийся ZIP рядом с остальными и выбери его в меню **скинов** по правому клику.
+Положи получившийся ZIP рядом с остальными и выбери его в меню **персонажей** по правому клику.
 
 ## 🐳 Docker
 
@@ -143,7 +145,7 @@ docker compose -f docker-compose.mac.yml up
 **Окно не поверх всех / нет в таскбаре** 📌
 - Некоторые оконные менеджеры перекрывают «поверх всех» — перезапусти сессию рабочего стола или проверь настройки WM.
 
-**Свой скин не загружается** ❌
+**Свой персонаж не загружается** ❌
 - В ZIP должен быть ровно один корректный `.gif`. Проверь путь и что файл не повреждён.
 
 **Позиция не сохраняется** 💾

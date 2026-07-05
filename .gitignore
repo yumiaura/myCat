@@ -12,7 +12,11 @@ dist/
 *.pyc
 uv.lock
 *.zip
+!mycat/chars/*.zip
 *.md
 !README.md
 !CHANGELOG.md
 !docs/**/*.md
+
+# Vendored local tools (own git repos, not tracked here) — e.g. mycat-gen
+vendors/

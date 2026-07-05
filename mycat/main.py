@@ -13,7 +13,9 @@ import argparse
 import configparser
 import io
 import logging
+import math
 import os
+import random
 import shutil
 import signal
 import subprocess
@@ -24,17 +26,37 @@ from pathlib import Path
 
 # Allow running both as `python -m mycat` and `python mycat/main.py`
 if __package__:
-    from . import autostart, llm, reminder, secret_store, skin_catalog
+    from . import (
+        activity,
+        announcer,
+        autostart,
+        calendar_ics,
+        char_catalog,
+        char_pack,
+        digest,
+        focus,
+        github_notify,
+        llm,
+        reminder,
+        secret_store,
+    )
 else:
     import importlib
     repo_root = Path(__file__).resolve().parent.parent
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
     llm = importlib.import_module("mycat.llm")
-    skin_catalog = importlib.import_module("mycat.skin_catalog")
+    char_catalog = importlib.import_module("mycat.char_catalog")
     reminder = importlib.import_module("mycat.reminder")
     secret_store = importlib.import_module("mycat.secret_store")
     autostart = importlib.import_module("mycat.autostart")
+    char_pack = importlib.import_module("mycat.char_pack")
+    announcer = importlib.import_module("mycat.announcer")
+    focus = importlib.import_module("mycat.focus")
+    github_notify = importlib.import_module("mycat.github_notify")
+    calendar_ics = importlib.import_module("mycat.calendar_ics")
+    activity = importlib.import_module("mycat.activity")
+    digest = importlib.import_module("mycat.digest")
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -72,9 +94,9 @@ DEFAULT_POSITION_OFFSET_X = 10  # Offset from right edge of screen
 DEFAULT_POSITION_OFFSET_Y = 10  # Offset from bottom edge of screen
 
 
-def scan_images_directory() -> list[str]:
-    """Return sorted unique skin ids from bundled + user-installed locations."""
-    return skin_catalog.scan_all()
+def scan_chars() -> list[str]:
+    """Return sorted unique char ids from bundled + user-installed locations."""
+    return char_catalog.scan_all()
 
 
 def movie_from_gif_bytes(gif_data: bytes) -> QtGui.QMovie:
@@ -196,61 +218,47 @@ def load_packaged_images(
     Returns: (first_frame_pixmap, gif_movie, base_name, gif_bytes)
     """
     if image_path:
-        # User provided ZIP path
-        zip_path = Path(image_path)
-        if not zip_path.exists():
-            raise FileNotFoundError(f"ZIP not found: {zip_path}")
-        base_name = zip_path.stem
+        char_path = Path(image_path)
+        if not char_path.exists():
+            raise FileNotFoundError(f"Char not found: {char_path}")
     else:
-        # Use default_image if provided, otherwise default to "cat"
-        if default_image:
-            base_name = default_image
-        else:
-            base_name = "cat"
-
-        resolved = skin_catalog.find_skin_zip(base_name)
+        base_name = default_image or "cat"
+        resolved = char_catalog.find_char(base_name)
         if resolved is None:
-            raise FileNotFoundError(
-                f"ZIP not found for skin '{base_name}' in bundled or user skins dir"
-            )
-        zip_path = resolved
+            raise FileNotFoundError(f"Char '{base_name}' not found in bundled or user chars dir")
+        char_path = resolved
+    base_name = char_path.stem
 
-    if not zip_path.exists():
-        raise FileNotFoundError(f"ZIP not found: {zip_path}")
-    
-    # Extract first GIF from ZIP
+    # Read the first GIF from the char (folder or zip, in memory).
     try:
-        with zipfile.ZipFile(zip_path, 'r') as zip_file:
-            # Find first GIF file in the archive
-            gif_files = [f for f in zip_file.namelist() if f.lower().endswith('.gif')]
+        with char_pack.CharSource(char_path) as source:
+            gif_files = sorted(n for n in source.names() if n.lower().endswith(".gif"))
             if not gif_files:
-                raise ValueError(f"No GIF file found in ZIP: {zip_path}")
-            
-            # Get first GIF file
+                raise ValueError(f"No GIF file found in char: {char_path}")
             gif_file_name = gif_files[0]
-            gif_data = zip_file.read(gif_file_name)
-            logger.info(f"Extracted {gif_file_name} from {zip_path.name}")
+            gif_data = source.read(gif_file_name)
+            logger.info(f"Extracted {gif_file_name} from {char_path.name}")
     except zipfile.BadZipFile as exc:
-        raise ValueError(f"Invalid ZIP file: {zip_path}") from exc
+        raise ValueError(f"Invalid char archive: {char_path}") from exc
     
     # Build the animated movie straight from the GIF bytes in memory.
     movie = movie_from_gif_bytes(gif_data)
     movie.jumpToFrame(0)
     first_frame = movie.currentPixmap()
     if first_frame.isNull():
-        raise ValueError(f"Failed to extract first frame from GIF in ZIP: {zip_path}")
+        raise ValueError(f"Failed to extract first frame from GIF in char: {char_path}")
 
     # Scale if needed
     original_size = first_frame.size()
     pixmap = scale_pixmap_if_needed(first_frame, IMAGE_WIDTH_MAX, IMAGE_HEIGHT_MAX)
     if original_size != pixmap.size():
         logger.info(
-            f"Resized {Path(zip_path).name}: "
+            f"Resized {char_path.name}: "
             f"{original_size.width()}x{original_size.height()} -> "
             f"{pixmap.width()}x{pixmap.height()}"
         )
     if pixmap.isNull():
-        raise ValueError(f"Failed to render first frame from GIF in ZIP: {zip_path}")
+        raise ValueError(f"Failed to render first frame from GIF in char: {char_path}")
 
     # Scale GIF movie to same size as the first frame
     movie.setScaledSize(pixmap.size())
@@ -334,20 +342,6 @@ def load_image_from_ini() -> str | None:
         return None
 
 
-def load_wait_time_from_ini(default_wait: float) -> float:
-    """Load wait_time setting from INI file."""
-    if not CFG_FILE.exists():
-        return default_wait
-    try:
-        config = configparser.ConfigParser()
-        config.read(CFG_FILE)
-        if 'settings' in config and 'wait_time' in config['settings']:
-            return float(config['settings']['wait_time'])
-    except Exception as e:
-        logger.error(f"Error reading wait_time from INI: {e}")
-    return default_wait
-
-
 def save_image_to_ini(image_name: str) -> None:
     """Save current image setting to INI file (skips writing if value is unchanged)."""
     try:
@@ -382,6 +376,126 @@ def save_image_to_ini(image_name: str) -> None:
         logger.error(f"Error saving to INI file: {e}")
 
 
+def autostart_was_prompted() -> bool:
+    """Whether the first-run "start on login?" prompt has already been shown.
+
+    Stored as ``[settings] autostart_prompted`` so the user is asked at most once.
+    """
+    if not CFG_FILE.exists():
+        return False
+    try:
+        config = configparser.ConfigParser()
+        config.read(CFG_FILE)
+        return config.getboolean("settings", "autostart_prompted", fallback=False)
+    except Exception as exc:
+        logger.debug("Could not read autostart_prompted flag: %s", exc)
+        return False
+
+
+def mark_autostart_prompted() -> None:
+    """Record that the first-run autostart prompt has been shown."""
+    try:
+        CFG_DIR.mkdir(parents=True, exist_ok=True)
+        config = configparser.ConfigParser()
+        if CFG_FILE.exists():
+            config.read(CFG_FILE)
+        if "settings" not in config:
+            config.add_section("settings")
+        config["settings"]["autostart_prompted"] = "true"
+        with open(CFG_FILE, "w") as f:
+            config.write(f)
+        secret_store.secure_file(CFG_FILE)
+    except Exception as exc:
+        logger.error("Could not save autostart_prompted flag: %s", exc)
+
+
+def should_offer_autostart() -> bool:
+    """First run, on a platform that supports autostart, not enabled, not asked."""
+    return (
+        autostart.is_supported()
+        and not autostart.is_enabled()
+        and not autostart_was_prompted()
+    )
+
+
+def offer_autostart_on_first_run(window: QtWidgets.QWidget) -> None:
+    """Ask once, on first run, whether to keep mycat on screen every login.
+
+    The whole point of autostart is to make the cat persistent — but the toggle
+    is buried in the right-click menu, so most users never find it. A single
+    gentle first-run prompt is the biggest lever for "always running".
+    """
+    if not should_offer_autostart():
+        return
+    # Record first so a crash mid-prompt never re-asks on every launch.
+    mark_autostart_prompted()
+    answer = QtWidgets.QMessageBox.question(
+        window,
+        "mycat",
+        "Keep mycat on screen every time you log in?\n\n"
+        "You can change this any time from the right-click menu → Autostart.",
+        QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+        QtWidgets.QMessageBox.StandardButton.Yes,
+    )
+    if answer == QtWidgets.QMessageBox.StandardButton.Yes:
+        autostart.set_enabled(True)
+        logger.info("Autostart enabled via first-run prompt")
+
+
+def flush_activity_on_quit(window: QtWidgets.QWidget) -> None:
+    """On a clean Quit, flush the current activity minute to the database."""
+    collector = getattr(window, "activity_collector", None)
+    if collector is not None:
+        try:
+            collector.flush()
+        except Exception as exc:  # noqa: BLE001 - shutdown must never raise
+            logger.debug("Activity flush on quit failed: %s", exc)
+
+
+def read_battery_percent():
+    """Battery charge 0–100, or None if there is no battery / can't read it.
+
+    Native Linux /sys first; optional psutil fallback. Used by the 'hungry'
+    state — on a desktop with no battery it returns None (state never triggers)."""
+    base = Path("/sys/class/power_supply")
+    try:
+        for entry in base.iterdir():
+            try:
+                if (entry / "type").read_text().strip() == "Battery":
+                    return int((entry / "capacity").read_text().strip())
+            except OSError:
+                continue
+    except OSError:
+        pass
+    try:
+        import psutil
+        battery = psutil.sensors_battery()
+        if battery is not None:
+            return int(battery.percent)
+    except Exception:
+        pass
+    return None
+
+
+def harden_pixmap(pixmap: QtGui.QPixmap, threshold: int = 128) -> QtGui.QPixmap:
+    """Snap alpha to 0/255 so a smooth-scaled silhouette has a crisp edge that
+    matches the 1-bit shape mask — otherwise the anti-aliased edge renders as a
+    muddy fringe on X11 without a compositor.
+
+    Uses Pillow's C-speed ``point`` on the alpha channel — a Python per-pixel
+    loop here froze loads of large multi-frame chars (e.g. girl*, 120
+    frames at 281×500)."""
+    from PIL import Image
+
+    image = pixmap.toImage().convertToFormat(QtGui.QImage.Format.Format_RGBA8888)
+    width, height = image.width(), image.height()
+    pil = Image.frombytes("RGBA", (width, height), image.constBits().tobytes())
+    pil.putalpha(pil.getchannel("A").point(lambda value: 255 if value >= threshold else 0))
+    hardened = QtGui.QImage(pil.tobytes("raw", "RGBA"), width, height,
+                            QtGui.QImage.Format.Format_RGBA8888)
+    return QtGui.QPixmap.fromImage(hardened.copy())
+
+
 class PixelCatWindow(QtWidgets.QWidget):
     """Main cat window widget with PNG/GIF animation and dragging."""
     
@@ -393,6 +507,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         file_name: str = "cat",
         available_images: list[str] = None,
         gif_data: bytes = b"",
+        pack: "char_pack.CharPack | None" = None,
     ) -> None:
         platform_name = ""
         app_instance = QtWidgets.QApplication.instance()
@@ -434,73 +549,35 @@ class PixelCatWindow(QtWidgets.QWidget):
                 "Enable display compositing for smooth edges, or force this mode with MYCAT_SHAPE_MASK=1."
             )
 
-        # Store images
-        self.png_pixmap = png_pixmap
-        self.gif_movie = gif_movie
-        self.gif_data = gif_data  # raw GIF bytes, used to rebuild the movie in memory
-        self.current_pixmap = self.png_pixmap
+        # Common content fields
         self.wait_time = wait_time
         self.file_name = file_name
         self.available_images = available_images or []
+        self.char_pack = pack
 
-        # Get original size before scaling
-        self.gif_movie.jumpToFrame(0)
-        original_size = self.gif_movie.currentPixmap().size()
-        self.original_size = original_size
-
-        # Calculate GIF duration from the in-memory GIF and get frame delays
-        self.gif_duration, self.frame_delays = get_gif_duration(self.gif_movie, self.gif_data)
-        
-        # Fallback if no delays
-        if not self.frame_delays:
-            frame_count = self.gif_movie.frameCount()
-            if frame_count > 0 and self.gif_duration > 0:
-                self.frame_delays = [int((self.gif_duration / frame_count) * 1000)] * frame_count
-            else:
-                self.frame_delays = [100]  # Default 100ms per frame
-        
-        # Save first frame permanently (use the already scaled png_pixmap)
-        self.first_frame_pixmap = self.png_pixmap.copy()
-        
-        # Animation state: 'png' -> show PNG, 'gif' -> play GIF
-        self.state = 'png'
-
-        # Setup GIF movie - play once (no looping)
-        self.gif_movie.setCacheMode(QtGui.QMovie.CacheMode.CacheAll)
-        # Set speed to normal (100%) - uses native GIF frame delays
-        self.gif_movie.setSpeed(100)
-
-        # Manual frame timing
-        self.animation_timer = QtCore.QTimer(self)
-        self.animation_timer.timeout.connect(self._on_animation_frame)
-        self.current_frame = 0
-
-        # Log GIF info
-        frame_count = self.gif_movie.frameCount()
-        gif_size = self.gif_movie.scaledSize()
-        logger.debug(f"GIF info: {frame_count} frames, duration: {self.gif_duration:.2f}s")
-        logger.info(
-            f"Playing {self.file_name}.zip {original_size.width()}x{original_size.height()} > "
-            f"{gif_size.width()}x{gif_size.height()} (first_frame, {self.wait_time:.1f}s static)"
-        )
+        # Content setup branches by char type; the chrome below is shared.
+        if self.char_pack is not None:
+            self._setup_pack_content()
+        else:
+            self._setup_gif_content(png_pixmap, gif_movie, gif_data)
 
         # Dragging state
         self.dragging = False
         self.drag_start_pos = QtCore.QPoint()
 
-        # Set window size to pixmap size
-        pixmap_size = self.current_pixmap.size()
-        self.resize(pixmap_size)
+        # Set window size to pixmap size (pack: bounding box over all frames).
+        self.resize(self._pack_content_size() if self.char_pack is not None else self.current_pixmap.size())
 
-        # Position window - defaults to top-left area
+        # Position window - defaults to bottom-right
         self._load_position()
 
         # Setup context menu
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
 
-        # Schedule first animation pass
-        self._schedule_next_animation()
+        # Schedule first animation pass (GIF chars only)
+        if self.char_pack is None:
+            self._schedule_next_animation()
 
         # Save current image to INI on startup
         save_image_to_ini(self.file_name)
@@ -508,7 +585,318 @@ class PixelCatWindow(QtWidgets.QWidget):
         # Reminder scheduler (cat-on-a-plane flyby). Loads any saved reminder
         # and re-arms it; the flyby UI is imported lazily on first use.
         self.reminder_controller = reminder.ReminderController(self)
-    
+
+        # Shared announcement queue: every companion feature (focus sessions,
+        # GitHub, calendar, digest) flies its banners through this one object
+        # so flybys never overlap and focus time stays quiet.
+        self.announcer = announcer.Announcer(self)
+
+        # Pomodoro-style focus sessions: the cat settles down while you work,
+        # a thin bar under it shows the remaining time, banners mark breaks.
+        self.focus_controller = focus.FocusController(self, announcer=self.announcer)
+
+        # GitHub notifications (opt-in, BYO token): silent — zero network
+        # requests — until enabled in its settings dialog.
+        self.github_notifier = github_notify.GitHubNotifier(self, announcer=self.announcer)
+
+        # Calendar reminders (opt-in, secret ICS URL): the only banners
+        # urgent enough to fly through an active focus session.
+        self.calendar_controller = calendar_ics.CalendarController(self, announcer=self.announcer)
+
+        # Activity diary (on by default, local-only): counters, never content;
+        # the collector shares activity.db with the focus session log above.
+        self.activity_collector = activity.ActivityCollector(store=self.focus_controller.store)
+        # Auto-pomodoro: coming back to the keyboard after an idle stretch
+        # quietly starts the focus countdown ([focus] auto_start to disable).
+        self.focus_controller.attach_collector(self.activity_collector)
+
+        # The morning newspaper: yesterday's stats once per day, first thing
+        # after 05:00 — another small reason the cat is running at dawn.
+        self.morning_digest = digest.MorningDigest(self.focus_controller.store, announcer=self.announcer)
+
+    def _setup_gif_content(self, png_pixmap, gif_movie, gif_data) -> None:
+        """Legacy single-GIF char: static first frame + play-once animation."""
+        self.png_pixmap = png_pixmap
+        self.gif_movie = gif_movie
+        self.gif_data = gif_data
+        self.current_pixmap = self.png_pixmap
+        self.gif_movie.jumpToFrame(0)
+        original_size = self.gif_movie.currentPixmap().size()
+        self.original_size = original_size
+        self.gif_duration, self.frame_delays = get_gif_duration(self.gif_movie, self.gif_data)
+        if not self.frame_delays:
+            frame_count = self.gif_movie.frameCount()
+            if frame_count > 0 and self.gif_duration > 0:
+                self.frame_delays = [int((self.gif_duration / frame_count) * 1000)] * frame_count
+            else:
+                self.frame_delays = [100]
+        self.first_frame_pixmap = self.png_pixmap.copy()
+        self.state = 'png'
+        self.gif_movie.setCacheMode(QtGui.QMovie.CacheMode.CacheAll)
+        self.gif_movie.setSpeed(100)
+        self.animation_timer = QtCore.QTimer(self)
+        self.animation_timer.timeout.connect(self._on_animation_frame)
+        self.current_frame = 0
+        gif_size = self.gif_movie.scaledSize()
+        logger.info(
+            f"Playing {self.file_name}.zip {original_size.width()}x{original_size.height()} > "
+            f"{gif_size.width()}x{gif_size.height()} (first_frame, {self.wait_time:.1f}s static)"
+        )
+
+    def _all_pack_clips(self):
+        """Every Anim in the pack (for hardening / preprocessing)."""
+        pack = self.char_pack
+        clips = list(pack.anims) + list(pack.idle_anims) + list(pack.click_anims) + list(pack.hungry_anims)
+        clips += [a for a in (pack.sleep_in, pack.sleep_out, pack.yawn) if a is not None]
+        return clips
+
+    def _pack_content_size(self) -> QtCore.QSize:
+        """Bounding box over the static and every frame, so the window fits the
+        largest pose. Frames are box-fit independently and a body GIF may be taller
+        than the still; the window must hold it or it would be clipped. Each frame
+        is centred within this box at paint time."""
+        pack = self.char_pack
+        width, height = pack.static.width(), pack.static.height()
+        for still in (pack.blink, pack.sleep):
+            if still is not None:
+                width, height = max(width, still.width()), max(height, still.height())
+        for anim in self._all_pack_clips():
+            for frame in anim.frames:
+                width, height = max(width, frame.width()), max(height, frame.height())
+        return QtCore.QSize(width, height)
+
+    def _setup_pack_content(self) -> None:
+        """Interactive char pack: drives the state machine (awake/blink/click/idle/yawn/sleep/hungry)."""
+        pack = self.char_pack
+        # No compositor → snap body-frame edges to binary alpha (crisp, no fringe).
+        # Pupil sprites stay smooth (drawn over the opaque face, never fringe).
+        if self.shape_mask_enabled:
+            pack.static = harden_pixmap(pack.static)
+            for still in ("blink", "sleep"):
+                if getattr(pack, still) is not None:
+                    setattr(pack, still, harden_pixmap(getattr(pack, still)))
+            for anim in self._all_pack_clips():
+                anim.frames = [harden_pixmap(frame) for frame in anim.frames]
+        self.png_pixmap = pack.static
+        self.gif_movie = None
+        self.gif_data = b""
+        self.current_pixmap = pack.static
+        self.first_frame_pixmap = pack.static.copy()
+        self.original_size = pack.static.size()
+        self.state = 'png'
+        self.gif_duration, self.frame_delays = 0.0, []
+        self.eye_clock = QtCore.QElapsedTimer()
+        self.eye_clock.start()
+        self._test_now = None                 # tests inject time here
+        now = self._pack_now()
+
+        # --- state-machine state ---
+        self.base_state = "awake"             # "awake" | "sleeping"
+        self.active_clip = None               # (anim, start_t, next_state) one-shot
+        self.squint_until = -10.0
+        self.yawned = False
+        self.last_interaction = now           # mouse over the cat / click / drag
+        self.last_cursor_move = now           # global cursor movement
+        self.next_blink = now + random.uniform(*pack.blink_every) if pack.blink_enabled else float("inf")
+        self.next_idle = now + random.uniform(*pack.idle_random_every)
+        self.next_hungry = now + random.uniform(*pack.hungry_every)
+        self.anim_next = [now + random.uniform(*anim.every) for anim in pack.anims]
+        self._battery_pct = None
+        self._battery_checked = -1e9
+        self._pack_mode = "open"
+        self._last_cursor = QtGui.QCursor.pos()
+        self._mask_cache: dict = {}
+
+        self.pack_timer = QtCore.QTimer(self)
+        self.pack_timer.timeout.connect(self._pack_tick)
+        self.pack_timer.start(33)             # ~30 fps; only repaints when something changed
+        logger.info(
+            f"Loaded interactive char '{pack.name}' ({pack.static.width()}x{pack.static.height()}; "
+            f"eyes={pack.eyes is not None} blink={pack.blink_enabled} "
+            f"sleep={pack.sleep is not None} yawn={pack.yawn is not None} "
+            f"idle={len(pack.idle_anims)} click={len(pack.click_anims)} "
+            f"hungry={len(pack.hungry_anims)} anims={len(pack.anims)})"
+        )
+
+    def _pack_now(self) -> float:
+        if getattr(self, "_test_now", None) is not None:
+            return self._test_now
+        return self.eye_clock.elapsed() / 1000.0
+
+    def _pack_tick(self) -> None:
+        """Advance the state machine; repaint only when the frame or gaze changes."""
+        now = self._pack_now()
+        cursor = QtGui.QCursor.pos()
+        moved = cursor != self._last_cursor
+        if moved:
+            self._last_cursor = cursor
+            self.last_cursor_move = now
+            self.yawned = False
+        previous = self.current_pixmap
+        self._pack_mode = self._update_pack_frame()
+        changed = self.current_pixmap is not previous
+        if moved and self._pack_mode == "open" and self.char_pack.eyes is not None:
+            changed = True
+        if changed:
+            self.update()
+
+    def _clip_frame(self, anim, age_ms: float):
+        accumulated = 0
+        for frame, delay in zip(anim.frames, anim.delays):
+            accumulated += delay
+            if age_ms < accumulated:
+                return frame
+        return anim.frames[-1]
+
+    def _start_clip(self, anim, next_state: str, now: float) -> None:
+        self.active_clip = (anim, now, next_state)
+        if anim.frames:
+            self.current_pixmap = anim.frames[0]
+
+    def _wake(self, now: float) -> bool:
+        """If asleep (or falling asleep), wake via sleep_out (or instantly). True if woke."""
+        going_to_sleep = self.active_clip is not None and self.active_clip[2] == "sleeping"
+        if self.base_state != "sleeping" and not going_to_sleep:
+            return False
+        self.last_interaction = now      # waking is an interaction; don't re-sleep/yawn instantly
+        self.last_cursor_move = now
+        self.yawned = False
+        if self.char_pack.sleep_out is not None:
+            self._start_clip(self.char_pack.sleep_out, "awake", now)
+        else:
+            self.active_clip = None
+            self.base_state = "awake"
+        return True
+
+    def _battery_low(self) -> bool:
+        now = self._pack_now()
+        if now - self._battery_checked > 10.0:
+            self._battery_checked = now
+            self._battery_pct = read_battery_percent()
+        return self._battery_pct is not None and self._battery_pct <= self.char_pack.hungry_below
+
+    def _on_pack_click(self) -> None:
+        """Click reaction: wake if asleep, else play a clickN anim or squint."""
+        if self.char_pack is None:
+            return
+        now = self._pack_now()
+        self.last_interaction = now
+        self.yawned = False
+        if self._wake(now):
+            self.update()
+            return
+        pack = self.char_pack
+        if pack.click_anims:
+            self._start_clip(random.choice(pack.click_anims), "awake", now)
+        elif pack.blink is not None:
+            self.squint_until = now + pack.click_squint
+        self.update()
+
+    def _update_pack_frame(self) -> str:
+        """State machine: hungry > sleep > yawn > reaction > blink > awake. Sets current_pixmap."""
+        pack = self.char_pack
+        now = self._pack_now()
+
+        # An active one-shot clip (transition or reaction) plays to completion.
+        if self.active_clip is not None:
+            anim, start, next_state = self.active_clip
+            age_ms = (now - start) * 1000.0
+            if not anim.frames or age_ms >= sum(anim.delays):
+                self.active_clip = None
+                if next_state:
+                    self.base_state = next_state
+            else:
+                self.current_pixmap = self._clip_frame(anim, age_ms)
+                return "anim"
+
+        # Held sleeping pose (wake is driven by interaction, not here).
+        if self.base_state == "sleeping":
+            self.current_pixmap = pack.sleep or pack.static
+            return "sleep"
+
+        idle_for = now - self.last_interaction
+        cursor_still = now - self.last_cursor_move
+
+        # hungry (low battery)
+        if pack.hungry_anims and now >= self.next_hungry and self._battery_low():
+            self._start_clip(random.choice(pack.hungry_anims), "awake", now)
+            self.next_hungry = now + random.uniform(*pack.hungry_every)
+            return "anim"
+        # sleep
+        if (pack.sleep is not None or pack.sleep_in is not None) and idle_for > pack.sleep_after:
+            if pack.sleep_in is not None:
+                self._start_clip(pack.sleep_in, "sleeping", now)
+                return "anim"
+            self.base_state = "sleeping"
+            self.current_pixmap = pack.sleep or pack.static
+            return "sleep"
+        # yawn (precursor to sleep)
+        if pack.yawn is not None and not self.yawned and cursor_still > pack.yawn_after:
+            self.yawned = True
+            self._start_clip(pack.yawn, "awake", now)
+            return "anim"
+        # idle-random pool
+        if pack.idle_anims and now >= self.next_idle:
+            self._start_clip(random.choice(pack.idle_anims), "awake", now)
+            self.next_idle = now + random.uniform(*pack.idle_random_every)
+            return "anim"
+        # periodic config animations
+        for index, anim in enumerate(pack.anims):
+            if now >= self.anim_next[index]:
+                self._start_clip(anim, "awake", now)
+                self.anim_next[index] = now + sum(anim.delays) / 1000.0 + random.uniform(*anim.every)
+                return "anim"
+        # blink
+        if pack.blink_enabled and now >= self.next_blink:
+            self.squint_until = now + pack.blink_duration
+            self.next_blink = now + random.uniform(*pack.blink_every)
+        squinting = now < self.squint_until
+        self.current_pixmap = pack.blink if (squinting and pack.blink is not None) else pack.static
+        return "blink" if squinting else "open"
+
+    def pupil_offsets(self, x: int, y: int, cursor: QtCore.QPoint):
+        """Gaze offsets (scaled px) for the (left, right) pupils.
+
+        Both pupils share one angle — that of whichever eye is nearer the cursor.
+        When the cursor is outside the eye pair they move in parallel (the same
+        offset); when it is horizontally between the eyes they mirror each other
+        (the nearer eye aims at the cursor, the other takes the horizontal
+        mirror), so the gaze converges. Sockets sit at equal height, so the two
+        cases meet continuously at the boundaries. Returns ((lox, loy), (rox, roy))."""
+        pack = self.char_pack
+        travel = pack.eyes.travel_radius
+        left_socket = self.mapToGlobal(QtCore.QPoint(round(x + pack.eyes.left.x()), round(y + pack.eyes.left.y())))
+        right_socket = self.mapToGlobal(QtCore.QPoint(round(x + pack.eyes.right.x()), round(y + pack.eyes.right.y())))
+
+        def aim(socket):
+            dx, dy = cursor.x() - socket.x(), cursor.y() - socket.y()
+            dist = math.hypot(dx, dy)
+            return (dx / dist * travel, dy / dist * travel) if dist > 1 else (0.0, 0.0)
+
+        left_dist = math.hypot(cursor.x() - left_socket.x(), cursor.y() - left_socket.y())
+        right_dist = math.hypot(cursor.x() - right_socket.x(), cursor.y() - right_socket.y())
+        left_nearer = left_dist <= right_dist
+        base = aim(left_socket if left_nearer else right_socket)
+
+        if left_socket.x() < cursor.x() < right_socket.x():     # between the eyes -> converge (mirror)
+            mirrored = (-base[0], base[1])
+            return (base, mirrored) if left_nearer else (mirrored, base)
+        return base, base                                       # outside the pair -> parallel
+
+    def _draw_pupils(self, painter, x: int, y: int) -> None:
+        """Draw the L/R pupil sprites at the computed gaze offsets."""
+        pack = self.char_pack
+        if not pack.eyes or pack.eye_left is None or pack.eye_right is None:
+            return
+        left_off, right_off = self.pupil_offsets(x, y, QtGui.QCursor.pos())
+        for center, sprite, (ox, oy) in (
+            (pack.eyes.left, pack.eye_left, left_off),
+            (pack.eyes.right, pack.eye_right, right_off),
+        ):
+            px = x + center.x() + ox - sprite.width() / 2.0
+            py = y + center.y() + oy - sprite.height() / 2.0
+            painter.drawPixmap(QtCore.QPointF(px, py), sprite)
+
     def _load_position(self) -> None:
         """Load window position from config; default to the bottom-right corner."""
         rect = usable_screen_rect()
@@ -560,22 +948,25 @@ class PixelCatWindow(QtWidgets.QWidget):
         save_config(config)
     
     def _load_image(self, image_name: str) -> None:
-        """Load a different GIF from ZIP and extract first frame."""
+        """Switch chars — a new interactive pack or a legacy single-GIF."""
+        zip_path = char_catalog.find_char(image_name)
+        if zip_path is None:
+            logger.error(f"ZIP file not found for char: {image_name}")
+            return
+        if char_pack.is_new_pack(zip_path):
+            self._switch_to_pack(image_name, zip_path)
+            return
+        if self.char_pack is not None:
+            self._teardown_pack_mode()
         try:
-            zip_path = skin_catalog.find_skin_zip(image_name)
-            if zip_path is None:
-                logger.error(f"ZIP file not found for skin: {image_name}")
-                return
-            
-            # Extract first GIF from ZIP
-            with zipfile.ZipFile(zip_path, 'r') as zip_file:
-                gif_files = [f for f in zip_file.namelist() if f.lower().endswith('.gif')]
+            # Read the first GIF from the char (folder or zip, in memory).
+            with char_pack.CharSource(zip_path) as source:
+                gif_files = sorted(n for n in source.names() if n.lower().endswith(".gif"))
                 if not gif_files:
-                    logger.error(f"No GIF file found in ZIP: {image_name}.zip")
+                    logger.error(f"No GIF found in char: {image_name}")
                     return
-                
-                gif_data = zip_file.read(gif_files[0])
-                logger.info(f"Extracted {gif_files[0]} from {zip_path.name}")
+                gif_data = source.read(gif_files[0])
+                logger.info(f"Extracted {gif_files[0]} from {Path(zip_path).name}")
             
             # Build the new movie from the GIF bytes in memory (no temp files).
             new_movie = movie_from_gif_bytes(gif_data)
@@ -659,7 +1050,46 @@ class PixelCatWindow(QtWidgets.QWidget):
             
         except Exception as e:
             logger.error(f"Error loading {image_name}: {e}")
-    
+
+    def _teardown_pack_mode(self) -> None:
+        """Leave interactive-pack mode so the legacy GIF path can take over."""
+        if getattr(self, "pack_timer", None) is not None:
+            self.pack_timer.stop()
+            self.pack_timer = None
+        self.char_pack = None
+        if getattr(self, "animation_timer", None) is None:
+            self.animation_timer = QtCore.QTimer(self)
+            self.animation_timer.timeout.connect(self._on_animation_frame)
+        self.current_frame = 0
+
+    def _switch_to_pack(self, image_name: str, zip_path) -> None:
+        """Switch to a new interactive char pack, preserving the bottom-right corner."""
+        try:
+            pack = char_pack.load_pack(zip_path)
+        except Exception as exc:
+            logger.error(f"Error loading pack {image_name}: {exc}")
+            return
+        if getattr(self, "animation_timer", None) is not None:
+            self.animation_timer.stop()
+        if getattr(self, "pack_timer", None) is not None:
+            self.pack_timer.stop()
+        old_size = self.size()
+        top_left = self.pos()
+        bottom_right_x = top_left.x() + old_size.width()
+        bottom_right_y = top_left.y() + old_size.height()
+
+        self.char_pack = pack
+        self.file_name = image_name
+        self._setup_pack_content()
+
+        new_size = self._pack_content_size()
+        self.resize(new_size)
+        self.move(bottom_right_x - new_size.width(), bottom_right_y - new_size.height())
+        save_image_to_ini(image_name)
+        self._save_position()
+        self.update()
+        logger.info(f"Switched to interactive char {image_name}")
+
     def _show_context_menu(self, pos: QtCore.QPoint) -> None:
         """Show context menu at the given position."""
         menu = QtWidgets.QMenu(self)
@@ -675,27 +1105,35 @@ class PixelCatWindow(QtWidgets.QWidget):
                 chat_action.setEnabled(bool(llm_is_enabled()))
             menu.addSeparator()
 
-        # "LLM…" — pick the chat vendor (Ollama / OpenAI / Grok / custom …) and
-        # model. Always available so the backend can be configured from scratch.
+        # Settings entries, in the agreed order: LLM, Calendar, Reminder,
+        # GitHub, Activity.
         llm_action = menu.addAction("LLM…")
         llm_action.triggered.connect(self.open_llm_settings)
+
+        calendar_action = menu.addAction("Calendar…")
+        calendar_action.triggered.connect(self.open_calendar_settings)
+
+        reminder_action = menu.addAction("Reminder…")
+        reminder_action.triggered.connect(self._open_reminder)
+
+        github_action = menu.addAction("GitHub…")
+        github_action.triggered.connect(self.open_github_settings)
+
+        activity_action = menu.addAction("Activity…")
+        activity_action.triggered.connect(self.open_activity_dialog)
 
         # Shop temporarily hidden from the menu (work in progress). The dialog
         # and its handler stay in the codebase; re-enable by uncommenting:
         # shop_action = menu.addAction("Open Shop…")
         # shop_action.triggered.connect(self._open_shop)
 
-        reminder_action = menu.addAction("Reminder…")
-        reminder_action.triggered.connect(self._open_reminder)
-        
-        settings_action = menu.addAction("Settings…")
-        settings_action.triggered.connect(self._open_settings)
+        # Focus is fully automatic now (earned from activity) — no menu action.
         menu.addSeparator()
 
-        # Rebuild the list every time so freshly-installed skins appear without restart.
-        self.available_images = skin_catalog.scan_all()
+        # Rebuild the list every time so freshly-installed chars appear without restart.
+        self.available_images = char_catalog.scan_all()
         if len(self.available_images) > 0:
-            images_menu = menu.addMenu("Images")
+            images_menu = menu.addMenu("Chars")
             for img_name in self.available_images:
                 action = images_menu.addAction(img_name)
                 if img_name == self.file_name:
@@ -710,35 +1148,9 @@ class PixelCatWindow(QtWidgets.QWidget):
             login_action.setChecked(autostart.is_enabled())
             login_action.toggled.connect(autostart.set_enabled)
 
-        menu.addSeparator()
-        reset_pos_action = menu.addAction("Reset Position")
-        reset_pos_action.triggered.connect(self._reset_position)
-
         quit_action = menu.addAction("Quit")
         quit_action.triggered.connect(QtWidgets.QApplication.quit)
         menu.exec(self.mapToGlobal(pos))
-
-    def _open_settings(self) -> None:
-        """Open the Settings dialog."""
-        try:
-            if __package__:
-                from .settings_ui import SettingsDialog
-            else:
-                import importlib
-                SettingsDialog = importlib.import_module("mycat.settings_ui").SettingsDialog
-        except Exception:
-            logger.exception("Failed to import settings dialog")
-            return
-        dialog = SettingsDialog(parent=self, config_path=CFG_FILE, main_window=self)
-        dialog.exec()
-
-    def _reset_position(self) -> None:
-        """Reset the cat's position to the bottom right."""
-        window_width = self.width()
-        window_height = self.height()
-        default_x, default_y = self.bottom_right_position(window_width, window_height)
-        self.move(default_x, default_y)
-        self._save_position()
 
     def open_llm_settings(self) -> None:
         """Open the LLM vendor settings dialog (vendor, model, test, save)."""
@@ -756,6 +1168,60 @@ class PixelCatWindow(QtWidgets.QWidget):
             return
         dialog = LLMSettingsDialog(self, parent=self)
         dialog.exec()
+
+    def open_github_settings(self) -> None:
+        """Open the GitHub notifier settings dialog (token, filters, test)."""
+        notifier = getattr(self, "github_notifier", None)
+        if notifier is None:
+            return
+        try:
+            if __package__:
+                from .github_ui import GitHubDialog
+            else:
+                import importlib
+                GitHubDialog = importlib.import_module("mycat.github_ui").GitHubDialog
+        except Exception:
+            logger.exception("Failed to import GitHub settings UI")
+            return
+        dialog = GitHubDialog(notifier, parent=self)
+        dialog.show()
+        dialog.raise_()
+
+    def open_calendar_settings(self) -> None:
+        """Open the calendar reminder settings dialog (ICS URL, lead time)."""
+        controller = getattr(self, "calendar_controller", None)
+        if controller is None:
+            return
+        try:
+            if __package__:
+                from .calendar_ui import CalendarDialog
+            else:
+                import importlib
+                CalendarDialog = importlib.import_module("mycat.calendar_ui").CalendarDialog
+        except Exception:
+            logger.exception("Failed to import calendar settings UI")
+            return
+        dialog = CalendarDialog(controller, parent=self)
+        dialog.show()
+        dialog.raise_()
+
+    def open_activity_dialog(self) -> None:
+        """Open the activity diary dialog (settings + interval log)."""
+        collector = getattr(self, "activity_collector", None)
+        if collector is None:
+            return
+        try:
+            if __package__:
+                from .activity_ui import ActivityDialog
+            else:
+                import importlib
+                ActivityDialog = importlib.import_module("mycat.activity_ui").ActivityDialog
+        except Exception:
+            logger.exception("Failed to import activity UI")
+            return
+        dialog = ActivityDialog(collector, focus_controller=getattr(self, "focus_controller", None), parent=self)
+        dialog.show()
+        dialog.raise_()
 
     def _open_shop(self) -> None:
         """Lazily import and show the shop dialog."""
@@ -782,8 +1248,8 @@ class PixelCatWindow(QtWidgets.QWidget):
         dialog = ShopDialog(self, config_path=CFG_FILE)
         dialog.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)
         dialog.destroyed.connect(lambda _=None: setattr(self, "_shop_dialog", None))
-        dialog.skin_installed.connect(self._on_skin_installed)
-        dialog.skin_uninstalled.connect(self._on_skin_uninstalled)
+        dialog.char_installed.connect(self._on_char_installed)
+        dialog.char_uninstalled.connect(self._on_char_uninstalled)
         self._shop_dialog = dialog
         dialog.show()
         dialog.raise_()
@@ -795,12 +1261,12 @@ class PixelCatWindow(QtWidgets.QWidget):
         if controller is not None:
             controller.open_dialog()
 
-    def _on_skin_installed(self, _skin_id: str) -> None:
-        self.available_images = skin_catalog.scan_all()
+    def _on_char_installed(self, _char_id: str) -> None:
+        self.available_images = char_catalog.scan_all()
 
-    def _on_skin_uninstalled(self, skin_id: str) -> None:
-        self.available_images = skin_catalog.scan_all()
-        if self.file_name == skin_id and self.available_images:
+    def _on_char_uninstalled(self, char_id: str) -> None:
+        self.available_images = char_catalog.scan_all()
+        if self.file_name == char_id and self.available_images:
             self._load_image(self.available_images[0])
     
     def _schedule_next_animation(self) -> None:
@@ -887,20 +1353,29 @@ class PixelCatWindow(QtWidgets.QWidget):
             self._schedule_next_animation()
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        """Paint the current pixmap."""
-        painter = QtGui.QPainter(self)
-        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+        """Paint the current pixmap (+ tracking pupils for interactive chars)."""
+        mode = getattr(self, "_pack_mode", None) if self.char_pack is not None else None
 
-        # Draw pixmap centered in widget
+        # Centre the pixmap in the widget.
         widget_rect = self.rect()
         pixmap_rect = self.current_pixmap.rect()
         x = (widget_rect.width() - pixmap_rect.width()) // 2
         y = (widget_rect.height() - pixmap_rect.height()) // 2
-        painter.drawPixmap(x, y, self.current_pixmap)
-        painter.end()
 
+        # Update the silhouette mask BEFORE painting: the backing-store -> screen
+        # blit at the end of this paint is clipped to the *current* mask, so any
+        # pixels newly revealed by a shape change (e.g. switching to a char
+        # with a larger silhouette) must be inside the mask now, or they never
+        # get blitted and stay as stale/black framebuffer until the next repaint.
         if self.shape_mask_enabled:
             self.refresh_shape_mask(x, y)
+
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+        painter.drawPixmap(x, y, self.current_pixmap)
+        if mode == "open":
+            self._draw_pupils(painter, x, y)
+        painter.end()
 
     def refresh_shape_mask(self, x: int, y: int) -> None:
         """Clip the window to the current pixmap's alpha silhouette (no-compositor path).
@@ -914,23 +1389,50 @@ class PixelCatWindow(QtWidgets.QWidget):
             return
         self.shape_mask_key = key
 
-        bitmap = pixmap.mask()
-        if bitmap.isNull():
-            self.clearMask()
-            return
-        region = QtGui.QRegion(bitmap)
-        if x or y:
-            region.translate(x, y)
-        self.setMask(region)
+        # Reuse the silhouette region per frame — building QRegion from a big
+        # bitmap each paint is what made multi-frame chars lag.
+        cache = getattr(self, "_mask_cache", None)
+        region = cache.get(pixmap.cacheKey()) if cache is not None else None
+        if region is None:
+            bitmap = pixmap.mask()
+            if bitmap.isNull():
+                self.clearMask()
+                return
+            region = QtGui.QRegion(bitmap)
+            if cache is not None:
+                cache[pixmap.cacheKey()] = region
+        self.setMask(region.translated(x, y) if (x or y) else region)
+
+        # Growing the shape reveals window area the X server does not auto-expose
+        # (no compositor), so the just-painted backing store never reaches those
+        # newly-unmasked pixels — they linger as stale/black framebuffer. Schedule
+        # one more paint now that the new mask is in effect to fill them. The
+        # cache-key guard above makes that follow-up paint a no-op for the mask,
+        # so this settles in a single extra frame (no repaint loop). Without it a
+        # char switch onto a static frame freezes the gap as black until the
+        # next animation happens to repaint everything.
+        self.update()
+
+    def enterEvent(self, event: QtCore.QEvent) -> None:
+        """Show the current-period tooltip immediately — no hover delay."""
+        tip = self.toolTip()
+        if tip:
+            QtWidgets.QToolTip.showText(QtGui.QCursor.pos(), tip, self)
+        super().enterEvent(event)
 
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
-        """Handle mouse press for dragging."""
+        """Handle mouse press for dragging (+ click reaction / wake on interactive chars)."""
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self._on_pack_click()
             self.dragging = True
             self.drag_start_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
 
     def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
-        """Handle mouse move for dragging."""
+        """Handle mouse move for dragging (+ counts as interaction: resets idle, wakes)."""
+        if self.char_pack is not None:
+            now = self._pack_now()
+            self.last_interaction = now
+            self._wake(now)
         if self.dragging and event.buttons() == QtCore.Qt.MouseButton.LeftButton:
             new_pos = event.globalPosition().toPoint() - self.drag_start_pos
             self.move(new_pos)
@@ -955,7 +1457,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--wait",
         type=float,
-        default=None,
+        default=STATIC_TIME,
         help="Seconds to show first frame before playing GIF (default: 5.0)",
     )
 
@@ -1161,8 +1663,15 @@ def setup_tray(app, window, icon_pixmap):
     toggle_chat = getattr(window, "_toggle_llm_chat", None)
     if callable(toggle_chat):
         menu.addAction("Chat", toggle_chat)
-    menu.addAction("Reminder…", window._open_reminder)
+    # Same order as the context menu: LLM, Calendar, Reminder, GitHub, Activity.
     menu.addAction("LLM…", window.open_llm_settings)
+    menu.addAction("Calendar…", window.open_calendar_settings)
+    menu.addAction("Reminder…", window._open_reminder)
+    menu.addAction("GitHub…", window.open_github_settings)
+    menu.addAction("Activity…", window.open_activity_dialog)
+
+    # Focus is fully automatic now (earned from activity) — no tray toggle.
+
     if autostart.is_supported():
         menu.addSeparator()
         login_action = menu.addAction("Autostart")
@@ -1170,8 +1679,6 @@ def setup_tray(app, window, icon_pixmap):
         login_action.setChecked(autostart.is_enabled())
         login_action.toggled.connect(autostart.set_enabled)
     menu.addSeparator()
-    menu.addAction("Settings…", window._open_settings)
-    menu.addAction("Reset Position", window._reset_position)
     menu.addAction("Quit", QtWidgets.QApplication.quit)
     tray.setContextMenu(menu)
 
@@ -1191,9 +1698,6 @@ def main() -> None:
 
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
-
-    # Load wait time from config if not explicitly overridden by args
-    wait_time = args.wait if args.wait is not None else load_wait_time_from_ini(STATIC_TIME)
 
     llm_context = llm.initialize(args)
     
@@ -1229,6 +1733,18 @@ def main() -> None:
         logger.error(f"Failed to initialize Qt application: {e}")
         sys.exit(1)
     
+    # Single instance: a second launch must not spawn a second cat. Hold the
+    # lock for the whole process lifetime (it is released when the process
+    # exits). A lock left by a crashed instance is reclaimed automatically
+    # because QLockFile records the owner PID and detects a dead owner.
+    if platform_name != "offscreen":
+        CFG_DIR.mkdir(parents=True, exist_ok=True)
+        instance_lock = QtCore.QLockFile(str(CFG_DIR / "mycat.lock"))
+        instance_lock.setStaleLockTime(0)
+        if not instance_lock.tryLock(100):
+            logger.info("Another mycat instance is already running — exiting.")
+            sys.exit(0)
+
     # Setup signal handlers for graceful shutdown
     def signal_handler(signum, frame):
         """Handle Ctrl+C gracefully."""
@@ -1244,7 +1760,7 @@ def main() -> None:
     timer.start(100)  # Check every 100ms
     
     # Scan for available ZIP files
-    available_images = scan_images_directory()
+    available_images = scan_chars()
     logger.info(f"Found {len(available_images)} ZIP archive(s): {', '.join(available_images)}")
     
     # Load default image from INI if no image path provided
@@ -1255,19 +1771,28 @@ def main() -> None:
             logger.warning(f"Image '{default_image}' from INI not found in available images, using default: cat")
             default_image = None
     
-    # Load images
+    # Resolve the chosen char's ZIP, then branch on format: a new interactive
+    # pack (static/blink/eyes/config) or a legacy single-GIF char.
     try:
-        png_pixmap, gif_movie, file_name, gif_data = load_packaged_images(args.image, default_image)
-        logger.info(
-            f"Playing {file_name}.zip (first frame) "
-            f"{png_pixmap.width()}x{png_pixmap.height()} for {wait_time:.1f}s"
-        )
+        if args.image:
+            zip_path = Path(args.image)
+        else:
+            zip_path = (char_catalog.find_char(default_image or "cat")
+                        or char_catalog.find_char("cat"))
+        if zip_path and char_pack.is_new_pack(zip_path):
+            pack = char_pack.load_pack(zip_path)
+            window = PixelCatWindow(pack.static, None, args.wait, Path(zip_path).stem,
+                                    available_images, b"", pack=pack)
+        else:
+            png_pixmap, gif_movie, file_name, gif_data = load_packaged_images(args.image, default_image)
+            logger.info(
+                f"Playing {file_name}.zip (first frame) "
+                f"{png_pixmap.width()}x{png_pixmap.height()} for {args.wait:.1f}s"
+            )
+            window = PixelCatWindow(png_pixmap, gif_movie, args.wait, file_name, available_images, gif_data)
     except Exception as e:
-        logger.error(f"Error loading images: {e}")
+        logger.error(f"Error loading char: {e}")
         sys.exit(2)
-
-    # Create and show window
-    window = PixelCatWindow(png_pixmap, gif_movie, wait_time, file_name, available_images, gif_data)
     if llm_context:
         llm.attach(window, llm_context)
     
@@ -1280,7 +1805,15 @@ def main() -> None:
     else:
         window.show()
         # Persistent cat tray icon (kept on the window so it isn't GC'd).
-        window.tray_icon = setup_tray(app, window, png_pixmap)
+        window.tray_icon = setup_tray(app, window, window.png_pixmap)
+        # Live in the tray: hiding/closing windows no longer quits the app —
+        # only the explicit Quit action does. With no tray to quit from, keep
+        # the old behaviour so the user is never stuck with an invisible process.
+        app.setQuitOnLastWindowClosed(window.tray_icon is None)
+        # Flush the in-progress activity minute on a clean Quit.
+        app.aboutToQuit.connect(lambda: flush_activity_on_quit(window))
+        # First-run nudge to start on login (after the cat is up).
+        QtCore.QTimer.singleShot(600, lambda: offer_autostart_on_first_run(window))
 
     try:
         sys.exit(app.exec())
