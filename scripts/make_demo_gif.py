@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Render a looping demo GIF of the cat: eyes forward, then a blink.
+"""Render a looping demo GIF of the cat: eyes aimed right between them, then a blink.
 
 Built straight from the packaged ``cat`` char (``mycat/chars/cat.zip``) so the
 demo matches what the app actually draws:
 
 - ``static.png`` is the body with empty eye sockets; the pupils
-  (``eye_left.png`` / ``eye_right.png``) are pasted centred on the socket
-  coordinates from ``config.json`` — a centred pupil means "looking forward".
+  (``eye_left.png`` / ``eye_right.png``) are pasted onto the socket coordinates
+  from ``config.json``, each shifted inward by the full ``travel_radius`` — the
+  exact gaze the char engine draws when the cursor sits at the midpoint between
+  the eyes (see ``pupil_offsets`` in main.py: cursor between the sockets mirrors
+  the pupils so the gaze converges).
 - ``blink.png`` is the same body with the eyes closed.
 
-Two frames, looped forever: forward for 4 s, blink for 0.5 s. Writes
+Two frames, looped forever: gaze for 4 s, blink for 0.5 s. Writes
 ``docs/cat.gif`` — a 200x200, 1-bit-transparent GIF (same format as
 ``docs/classic.gif``).
 """
@@ -26,7 +29,7 @@ CAT_ZIP = REPO / "mycat" / "chars" / "cat.zip"
 OUTPUT = REPO / "docs" / "cat.gif"
 
 CANVAS = 200          # final GIF is CANVAS x CANVAS, like docs/cat.gif
-FORWARD_MS = 4000     # eyes forward
+GAZE_MS = 4000        # eyes aimed between them
 BLINK_MS = 500        # eyes closed
 ALPHA_CUTOFF = 128    # GIF transparency is 1-bit; threshold the soft alpha edge
 
@@ -40,13 +43,24 @@ def load_pack(zip_path):
     return config, images
 
 
-def forward_frame(config, images):
-    """static body with both pupils centred on their sockets → gaze forward."""
+def gaze_between_eyes_frame(config, images):
+    """Static body with both pupils converged on the point midway between the eyes.
+
+    That is exactly what the char engine draws when the cursor sits at that
+    midpoint: for a cursor horizontally between the sockets it mirrors the two
+    pupils, and since ``aim`` always uses the full ``travel_radius`` magnitude,
+    each pupil shifts inward (toward the nose) by the whole radius — a gentle
+    cross-eyed gaze. Sockets sit at equal height, so the shift is purely
+    horizontal: left pupil +travel, right pupil −travel.
+    """
     frame = images["static.png"].copy()
     eyes = config["eyes"]
+    travel = eyes["travel_radius"]
+    offsets = {"left": (travel, 0), "right": (-travel, 0)}  # both inward, toward centre
     for side, pupil_name in (("left", "eye_left.png"), ("right", "eye_right.png")):
         pupil = images[pupil_name]
-        cx, cy = eyes[side]["x"], eyes[side]["y"]
+        ox, oy = offsets[side]
+        cx, cy = eyes[side]["x"] + ox, eyes[side]["y"] + oy
         box = (round(cx - pupil.width / 2.0), round(cy - pupil.height / 2.0))
         frame.alpha_composite(pupil, box)
     return frame
@@ -73,23 +87,23 @@ def to_transparent_palette(frame):
 
 def main():
     config, images = load_pack(CAT_ZIP)
-    forward = to_transparent_palette(fit_canvas(forward_frame(config, images)))
+    gaze = to_transparent_palette(fit_canvas(gaze_between_eyes_frame(config, images)))
     blink = to_transparent_palette(fit_canvas(images["blink.png"]))
 
     if __import__("os").environ.get("PREVIEW"):
         preview = Image.new("RGBA", (CANVAS * 2 + 20, CANVAS), (235, 235, 240, 255))
-        preview.alpha_composite(fit_canvas(forward_frame(config, images)), (0, 0))
+        preview.alpha_composite(fit_canvas(gaze_between_eyes_frame(config, images)), (0, 0))
         preview.alpha_composite(fit_canvas(images["blink.png"]), (CANVAS + 20, 0))
         preview_path = Path(__import__("os").environ["PREVIEW"])
         preview.convert("RGB").save(preview_path)
         print(f"Wrote preview {preview_path}")
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    forward.save(
+    gaze.save(
         OUTPUT,
         save_all=True,
         append_images=[blink],
-        duration=[FORWARD_MS, BLINK_MS],
+        duration=[GAZE_MS, BLINK_MS],
         loop=0,
         transparency=255,
         disposal=2,
