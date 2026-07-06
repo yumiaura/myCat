@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mycat"
-version = "0.1.9"
+version = "0.1.10"
 description = "Desktop Cat: Qt Overlay"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -21,11 +21,12 @@ dependencies = [
     "pillow>=12.0.0",
     "pyside6>=6.10.0",
     # Global key/click COUNTS via pynput (the key identity is discarded in the
-    # hook — only an integer survives). A base dependency so the counts work
-    # out of the box on plain `pip install mycat` and in the prebuilt exe.
-    # Degrades to cursor-only where global hooks can't run (Wayland, or macOS
-    # without Input Monitoring permission).
-    "pynput>=1.7",
+    # hook — only an integer survives). Base dependency on Windows/macOS so the
+    # counts work out of the box on `pip install mycat` and in the prebuilt exe.
+    # NOT on Linux: there pynput hard-requires `evdev`, a C extension with no
+    # wheel, so a plain `pip install mycat` would fail to build without a
+    # compiler + Python headers. Linux users opt in with `mycat[basic]`.
+    "pynput>=1.7; sys_platform != 'linux'",
 ]
 
 [dependency-groups]
@@ -36,9 +37,9 @@ dev = [
 
 # Optional: store API keys in the OS keyring instead of plaintext config.
 [project.optional-dependencies]
-# `pynput` is now a base dependency (see [project.dependencies]); `basic` is
-# kept only as a no-op alias so older `pip install mycat[basic]` commands still
-# resolve.
+# On Windows/macOS `pynput` is a base dependency; on Linux it lives here so it
+# stays opt-in (it pulls the `evdev` C extension, which needs a compiler). Linux
+# users who want key/click counts: `pip install mycat[basic]`.
 basic = ["pynput>=1.7"]
 secure = ["keyring>=24"]
 # ICS calendar reminders: RRULE expansion (the daily standup) is a swamp not
