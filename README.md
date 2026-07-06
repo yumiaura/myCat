@@ -117,20 +117,12 @@ mycat --pos 960 540        # center of a 1920x1080 screen
 
 The cat remembers its position and selected char between sessions in `~/.config/mycat/config.ini`.
 
-## 🎬 Make your own cat GIF
+## 🎬 Make your own cat
 
-```bash
-# Install ImageMagick
-sudo apt install imagemagick
-
-# Build an animated GIF from a sprite sheet
-convert cat.png -crop 50%x100% +repage -set delay '200,100' -loop 0 cat.gif
-
-# Package it as a char ZIP
-zip cat.zip cat.gif
-```
-
-Drop the resulting ZIP next to the others and pick it from the right-click **Chars** menu.
+A char is just an animated GIF in a `.zip` — from a quick doodle to a fully
+interactive cat with cursor-tracking eyes, blinking, sleeping and click
+reactions. Step-by-step guide (draw it, build the GIF, package, install & share):
+**[docs/CHARS.md](docs/CHARS.md)**.
 
 ## 🐳 Docker
 

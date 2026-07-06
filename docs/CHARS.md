@@ -1,8 +1,49 @@
-# mycat interactive char-pack format
+# Make your own mycat char
 
-A char is a single `<name>.zip`. The cat is a small **state machine**: a base
-"awake" pose whose pupils follow the cursor, plus optional expressions and
+A char is a single `<name>.zip`. The simplest is one animated **GIF** — see the
+Quick start below. The full format turns the cat into a small **state machine**:
+a base "awake" pose whose pupils follow the cursor, plus optional expressions and
 animations that play on idle, on click, on wake/sleep, and on low battery.
+
+---
+
+## Quick start — a simple char (one GIF)
+
+The simplest char needs no `config.json` and no eyes — just **one animated GIF**
+in a zip. Its first frame is the resting pose myCat shows while idle; the rest is
+the little animation that plays now and then.
+
+1. **Draw a few frames** with a transparent background (PNGs work well). Frame 1
+   is the calm idle pose; the rest are a blink, a stretch, a wave… up to you.
+2. **Build the animated GIF** — any tool works (GIMP, Aseprite, [ezgif.com](https://ezgif.com),
+   or ImageMagick):
+   ```bash
+   # from separate frames (frame1 = the idle pose):
+   convert -delay 12 -loop 0 frame1.png frame2.png frame3.png redcat.gif
+
+   # …or from a 2-frame sprite sheet (left half = idle, right half = action):
+   convert sheet.png -crop 50%x100% +repage -set delay '200,100' -loop 0 redcat.gif
+   ```
+3. **Package it** — the zip's filename is the name shown in the menu:
+   ```bash
+   zip redcat.zip redcat.gif
+   ```
+4. **Try it right away**
+   - Launch with it: `mycat --image /path/to/redcat.zip`
+   - Or install it: drop `redcat.zip` into your chars folder and it shows up in
+     the right-click **Chars** menu instantly (no restart):
+     - **Linux:** `~/.local/share/mycat/chars/` (or `$XDG_DATA_HOME/mycat/chars/`)
+     - **macOS:** `~/Library/Application Support/mycat/chars/`
+     - **Windows:** `%LOCALAPPDATA%\mycat\chars\`
+5. **Share it** (optional) — put `redcat.zip` in `mycat/chars/` and open a pull
+   request. ⚠️ Only share art **you drew yourself**.
+
+Keep it within ~300×500 (anything larger is scaled down proportionally). Want
+cursor-tracking eyes, blinking, sleeping and click reactions? Read on.
+
+---
+
+## Interactive char-pack format
 
 Everything is **convention over configuration**: you drop files with the
 reserved names below into the zip and they are picked up automatically. Anything
