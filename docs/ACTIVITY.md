@@ -40,11 +40,11 @@ Two independent tiers:
 - **Tier 1 — cursor (no hooks, no OS permissions).** The cursor position is
   polled 10× per second; the Euclidean distance between consecutive samples
   is accumulated into the current minute.
-- **Tier 2 — keys and clicks (global hooks via pynput, installed with
-  `mycat[basic]`).** Key presses and mouse clicks are *counted*. Where hooks
-  can't work (pynput not installed, Wayland, missing macOS Input Monitoring
-  permission) this tier silently degrades and only the cursor tier keeps
-  recording.
+- **Tier 2 — keys and clicks (global counts).** Via `pynput` on Windows/macOS,
+  or a pure-Python `python-xlib` backend on Linux/X11. Key presses and mouse
+  clicks are *counted*. Where neither can run (e.g. Wayland, missing macOS Input
+  Monitoring permission) this tier silently degrades and only the cursor tier
+  keeps recording.
 
 The dialog has three nested checkboxes: **Enable Activity** (master), and under
 it **Enable Mouse** (click count) and **Enable Keyboard** (key count). All on by

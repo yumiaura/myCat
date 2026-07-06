@@ -174,11 +174,10 @@ class GitHubDialog(QtWidgets.QDialog):
         return tuple(accounts)
 
     def fly_sample(self, text: str, url: str) -> None:
-        """Fly the sample banner — same plane as a real notification, just urgent
-        (so a focus session's DND can't hold the test back)."""
+        """Fly the sample banner — same plane as a real notification."""
         announcer = getattr(self.notifier, "announcer", None)
         if announcer is not None:
-            announcer.announce(text, url=url, urgent=True)
+            announcer.announce(text, url=url)
 
     def show_test_result(self, result: dict) -> None:
         self.test_button.setEnabled(True)

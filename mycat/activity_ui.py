@@ -253,19 +253,16 @@ class ActivityDialog(QtWidgets.QDialog):
         self.current_start = None
         self.dpi = 96.0
 
-        # All three toggles on one line: master Enable Activity, then the two
-        # COUNT sub-tracks — Mouse = click count, Keyboard = key count — which
-        # grey out while Activity is off. (Cursor path always records while
-        # Activity is on — the cat's eyes need it.)
-        self.enabled_box = QtWidgets.QCheckBox("Enable Activity")
+        # Three independent toggles: Tracking drives only the cat's eyes, while
+        # Mouse and Keyboard are the diary count tracks. None greys out the others.
+        self.enabled_box = QtWidgets.QCheckBox("Enable Tracking")
         self.enabled_box.setToolTip(
-            "Record your focus and how much you use the mouse and keyboard — how many\n"
-            "keystrokes and clicks, never which keys. A private diary kept only on this\n"
-            "computer; nothing is ever sent anywhere. Off = nothing is recorded."
+            "The cat's eyes follow your cursor; off, it looks at its own nose.\n"
+            "Purely visual — it records nothing."
         )
         self.enabled_box.setChecked(settings.enabled)
         self.mouse_box = QtWidgets.QCheckBox("Enable Mouse")
-        self.mouse_box.setToolTip("Click count. Cursor path always records for the cat's eyes.")
+        self.mouse_box.setToolTip("Mouse click count in the private diary (never targets).")
         self.mouse_box.setChecked(settings.mouse_enabled)
         self.keyboard_box = QtWidgets.QCheckBox("Enable Keyboard")
         self.keyboard_box.setToolTip("Keystroke count (never which keys).")
@@ -285,15 +282,13 @@ class ActivityDialog(QtWidgets.QDialog):
         toggles_row.addWidget(self.tooltip_box)
         toggles_row.addStretch(1)
         layout.addLayout(toggles_row)
-        self.enabled_box.toggled.connect(self.mouse_box.setEnabled)
-        self.enabled_box.toggled.connect(self.keyboard_box.setEnabled)
-        self.mouse_box.setEnabled(settings.enabled)
-        self.keyboard_box.setEnabled(settings.enabled)
 
-        # Cursor path works without pynput; only the counts need mycat[basic].
-        if not activity_mod.pynput_available():
+        # The key/click COUNTS need global input access (X11 / pynput); warn if
+        # it's unavailable here. The cursor path and the eyes work without it.
+        if not activity_mod.counts_available():
             hint = QtWidgets.QLabel(
-                "Key/click counts need <code>pip install mycat[basic]</code> — cursor path works without it."
+                "Key/click counts aren't available here (needs X11, or macOS Input "
+                "Monitoring permission) — the cursor path still records."
             )
             hint.setTextFormat(QtCore.Qt.TextFormat.RichText)
             hint.setWordWrap(True)

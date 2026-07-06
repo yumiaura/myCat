@@ -1,4 +1,4 @@
-"""Announcer queue: pacing, one-at-a-time, DND hold/release, urgent bypass."""
+"""Announcer queue: pacing, one-at-a-time, FIFO order (nothing is suppressed)."""
 
 from mycat.announcer import MIN_GAP_SECONDS, SKY_STALE_SECONDS, Announcer
 
@@ -63,54 +63,20 @@ def test_min_gap_between_flights(qapp):
     assert [a.text for a in sky.launched] == ["first", "second"]
 
 
-def test_dnd_holds_normal_items(qapp):
+def test_every_announcement_is_shown_in_fifo_order(qapp):
+    # Nothing is ever suppressed (no do-not-disturb); the queue only paces
+    # flybys, draining strictly in the order they were queued.
     ann, sky, clock = make_announcer(qapp)
-    ann.set_dnd(True)
-    ann.announce("github ping")
-    assert sky.launched == []
-    assert ann.pending_count() == 1
-
-
-def test_dnd_release_flushes_queue_in_order(qapp):
-    ann, sky, clock = make_announcer(qapp)
-    ann.set_dnd(True)
-    ann.announce("one")
-    ann.announce("two")
-    ann.set_dnd(False)
-    assert [a.text for a in sky.launched] == ["one"]
-    finish_flight(ann)
-    clock.advance(MIN_GAP_SECONDS + 0.1)
-    ann.pump()
-    assert [a.text for a in sky.launched] == ["one", "two"]
-
-
-def test_urgent_bypasses_dnd(qapp):
-    ann, sky, clock = make_announcer(qapp)
-    ann.set_dnd(True)
-    ann.announce("normal")
-    ann.announce("meeting in 10", urgent=True)
-    assert [a.text for a in sky.launched] == ["meeting in 10"]
-    # The normal item is still held.
-    finish_flight(ann)
-    clock.advance(MIN_GAP_SECONDS + 0.1)
-    ann.pump()
-    assert [a.text for a in sky.launched] == ["meeting in 10"]
-    assert ann.pending_count() == 1
-
-
-def test_urgent_jumps_ahead_but_keeps_fifo_among_urgent(qapp):
-    ann, sky, clock = make_announcer(qapp)
-    ann.announce("blocker")  # takes off immediately, occupies the sky
-    ann.announce("normal")
-    ann.announce("urgent-1", urgent=True)
-    ann.announce("urgent-2", urgent=True)
+    ann.announce("first")  # takes off immediately
+    ann.announce("second")
+    ann.announce("third")
     order = []
     while ann.pending_count():
         finish_flight(ann)
         clock.advance(MIN_GAP_SECONDS + 0.1)
         ann.pump()
-        order.append(sky.launched[-1].text)
-    assert order == ["urgent-1", "urgent-2", "normal"]
+    order = [a.text for a in sky.launched]
+    assert order == ["first", "second", "third"]
 
 
 def test_parked_flyby_stops_blocking_after_stale_timeout(qapp):

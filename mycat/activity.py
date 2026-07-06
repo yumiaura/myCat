@@ -17,9 +17,9 @@ Two tiers:
 
 - Tier 1 (no dependencies, no OS permissions): cursor distance via
   ``QCursor.pos()`` polling at 10 Hz.
-- Tier 2 (``pynput``, installed with ``mycat[basic]``): key press and mouse
-  click *counts* via global hooks. Where hooks can't work (pynput not
-  installed, Wayland, missing macOS Input Monitoring permission) the collector
+- Tier 2 (global key/click *counts*): ``pynput`` on Windows/macOS, or a
+  pure-Python ``python-xlib`` backend on Linux/X11. Where neither can run
+  (e.g. Wayland, or missing macOS Input Monitoring permission) the collector
   degrades to tier 1 at runtime.
 
 The two COUNT tracks switch independently (``mouse_enabled`` = click counts,
@@ -73,8 +73,8 @@ class ActivitySettings:
     # The diary is core product behaviour: on by default, with an opt-out,
     # a retention limit and a delete-everything button in the dialog.
     enabled: bool = True
-    # Two switchable COUNT tracks (both tier 2, need mycat[basic]): mouse = click
-    # counts, keyboard = key counts. The tier-1 cursor path always records while
+    # Two switchable COUNT tracks (both tier 2): mouse = click counts, keyboard =
+    # key counts. The tier-1 cursor path always records while
     # the diary is on — the cat's eyes need the cursor anyway — so it has no toggle.
     mouse_enabled: bool = True
     keyboard_enabled: bool = True
@@ -83,11 +83,23 @@ class ActivitySettings:
 
 
 def pynput_available() -> bool:
-    """Whether the tier-2 hooks (mycat[basic]) can be imported at all."""
+    """Whether the pynput hooks can be imported at all (Windows/macOS)."""
     try:
         import pynput  # noqa: F401
 
         return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def counts_available() -> bool:
+    """Whether key/click counting can run: pynput, or python-xlib on Linux/X11."""
+    if pynput_available():
+        return True
+    try:
+        from . import xinput_linux
+
+        return xinput_linux.available()
     except Exception:  # noqa: BLE001
         return False
 
@@ -172,6 +184,7 @@ class ActivityCollector(QtCore.QObject):
         self.bucket_clicks = 0
         self.key_listener = None
         self.mouse_listener = None
+        self.xinput = None  # pure-Python X11 counter, the fallback when pynput is absent
         self.purged_today = False
         # Idle-edge detection (auto-pomodoro trigger) + current activity run.
         self.last_input_at = None
@@ -183,7 +196,7 @@ class ActivityCollector(QtCore.QObject):
             self.poll_timer = QtCore.QTimer(self)
             self.poll_timer.setInterval(CURSOR_POLL_MS)
             self.poll_timer.timeout.connect(self.sample)
-            if self.settings.enabled:
+            if self.settings.mouse_enabled or self.settings.keyboard_enabled:
                 self.start()
 
     # -- lifecycle --------------------------------------------------------------
@@ -203,18 +216,21 @@ class ActivityCollector(QtCore.QObject):
             self.poll_timer.stop()
         self.stop_keyboard_hook()
         self.stop_mouse_hook()
+        self.stop_xinput()
         self.flush()
         logger.info("Activity collector stopped")
 
     def apply_settings(self, settings: ActivitySettings) -> None:
-        was_enabled = self.settings.enabled
+        # "Enable Tracking" (settings.enabled) drives only the cat's eyes; the
+        # diary runs whenever either count track is on, independent of it.
+        was_recording = self.settings.mouse_enabled or self.settings.keyboard_enabled
         self.settings = settings
-        if settings.enabled and not was_enabled:
+        recording = settings.mouse_enabled or settings.keyboard_enabled
+        if recording and not was_recording:
             self.start()
-        elif not settings.enabled and was_enabled:
+        elif not recording and was_recording:
             self.stop()
-        elif settings.enabled:
-            # Still on — reconcile each tier to its own toggle.
+        elif recording:
             self.reconcile_hooks()
 
     def reconcile_hooks(self) -> None:
@@ -228,15 +244,15 @@ class ActivityCollector(QtCore.QObject):
         else:
             self.stop_mouse_hook()
 
-    # -- tier 2: pynput hooks (counts only, need mycat[basic]) --------------------
+    # -- tier 2: key/click counts — pynput (Windows/macOS) or python-xlib (Linux) --
 
     def start_keyboard_hook(self) -> None:
         if self.key_listener is not None:
             return
         try:
             from pynput import keyboard
-        except Exception:  # noqa: BLE001 - optional dep, Wayland, missing perms…
-            logger.warning("pynput unavailable — key counting off (install mycat[basic]); cursor path still recorded")
+        except Exception:  # noqa: BLE001 - pynput absent (Linux base install) -> X11 fallback
+            self.ensure_xinput()
             return
 
         def on_press(key) -> None:
@@ -255,8 +271,8 @@ class ActivityCollector(QtCore.QObject):
             return
         try:
             from pynput import mouse
-        except Exception:  # noqa: BLE001 - optional dep, Wayland, missing perms…
-            logger.warning("pynput unavailable — click counting off (install mycat[basic]); cursor path still recorded")
+        except Exception:  # noqa: BLE001 - pynput absent (Linux base install) -> X11 fallback
+            self.ensure_xinput()
             return
 
         def on_click(x, y, button, pressed) -> None:
@@ -286,6 +302,43 @@ class ActivityCollector(QtCore.QObject):
                 pass
             self.mouse_listener = None
 
+    def ensure_xinput(self) -> None:
+        """Fallback counter for Linux, where pynput isn't installed. One X RECORD
+        context feeds both tallies; the settings gate which are counted."""
+        if self.xinput is not None:
+            return
+        try:
+            from . import xinput_linux
+        except Exception:  # noqa: BLE001
+            logger.warning("key/click counting off — no pynput and no python-xlib; cursor path still recorded")
+            return
+        if not xinput_linux.available():
+            logger.warning("key/click counting off — no X11 RECORD (Wayland?); cursor path still recorded")
+            return
+        counter = xinput_linux.InputCounter(on_key=self.on_xinput_key, on_click=self.on_xinput_click)
+        if counter.start():
+            self.xinput = counter
+            logger.info("Key/click counting via python-xlib (X11)")
+        else:
+            logger.warning("key/click counting off — X11 RECORD unavailable; cursor path still recorded")
+
+    def on_xinput_key(self) -> None:
+        # The key identity never leaves the record thread — only the count survives.
+        if self.settings.keyboard_enabled:
+            self.bucket_keys += 1
+
+    def on_xinput_click(self) -> None:
+        if self.settings.mouse_enabled:
+            self.bucket_clicks += 1
+
+    def stop_xinput(self) -> None:
+        if self.xinput is not None:
+            try:
+                self.xinput.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            self.xinput = None
+
     # -- tier 1: cursor sampling ---------------------------------------------------
 
     def sample(self) -> None:
@@ -299,8 +352,8 @@ class ActivityCollector(QtCore.QObject):
 
         moved = 0.0
         pos = self.cursor_pos_fn()
-        # Cursor path always records while the diary is on — the cat's eyes track
-        # the cursor anyway, so "Enable Mouse" gates only the click count, not this.
+        # Cursor path (distance) records whenever the diary is running; the Mouse
+        # toggle gates the click count, not this. `moved` also feeds idle/focus.
         if pos is not None and self.last_pos is not None:
             dx = pos.x() - self.last_pos.x()
             dy = pos.y() - self.last_pos.y()

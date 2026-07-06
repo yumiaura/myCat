@@ -139,11 +139,11 @@ class AnnouncerStub:
     def __init__(self):
         self.announced = []
 
-    def announce(self, text, url="", urgent=False, **kwargs):
-        self.announced.append((text, urgent))
+    def announce(self, text, url="", **kwargs):
+        self.announced.append(text)
 
 
-def test_controller_announces_urgent_before_event(qapp):
+def test_controller_announces_before_event(qapp):
     now_holder = {"now": datetime(2026, 7, 2, 13, 55, tzinfo=TZ)}
     ann = AnnouncerStub()
     controller = CalendarController(
@@ -157,10 +157,9 @@ def test_controller_announces_urgent_before_event(qapp):
     controller.events = [{"key": "k", "start": event_start, "summary": "Dentist"}]
     controller.tick()
     assert len(ann.announced) == 1
-    text, urgent = ann.announced[0]
+    text = ann.announced[0]
     assert "Dentist" in text
     assert "5 min" in text
-    assert urgent is True
     controller.tick()  # no double fire
     assert len(ann.announced) == 1
 

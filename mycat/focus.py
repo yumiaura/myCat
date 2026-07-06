@@ -9,12 +9,11 @@ reads the collector's current run once a second and:
 - shows it in the cat's hover tooltip ("Focus · 12:34 · 🍅 2 · ⌨ … · %");
 - when the run reaches ``focus_minutes`` (25) you have **earned a 🍅** and a
   banner flies ("🍅 earned — time to rest"); it re-fires every ``focus_minutes``
-  of unbroken work, but the run still counts as a single 🍅;
-- keeps do-not-disturb on while a run is active (non-urgent banners wait) and
-  releases it when you rest (idle past the gap).
+  of unbroken work, but the run still counts as a single 🍅.
 
-The 🍅 / 🍌 accounting lives in :mod:`mycat.activity` (runs graded by length);
-this class only drives the live tooltip, the rest banner and DND.
+A focus run never suppresses anything — it is not do-not-disturb; every banner
+is always shown. The 🍅 / 🍌 accounting lives in :mod:`mycat.activity` (runs
+graded by length); this class only drives the live tooltip and the rest banner.
 """
 
 import configparser
@@ -108,11 +107,13 @@ def save_focus_settings(settings: FocusSettings, cfg_file: Path = CFG_FILE) -> N
 
 
 class FocusController(QtCore.QObject):
-    """Watches the collector's current activity run and drives the tooltip,
-    the "time to rest" banner and do-not-disturb.
+    """Watches the collector's current activity run and drives the tooltip
+    and the "time to rest" banner.
 
-    ``announcer`` (an :class:`mycat.announcer.Announcer` or a stub) and
-    ``store`` / ``now_fn`` are injectable for tests.
+    A focus run never suppresses anything — it is not do-not-disturb; the rest
+    nudge is just another banner. ``announcer`` (an
+    :class:`mycat.announcer.Announcer` or a stub) and ``store`` / ``now_fn`` are
+    injectable for tests.
     """
 
     def __init__(self, window, announcer=None, store=None, now_fn=datetime.now, start_timer=True) -> None:
@@ -126,7 +127,6 @@ class FocusController(QtCore.QObject):
         self.collector = None
         self.run_start = None  # identity of the run we're currently watching
         self.rests_nudged = 0  # how many "time to rest" nudges fired this run
-        self.dnd_on = False
 
         if start_timer:
             self.timer = QtCore.QTimer(self)
@@ -183,8 +183,7 @@ class FocusController(QtCore.QObject):
     def tick(self) -> None:
         stats = self.current_run_stats()
         if stats is None:
-            # Idle: release DND and forget the run we were watching.
-            self.set_dnd(False)
+            # Idle: forget the run we were watching.
             self.run_start = None
             self.rests_nudged = 0
             self.refresh_visuals()
@@ -195,7 +194,6 @@ class FocusController(QtCore.QObject):
             # A fresh run — reset the rest-nudge counter.
             self.run_start = start
             self.rests_nudged = 0
-        self.set_dnd(True)
 
         elapsed_minutes = int(self.run_elapsed_seconds(stats) // 60)
         milestones = elapsed_minutes // self.settings.focus_minutes  # 0, 1, 2, …
@@ -209,16 +207,8 @@ class FocusController(QtCore.QObject):
         if self.announcer is None:
             return
         text = "🍅 earned — time to rest" if milestone == 1 else "Still at it — time to rest 🍅"
-        # Urgent so it breaks through the DND this very run put up.
-        self.announcer.announce(text, urgent=True)
+        self.announcer.announce(text)
         logger.info("Focus rest nudge (milestone %d, %d min)", milestone, milestone * self.settings.focus_minutes)
-
-    def set_dnd(self, active: bool) -> None:
-        if active == self.dnd_on:
-            return
-        self.dnd_on = active
-        if self.announcer is not None:
-            self.announcer.set_dnd(active)
 
     # -- visuals: the cat's hover tooltip carries the current run --------------
 

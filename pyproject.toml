@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mycat"
-version = "0.1.10"
+version = "0.1.11"
 description = "Desktop Cat: Qt Overlay"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -20,13 +20,16 @@ classifiers = [
 dependencies = [
     "pillow>=12.0.0",
     "pyside6>=6.10.0",
-    # Global key/click COUNTS via pynput (the key identity is discarded in the
-    # hook — only an integer survives). Base dependency on Windows/macOS so the
-    # counts work out of the box on `pip install mycat` and in the prebuilt exe.
-    # NOT on Linux: there pynput hard-requires `evdev`, a C extension with no
-    # wheel, so a plain `pip install mycat` would fail to build without a
-    # compiler + Python headers. Linux users opt in with `mycat[basic]`.
+    # Global key/click COUNTS (the key identity is discarded in the hook — only
+    # an integer survives), so the counts work out of the box on a plain
+    # `pip install mycat` everywhere, including the prebuilt exe.
+    #   - Windows/macOS: pynput (installs cleanly there).
+    #   - Linux: python-xlib, a pure-Python X11 backend with wheels. We avoid
+    #     pynput on Linux because it hard-requires `evdev`, a C extension with no
+    #     wheel that would make `pip install mycat` fail to build without a
+    #     compiler. Off X11 (Wayland) it degrades to cursor-only.
     "pynput>=1.7; sys_platform != 'linux'",
+    "python-xlib>=0.33; sys_platform == 'linux'",
 ]
 
 [dependency-groups]
@@ -37,10 +40,6 @@ dev = [
 
 # Optional: store API keys in the OS keyring instead of plaintext config.
 [project.optional-dependencies]
-# On Windows/macOS `pynput` is a base dependency; on Linux it lives here so it
-# stays opt-in (it pulls the `evdev` C extension, which needs a compiler). Linux
-# users who want key/click counts: `pip install mycat[basic]`.
-basic = ["pynput>=1.7"]
 secure = ["keyring>=24"]
 # ICS calendar reminders: RRULE expansion (the daily standup) is a swamp not
 # worth hand-rolling, so the calendar feature needs these two small libs.

@@ -197,10 +197,7 @@ class AnnouncerStub:
     def __init__(self):
         self.announced = []
 
-    def set_dnd(self, active):
-        pass
-
-    def announce(self, text, url="", urgent=False, **kwargs):
+    def announce(self, text, url="", **kwargs):
         self.announced.append((text, url))
 
 

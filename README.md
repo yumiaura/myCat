@@ -54,10 +54,9 @@ On **Linux** also install the Qt platform plugin once:
 sudo apt install -y libxcb-cursor0
 ```
 
-The activity diary can **count** key presses and clicks (never *which* keys). On
-**Windows/macOS** that works out of the box; on **Linux** it's opt-in —
-`pip install mycat[basic]` (it pulls `evdev`, which needs a compiler). Without it
-the diary still records the cursor path.
+The activity diary can **count** key presses and clicks (never *which* keys) —
+it works out of the box on Windows, macOS and Linux/X11. Where global input
+access isn't available (e.g. Wayland) it degrades to recording the cursor path.
 
 Upgrade or remove later with `pip install -U mycat` / `pip uninstall mycat`.
 

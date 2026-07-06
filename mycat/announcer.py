@@ -2,13 +2,10 @@
 """One shared announcement queue for the companion features.
 
 Every companion feature (pomodoro, GitHub notifications, calendar reminders,
-the morning digest) delivers its messages through a single :class:`Announcer`
-so that flybys never overlap and focus time stays quiet:
-
-- one flyby is on screen at a time, with a small gap between flights;
-- while do-not-disturb is on (an active focus session), normal announcements
-  are held and released on the next break;
-- urgent announcements (an upcoming meeting) fly immediately, DND or not.
+the morning digest) delivers its messages through a single :class:`Announcer`.
+Every message is always shown — nothing is ever suppressed (a focus session is
+NOT do-not-disturb). The queue exists only to pace flybys so they don't overlap:
+one flyby is on screen at a time, with a small gap between flights, in FIFO order.
 
 Main-thread only: pollers running in worker threads must hand their events to
 the GUI thread (e.g. via a Qt signal) before calling :meth:`Announcer.announce`.
@@ -35,7 +32,6 @@ class Announcement:
 
     text: str
     url: str = ""  # opened on double-click when non-empty
-    urgent: bool = False  # bypasses DND and jumps ahead of normal items
     direction: str = "ltr"
     speed: float = 1.0
     plane_color: str = "pink"
@@ -47,7 +43,7 @@ class Announcement:
 
 
 class Announcer(QtCore.QObject):
-    """Owns the queue, paces take-offs, and enforces do-not-disturb.
+    """Owns the queue and paces take-offs so flybys never overlap.
 
     ``launch`` and ``clock`` are injectable for tests: ``launch(item)`` must
     return an object whose disappearance the caller reports via
@@ -61,7 +57,6 @@ class Announcer(QtCore.QObject):
         self.launch = launch if launch is not None else self.launch_flyby
         self.clock = clock
         self.queue: list[Announcement] = []
-        self.dnd = False
         self.active = None  # the in-flight window; also guards "one at a time"
         self.active_since = 0.0
         self.ready_at = 0.0  # earliest monotonic time for the next take-off
@@ -95,50 +90,33 @@ class Announcer(QtCore.QObject):
             "plane_width": saved.plane_width,
         }
 
-    def announce(
-        self,
-        text: str,
-        url: str = "",
-        urgent: bool = False,
-        **cosmetics,
-    ) -> Announcement:
-        """Queue a message. Urgent items keep FIFO order among themselves but
-        go ahead of every normal item already waiting."""
+    def announce(self, text: str, url: str = "", **cosmetics) -> Announcement:
+        """Queue a message. Every message is shown; the queue only paces them."""
         merged = self.default_cosmetics()
         merged.update(cosmetics)
-        item = Announcement(text=text, url=url, urgent=urgent, **merged)
-        if urgent:
-            position = 0
-            while position < len(self.queue) and self.queue[position].urgent:
-                position += 1
-            self.queue.insert(position, item)
-        else:
-            self.queue.append(item)
-        logger.info("Announcement queued (urgent=%s): %r", urgent, text)
+        item = Announcement(text=text, url=url, **merged)
+        self.queue.append(item)
+        logger.info("Announcement queued: %r", text)
         self.pump()
+        if item in self.queue:
+            logger.info("Announcement held (%s): %r", self.hold_reason(), text)
         return item
-
-    def set_dnd(self, active: bool) -> None:
-        """Focus sessions turn DND on; breaks / idle turn it off."""
-        self.dnd = bool(active)
-        logger.debug("Announcer DND -> %s", self.dnd)
-        if not self.dnd:
-            self.pump()
 
     def pending_count(self) -> int:
         return len(self.queue)
 
+    def hold_reason(self) -> str:
+        """Why the queue head can't take off right now — for the log only."""
+        if self.active is not None and self.clock() - self.active_since <= SKY_STALE_SECONDS:
+            return "another flyby is still on screen"
+        if self.clock() < self.ready_at:
+            return "pacing gap between flybys"
+        return "waiting for the next pump tick"
+
     # -- queue pump -----------------------------------------------------------
 
     def next_item(self) -> Announcement | None:
-        if not self.queue:
-            return None
-        if not self.dnd:
-            return self.queue[0]
-        for item in self.queue:
-            if item.urgent:
-                return item
-        return None
+        return self.queue[0] if self.queue else None
 
     def pump(self) -> None:
         """Launch the next eligible announcement, if the sky is clear."""
@@ -164,6 +142,7 @@ class Announcer(QtCore.QObject):
             return
         self.active = shown
         self.active_since = self.clock()
+        logger.info("Flyby launched: %r (%d still queued)", item.text, len(self.queue))
 
     def flyby_gone(self) -> None:
         """The current flyby left the screen; schedule the next take-off."""

@@ -1,4 +1,4 @@
-"""Auto-focus watcher: tooltip, the earned/rest banner, DND on active vs idle."""
+"""Auto-focus watcher: tooltip and the earned/rest banner on active vs idle runs."""
 
 from datetime import datetime, timedelta
 
@@ -31,13 +31,9 @@ class FakeNow:
 
 class AnnouncerStub:
     def __init__(self) -> None:
-        self.dnd_calls = []
         self.announced = []
 
-    def set_dnd(self, active) -> None:
-        self.dnd_calls.append(bool(active))
-
-    def announce(self, text, url="", urgent=False, **kwargs):
+    def announce(self, text, url="", **kwargs):
         self.announced.append(text)
 
 
@@ -109,20 +105,19 @@ def test_tooltip_toggle_controls_the_hover_tooltip(tmp_path, qapp):
     assert window.tip == ""
 
 
-def test_idle_has_no_tooltip_and_no_dnd(tmp_path, qapp):
+def test_idle_has_no_tooltip(tmp_path, qapp):
     controller, ann, store, now, col = make(tmp_path)
     col.run = None
     controller.tick()
     assert controller.status_text() == ""
-    assert ann.dnd_calls == []  # DND was never switched on
+    assert ann.announced == []  # nothing announced while idle
 
 
-def test_active_run_sets_dnd_and_ticks_tooltip(tmp_path, qapp):
+def test_active_run_ticks_tooltip(tmp_path, qapp):
     controller, ann, store, now, col = make(tmp_path)
     col.run = run_stats(now(), keys=450, active_pct=96)
     now.advance(minutes=7, seconds=18)
     controller.tick()
-    assert ann.dnd_calls == [True]
     text = controller.status_text()
     assert text.startswith("🍅 0 · 7:18")  # no "Focus" label, just the stats
     assert "⌨ 450" in text and "% active" in text
@@ -153,14 +148,14 @@ def test_rest_reminder_repeats_every_interval(tmp_path, qapp):
     assert ann.announced == ["🍅 earned — time to rest", "Still at it — time to rest 🍅"]
 
 
-def test_dnd_released_when_the_run_ends(tmp_path, qapp):
+def test_run_ending_resets_the_watcher(tmp_path, qapp):
     controller, ann, store, now, col = make(tmp_path)
     col.run = run_stats(now())
     controller.tick()
-    assert ann.dnd_calls == [True]
+    assert controller.run_start is not None
     col.run = None  # rested past the gap
     controller.tick()
-    assert ann.dnd_calls == [True, False]
+    assert controller.run_start is None  # forgotten, ready for the next run
 
 
 def test_a_fresh_run_can_earn_again(tmp_path, qapp):

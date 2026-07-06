@@ -928,6 +928,37 @@ class ReminderDialog(QtWidgets.QDialog):
         layout.addWidget(self.status_label)
         layout.addLayout(buttons)
 
+        # On reopen, the dialog must visibly reflect the live schedule (Olya:
+        # "if I open it again it looks reset"). A 1-second countdown keeps the
+        # status line honest about how much time is left until the flyby.
+        self._countdown = QtCore.QTimer(self)
+        self._countdown.setInterval(1000)
+        self._countdown.timeout.connect(self._refresh_pending)
+        self._refresh_pending()
+        if self.status_label.text():
+            self._countdown.start()
+
+    def _refresh_pending(self) -> None:
+        """Show the pending reminder as a short 'Reminder in N min. (HH:MM)' line."""
+        reminder = self._controller.reminder
+        if reminder is None or not reminder.enabled or reminder.fire_at is None:
+            self._countdown.stop()
+            self.status_label.clear()
+            return
+        remaining = int((reminder.fire_at - datetime.now()).total_seconds())
+        if remaining <= 0:
+            self._countdown.stop()
+            self.status_label.clear()
+            return
+        if remaining >= 60:
+            left = f"{(remaining + 59) // 60} min"  # ceil, so 10:00 shows "10 min"
+        else:
+            left = f"{remaining} sec"
+        at = reminder.fire_at.strftime("%H:%M")
+        daily = ", daily" if reminder.repeat_daily else ""
+        self.status_label.setStyleSheet("color: #1c7c2f;")
+        self.status_label.setText(f"Reminder in {left}. ({at}{daily})")
+
     def _sync_timing_enabled(self) -> None:
         in_mode = self._in_radio.isChecked()
         self._in_spin.setEnabled(in_mode)
@@ -981,14 +1012,38 @@ class ReminderDialog(QtWidgets.QDialog):
         self._controller.test(self._build_reminder())
 
     def _on_clear(self) -> None:
+        self._countdown.stop()
         self._controller.clear()
+        # Full reset: wipe the schedule AND restore the form to defaults,
+        # including the message text ("Do you feed mycat?").
+        defaults = Reminder()
+        self._text_edit.setText(defaults.text)
+        self._direction.setCurrentIndex(
+            max(0, self._direction.findData(defaults.normalized_direction()))
+        )
+        color_idx = self._color.findData(defaults.plane_color)
+        if color_idx >= 0:
+            self._color.setCurrentIndex(color_idx)
+        plane_idx = self.plane_combo.findData(defaults.plane)
+        if plane_idx >= 0:
+            self.plane_combo.setCurrentIndex(plane_idx)
+        self._plane_width_spin.setValue(max(120, defaults.plane_width))
+        self._in_spin.setValue(max(0, defaults.in_minutes))
+        self._repeat.setChecked(defaults.repeat_daily)
+        self._in_radio.setChecked(True)
+        self._at_time.setTime(QtCore.QTime.currentTime().addSecs(600))
+        self._sync_timing_enabled()
         self.status_label.setStyleSheet("color: #777777;")
         self.status_label.setText("Reminder cleared.")
 
     def _on_save(self) -> None:
         reminder = self._build_reminder()
         self._controller.set_reminder(reminder)
-        when = f"in {reminder.in_minutes} min" if reminder.mode == "in" else reminder.fire_at.strftime("at %H:%M")
-        repeat = ", daily" if reminder.repeat_daily else ""
-        self.status_label.setStyleSheet("color: #1c7c2f;")
-        self.status_label.setText(f'Saved: "{reminder.text}" · {when}{repeat} · {reminder.plane_color} plane.')
+        # Show the short countdown straight away — it doubles as the "saved"
+        # confirmation, so nothing swaps in a few seconds later.
+        self._refresh_pending()
+        if self.status_label.text():
+            self._countdown.start()
+        else:
+            self.status_label.setStyleSheet("color: #1c7c2f;")
+            self.status_label.setText("Reminder set.")

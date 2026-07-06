@@ -39,6 +39,7 @@ if __package__:
         llm,
         reminder,
         secret_store,
+        update_check,
     )
 else:
     import importlib
@@ -57,6 +58,7 @@ else:
     calendar_ics = importlib.import_module("mycat.calendar_ics")
     activity = importlib.import_module("mycat.activity")
     digest = importlib.import_module("mycat.digest")
+    update_check = importlib.import_module("mycat.update_check")
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -599,8 +601,8 @@ class PixelCatWindow(QtWidgets.QWidget):
         # requests — until enabled in its settings dialog.
         self.github_notifier = github_notify.GitHubNotifier(self, announcer=self.announcer)
 
-        # Calendar reminders (opt-in, secret ICS URL): the only banners
-        # urgent enough to fly through an active focus session.
+        # Calendar reminders (opt-in, secret ICS URL): banners shortly before
+        # each event, shown like every other announcement.
         self.calendar_controller = calendar_ics.CalendarController(self, announcer=self.announcer)
 
         # Activity diary (on by default, local-only): counters, never content;
@@ -883,12 +885,31 @@ class PixelCatWindow(QtWidgets.QWidget):
             return (base, mirrored) if left_nearer else (mirrored, base)
         return base, base                                       # outside the pair -> parallel
 
+    def gaze_target(self, x: int, y: int) -> QtCore.QPoint:
+        """Where the pupils look: the cursor while "Enable Tracking" is on AND the
+        cursor is on the cat's screen; otherwise the cat's own nose — a point
+        between and just below the eyes so the pupils converge downward. So the cat
+        looks at its nose when Tracking is off, or when the cursor has left for
+        another monitor. (Independent of the Mouse/Keyboard diary toggles.)"""
+        collector = getattr(self, "activity_collector", None)
+        tracking = collector is None or collector.settings.enabled
+        if tracking:
+            cursor = QtGui.QCursor.pos()
+            app = QtWidgets.QApplication.instance()
+            cat_screen = self.screen()
+            if app is not None and cat_screen is not None and app.screenAt(cursor) is cat_screen:
+                return cursor
+        eyes = self.char_pack.eyes
+        nose_x = (eyes.left.x() + eyes.right.x()) / 2.0
+        nose_y = max(eyes.left.y(), eyes.right.y()) + eyes.travel_radius * 2
+        return self.mapToGlobal(QtCore.QPoint(round(x + nose_x), round(y + nose_y)))
+
     def _draw_pupils(self, painter, x: int, y: int) -> None:
         """Draw the L/R pupil sprites at the computed gaze offsets."""
         pack = self.char_pack
         if not pack.eyes or pack.eye_left is None or pack.eye_right is None:
             return
-        left_off, right_off = self.pupil_offsets(x, y, QtGui.QCursor.pos())
+        left_off, right_off = self.pupil_offsets(x, y, self.gaze_target(x, y))
         for center, sprite, (ox, oy) in (
             (pack.eyes.left, pack.eye_left, left_off),
             (pack.eyes.right, pack.eye_right, right_off),
@@ -1717,6 +1738,10 @@ def main() -> None:
 
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
+
+    app_version = update_check.current_version()
+    logger.info("mycat %s", app_version)
+    update_check.check_in_background(app_version)
 
     llm_context = llm.initialize(args)
     

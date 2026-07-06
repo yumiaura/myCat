@@ -7,9 +7,8 @@ one poller covers every provider with no OAuth. The URL *is* the secret: it
 lives in the chmod-600 config like the other tokens, and until the feature is
 enabled this module makes zero network requests.
 
-Calendar banners are the one thing allowed to interrupt a focus session —
-they go through the announcer as ``urgent`` (a meeting missed is worse than a
-focus broken).
+Calendar banners go through the shared announcer like every other companion
+message — always shown, just paced so flybys don't overlap.
 
 Parsing needs ``icalendar`` + ``recurring-ical-events`` (recurring events —
 the daily standup — are exactly what people want reminders for, and RRULE
@@ -229,7 +228,7 @@ class FetchWorker(QtCore.QRunnable):
 
 
 class CalendarController(QtCore.QObject):
-    """Polls the ICS feed and fires urgent banners shortly before events."""
+    """Polls the ICS feed and fires banners shortly before events."""
 
     def __init__(self, window, announcer=None, settings=None, now_fn=None, start_timers=True) -> None:
         super().__init__(window if isinstance(window, QtCore.QObject) else None)
@@ -297,7 +296,7 @@ class CalendarController(QtCore.QObject):
             text = f"📅 {event['summary']} — in {minutes} min"
             logger.info("Calendar reminder: %s", text)
             if self.announcer is not None:
-                self.announcer.announce(text, urgent=True)
+                self.announcer.announce(text)
 
 
 __all__ = [
