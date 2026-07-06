@@ -133,10 +133,10 @@ class CalendarDialog(QtWidgets.QDialog):
         text = f"📅 {nearest['summary']} — at {when}"
         self.set_status(f"OK — {len(events)} event(s) in 24 h · {text}", ok=True)
         # Fly the nearest event as a real banner — same plane as every other
-        # announcement (urgent only, so it clears a focus session's DND).
+        # announcement.
         announcer = getattr(self.controller, "announcer", None)
         if announcer is not None:
-            announcer.announce(text, urgent=True)
+            announcer.announce(text)
 
 
 __all__ = ["CalendarDialog"]

@@ -601,8 +601,8 @@ class PixelCatWindow(QtWidgets.QWidget):
         # requests — until enabled in its settings dialog.
         self.github_notifier = github_notify.GitHubNotifier(self, announcer=self.announcer)
 
-        # Calendar reminders (opt-in, secret ICS URL): the only banners
-        # urgent enough to fly through an active focus session.
+        # Calendar reminders (opt-in, secret ICS URL): banners shortly before
+        # each event, shown like every other announcement.
         self.calendar_controller = calendar_ics.CalendarController(self, announcer=self.announcer)
 
         # Activity diary (on by default, local-only): counters, never content;

@@ -20,9 +20,6 @@ class FakeNow:
 
 
 class AnnouncerStub:
-    def set_dnd(self, active):
-        pass
-
     def announce(self, *args, **kwargs):
         pass
 
