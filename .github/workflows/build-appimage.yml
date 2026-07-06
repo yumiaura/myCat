@@ -10,6 +10,9 @@ on:
     tags:
       - "*.*.*"
       - "v*"
+  pull_request:
+    paths:
+      - ".github/workflows/build-appimage.yml"
   workflow_dispatch: {}
 
 permissions:
