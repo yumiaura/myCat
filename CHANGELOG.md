@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Added
+- **Prebuilt macOS Intel (x86_64) binary.** The release workflow now also builds `mycat-<version>-macos-x64.zip` on an Intel runner (`macos-13`), alongside the existing Apple Silicon (`-macos-arm64`) and Windows builds, so Intel Macs get a native download (branch `ci/macos-intel-x64`).
+
 ## [0.1.11] - 2026-07-06
 
 ### Added
