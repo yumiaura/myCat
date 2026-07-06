@@ -116,6 +116,8 @@ class Announcer(QtCore.QObject):
             self.queue.append(item)
         logger.info("Announcement queued (urgent=%s): %r", urgent, text)
         self.pump()
+        if item in self.queue:
+            logger.info("Announcement held (%s): %r", self.hold_reason(), text)
         return item
 
     def set_dnd(self, active: bool) -> None:
@@ -127,6 +129,16 @@ class Announcer(QtCore.QObject):
 
     def pending_count(self) -> int:
         return len(self.queue)
+
+    def hold_reason(self) -> str:
+        """Why the queue head can't take off right now — for the log only."""
+        if self.active is not None and self.clock() - self.active_since <= SKY_STALE_SECONDS:
+            return "another flyby is still on screen"
+        if self.clock() < self.ready_at:
+            return "pacing gap between flybys"
+        if self.dnd and self.next_item() is None:
+            return "focus mode / do-not-disturb is on"
+        return "waiting for the next pump tick"
 
     # -- queue pump -----------------------------------------------------------
 
@@ -164,6 +176,7 @@ class Announcer(QtCore.QObject):
             return
         self.active = shown
         self.active_since = self.clock()
+        logger.info("Flyby launched: %r (%d still queued)", item.text, len(self.queue))
 
     def flyby_gone(self) -> None:
         """The current flyby left the screen; schedule the next take-off."""
