@@ -939,29 +939,25 @@ class ReminderDialog(QtWidgets.QDialog):
             self._countdown.start()
 
     def _refresh_pending(self) -> None:
-        """Show the scheduled reminder's time-remaining, ticking once a second."""
+        """Show the pending reminder as a short 'Reminder in N min. (HH:MM)' line."""
         reminder = self._controller.reminder
         if reminder is None or not reminder.enabled or reminder.fire_at is None:
             self._countdown.stop()
+            self.status_label.clear()
             return
         remaining = int((reminder.fire_at - datetime.now()).total_seconds())
         if remaining <= 0:
             self._countdown.stop()
+            self.status_label.clear()
             return
-        minutes, seconds = divmod(remaining, 60)
-        hours, minutes = divmod(minutes, 60)
-        if hours:
-            left = f"{hours} h {minutes} min"
-        elif minutes:
-            left = f"{minutes} min {seconds:02d} sec"
+        if remaining >= 60:
+            left = f"{(remaining + 59) // 60} min"  # ceil, so 10:00 shows "10 min"
         else:
-            left = f"{seconds} sec"
+            left = f"{remaining} sec"
         at = reminder.fire_at.strftime("%H:%M")
         daily = ", daily" if reminder.repeat_daily else ""
         self.status_label.setStyleSheet("color: #1c7c2f;")
-        self.status_label.setText(
-            f'⏰ Scheduled: "{reminder.text}" — fires in {left} (at {at}{daily}).'
-        )
+        self.status_label.setText(f"Reminder in {left}. ({at}{daily})")
 
     def _sync_timing_enabled(self) -> None:
         in_mode = self._in_radio.isChecked()
@@ -1017,20 +1013,37 @@ class ReminderDialog(QtWidgets.QDialog):
 
     def _on_clear(self) -> None:
         self._countdown.stop()
-        # Cancel the schedule but keep the typed message and look, so reopening
-        # doesn't wipe the user's text — they can re-arm without retyping.
-        kept = self._build_reminder()
-        kept.enabled = False
-        kept.fire_at = None
-        self._controller.set_reminder(kept)
+        self._controller.clear()
+        # Full reset: wipe the schedule AND restore the form to defaults,
+        # including the message text ("Do you feed mycat?").
+        defaults = Reminder()
+        self._text_edit.setText(defaults.text)
+        self._direction.setCurrentIndex(
+            max(0, self._direction.findData(defaults.normalized_direction()))
+        )
+        color_idx = self._color.findData(defaults.plane_color)
+        if color_idx >= 0:
+            self._color.setCurrentIndex(color_idx)
+        plane_idx = self.plane_combo.findData(defaults.plane)
+        if plane_idx >= 0:
+            self.plane_combo.setCurrentIndex(plane_idx)
+        self._plane_width_spin.setValue(max(120, defaults.plane_width))
+        self._in_spin.setValue(max(0, defaults.in_minutes))
+        self._repeat.setChecked(defaults.repeat_daily)
+        self._in_radio.setChecked(True)
+        self._at_time.setTime(QtCore.QTime.currentTime().addSecs(600))
+        self._sync_timing_enabled()
         self.status_label.setStyleSheet("color: #777777;")
-        self.status_label.setText("Reminder turned off — message kept.")
+        self.status_label.setText("Reminder cleared.")
 
     def _on_save(self) -> None:
-        self._countdown.stop()
         reminder = self._build_reminder()
         self._controller.set_reminder(reminder)
-        when = f"in {reminder.in_minutes} min" if reminder.mode == "in" else reminder.fire_at.strftime("at %H:%M")
-        repeat = ", daily" if reminder.repeat_daily else ""
-        self.status_label.setStyleSheet("color: #1c7c2f;")
-        self.status_label.setText(f'Saved: "{reminder.text}" · {when}{repeat} · {reminder.plane_color} plane.')
+        # Show the short countdown straight away — it doubles as the "saved"
+        # confirmation, so nothing swaps in a few seconds later.
+        self._refresh_pending()
+        if self.status_label.text():
+            self._countdown.start()
+        else:
+            self.status_label.setStyleSheet("color: #1c7c2f;")
+            self.status_label.setText("Reminder set.")
