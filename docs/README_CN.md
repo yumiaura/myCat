@@ -5,6 +5,7 @@
 [<img src="https://raw.githubusercontent.com/yumiaura/myCat/refs/heads/main/docs/cat.gif" width="164" alt="cat.gif"/>](https://github.com/yumiaura)
 
 <p class="badges">
+  <a href="https://github.com/yumiaura/myCat/releases/latest"><img src="https://img.shields.io/github/v/release/yumiaura/myCat?label=download&color=blue" alt="Latest release"></a>
   <img src="https://img.shields.io/pypi/pyversions/mycat?color=brightgreen" alt="Python Versions">
   <a href="https://pypi.org/project/mycat/"><img src="https://img.shields.io/pypi/v/mycat?color=brightgreen" alt="PyPI Version"></a>
   <a href="https://pypi.org/project/mycat/"><img src="https://img.shields.io/pepy/dt/mycat?label=pypi%20%7C%20downloads&color=brightgreen" alt="Pepy Total Downloads"/></a>
@@ -23,12 +24,22 @@
 
 ### 方式 A —— 预编译二进制（无需 Python）
 
-从 **[最新发布](https://github.com/yumiaura/myCat/releases/latest)** 下载对应系统的版本并运行：
+选择适合你系统的版本 —— 每个按钮都会下载**最新发布**：
 
-| 系统 | 文件 | 运行方式 |
-| --- | --- | --- |
-| **Windows** | `mycat-<版本>-windows-x64.exe` | 双击运行 |
-| **macOS** | `mycat-<版本>-macos-arm64.zip` | 解压后打开 `mycat.app` |
+<p>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-windows-x64.exe"><img src="https://img.shields.io/badge/Download-Windows-0078D6?logo=windows&logoColor=white" alt="Windows"></a>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-macos-arm64.zip"><img src="https://img.shields.io/badge/Download-macOS%20Apple%20Silicon-000000?logo=apple&logoColor=white" alt="macOS Apple Silicon"></a>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-macos-x64.zip"><img src="https://img.shields.io/badge/Download-macOS%20Intel-555555?logo=apple&logoColor=white" alt="macOS Intel"></a>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-amd64.deb"><img src="https://img.shields.io/badge/Download-Linux%20.deb-A81D33?logo=debian&logoColor=white" alt="Linux .deb"></a>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-x86_64.AppImage"><img src="https://img.shields.io/badge/Download-Linux%20AppImage-FCC624?logo=linux&logoColor=black" alt="Linux AppImage"></a>
+</p>
+
+然后运行：
+
+- **Windows** —— 双击 `.exe`。
+- **macOS** —— 解压并打开 `mycat.app`（首次启动：右键 → **打开** 以绕过 Gatekeeper）。
+- **Linux `.deb`** —— `sudo apt install ./mycat-amd64.deb`。
+- **Linux AppImage** —— `chmod +x mycat-x86_64.AppImage && ./mycat-x86_64.AppImage`（需要 FUSE：`sudo apt install libfuse2`）。
 
 > 所有版本的构建都在 **[Releases](https://github.com/yumiaura/myCat/releases)** 页面。
 

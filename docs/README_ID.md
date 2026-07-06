@@ -5,6 +5,7 @@
 [<img src="https://raw.githubusercontent.com/yumiaura/myCat/refs/heads/main/docs/cat.gif" width="164" alt="cat.gif"/>](https://github.com/yumiaura)
 
 <p class="badges">
+  <a href="https://github.com/yumiaura/myCat/releases/latest"><img src="https://img.shields.io/github/v/release/yumiaura/myCat?label=download&color=blue" alt="Latest release"></a>
   <img src="https://img.shields.io/pypi/pyversions/mycat?color=brightgreen" alt="Python Versions">
   <a href="https://pypi.org/project/mycat/"><img src="https://img.shields.io/pypi/v/mycat?color=brightgreen" alt="PyPI Version"></a>
   <a href="https://pypi.org/project/mycat/"><img src="https://img.shields.io/pepy/dt/mycat?label=pypi%20%7C%20downloads&color=brightgreen" alt="Pepy Total Downloads"/></a>
@@ -23,12 +24,22 @@ Pilih cara yang paling mudah — kucing berjalan di **Windows, macOS, dan Linux*
 
 ### Opsi A — biner siap pakai (tanpa Python)
 
-Unduh build untuk OS Anda dari **[rilis terbaru](https://github.com/yumiaura/myCat/releases/latest)**, lalu jalankan:
+Ambil build untuk OS Anda — setiap tombol mengunduh **rilis terbaru**:
 
-| OS | File | Cara menjalankan |
-| --- | --- | --- |
-| **Windows** | `mycat-<versi>-windows-x64.exe` | klik dua kali |
-| **macOS** | `mycat-<versi>-macos-arm64.zip` | ekstrak, lalu buka `mycat.app` |
+<p>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-windows-x64.exe"><img src="https://img.shields.io/badge/Download-Windows-0078D6?logo=windows&logoColor=white" alt="Windows"></a>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-macos-arm64.zip"><img src="https://img.shields.io/badge/Download-macOS%20Apple%20Silicon-000000?logo=apple&logoColor=white" alt="macOS Apple Silicon"></a>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-macos-x64.zip"><img src="https://img.shields.io/badge/Download-macOS%20Intel-555555?logo=apple&logoColor=white" alt="macOS Intel"></a>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-amd64.deb"><img src="https://img.shields.io/badge/Download-Linux%20.deb-A81D33?logo=debian&logoColor=white" alt="Linux .deb"></a>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-x86_64.AppImage"><img src="https://img.shields.io/badge/Download-Linux%20AppImage-FCC624?logo=linux&logoColor=black" alt="Linux AppImage"></a>
+</p>
+
+Lalu jalankan:
+
+- **Windows** — klik dua kali `.exe`.
+- **macOS** — ekstrak dan buka `mycat.app` (peluncuran pertama: klik kanan → **Open** untuk melewati Gatekeeper).
+- **Linux `.deb`** — `sudo apt install ./mycat-amd64.deb`.
+- **Linux AppImage** — `chmod +x mycat-x86_64.AppImage && ./mycat-x86_64.AppImage` (perlu FUSE: `sudo apt install libfuse2`).
 
 > Build untuk setiap rilis ada di halaman **[Releases](https://github.com/yumiaura/myCat/releases)**.
 

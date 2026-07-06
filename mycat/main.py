@@ -1187,8 +1187,15 @@ class PixelCatWindow(QtWidgets.QWidget):
             login_action.setChecked(autostart.is_enabled())
             login_action.toggled.connect(autostart.set_enabled)
 
-        quit_action = menu.addAction("Quit")
-        quit_action.triggered.connect(QtWidgets.QApplication.quit)
+        # With a system tray, "Quit" from the cat only hides it to the tray —
+        # the real Quit lives in the tray menu (restore via tray double-click or
+        # its "Show"). Without a tray there's nowhere to hide, so keep a real Quit.
+        if getattr(self, "tray_icon", None) is not None:
+            hide_action = menu.addAction("Hide")
+            hide_action.triggered.connect(self.hide)
+        else:
+            quit_action = menu.addAction("Quit")
+            quit_action.triggered.connect(QtWidgets.QApplication.quit)
         menu.exec(self.mapToGlobal(pos))
 
     def open_llm_settings(self) -> None:
@@ -1698,6 +1705,10 @@ def setup_tray(app, window, icon_pixmap):
     tray = QtWidgets.QSystemTrayIcon(icon, app)
     tray.setToolTip("mycat 🐱")
 
+    def show_window():
+        window.show()
+        window.raise_()
+
     menu = QtWidgets.QMenu(window)
     toggle_chat = getattr(window, "_toggle_llm_chat", None)
     if callable(toggle_chat):
@@ -1719,13 +1730,13 @@ def setup_tray(app, window, icon_pixmap):
         login_action.setChecked(autostart.is_enabled())
         login_action.toggled.connect(autostart.set_enabled)
     menu.addSeparator()
+    menu.addAction("Show", show_window)
     menu.addAction("Quit", QtWidgets.QApplication.quit)
     tray.setContextMenu(menu)
 
     def on_activated(reason):
         if reason == QtWidgets.QSystemTrayIcon.ActivationReason.DoubleClick:
-            window.show()
-            window.raise_()
+            show_window()
 
     tray.activated.connect(on_activated)
     tray.show()

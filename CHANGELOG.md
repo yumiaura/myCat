@@ -9,7 +9,8 @@ All notable changes to this project are documented in this file.
 - **Prebuilt Debian package (`.deb`) for Linux.** A new CI workflow wraps the PyInstaller onefile binary in a `mycat_<version>_amd64.deb` (installs `/usr/bin/mycat`, a `.desktop` launcher, and a cat-head icon) and attaches it to each GitHub Release. Install with `sudo apt install ./mycat_<version>_amd64.deb`; it's self-contained (bundles its own Python + Qt), depending only on common system libs like `libxcb-cursor0` (branch `ci/linux-deb`).
 
 ### Changed
-- **README: a "download | latest" release badge and an up-to-date download table.** Added a shields.io latest-release badge (linking to `/releases/latest`) to the top of the README, and expanded the Option A prebuilt-binary table to list all four builds — Windows, macOS Apple Silicon, macOS Intel, and the Linux `.deb` (branch `docs/readme-latest-badge`).
+- **README download buttons + a "download | latest" badge.** Replaced the Option A table with per-platform **Download** buttons that link straight to the latest build — Windows, macOS (Apple Silicon), macOS (Intel), Linux `.deb`, Linux AppImage — and added a shields.io latest-release badge at the top of the README (branch `docs/readme-latest-badge`).
+- **The cat's "Quit" now hides it to the system tray.** Right-click → **Hide** tucks the cat into the tray instead of quitting; bring it back with a tray double-click or the tray's new **Show**. The real **Quit** stays in the tray menu; where no system tray is available the cat menu keeps a real **Quit** (branch `docs/readme-latest-badge`).
 
 ## [0.1.11] - 2026-07-06
 

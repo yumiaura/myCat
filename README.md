@@ -33,14 +33,22 @@ Pick whichever is easiest — the cat runs on **Windows, macOS and Linux**.
 
 ### Option A — prebuilt binary (no Python needed)
 
-Download the build for your OS from the **[latest release](https://github.com/yumiaura/myCat/releases/latest)**, then run it:
+Grab the build for your OS — each button downloads the **latest release**:
 
-| OS | File | How to run |
-| --- | --- | --- |
-| **Windows** | `mycat-<version>-windows-x64.exe` | double-click it |
-| **macOS** (Apple Silicon) | `mycat-<version>-macos-arm64.zip` | unzip, then open `mycat.app` |
-| **macOS** (Intel) | `mycat-<version>-macos-x64.zip` | unzip, then open `mycat.app` |
-| **Linux** (Debian/Ubuntu) | `mycat_<version>_amd64.deb` | `sudo apt install ./mycat_<version>_amd64.deb` |
+<p>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-windows-x64.exe"><img src="https://img.shields.io/badge/Download-Windows-0078D6?logo=windows&logoColor=white" alt="Download for Windows"></a>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-macos-arm64.zip"><img src="https://img.shields.io/badge/Download-macOS%20Apple%20Silicon-000000?logo=apple&logoColor=white" alt="Download for macOS (Apple Silicon)"></a>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-macos-x64.zip"><img src="https://img.shields.io/badge/Download-macOS%20Intel-555555?logo=apple&logoColor=white" alt="Download for macOS (Intel)"></a>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-amd64.deb"><img src="https://img.shields.io/badge/Download-Linux%20.deb-A81D33?logo=debian&logoColor=white" alt="Download Linux .deb"></a>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-x86_64.AppImage"><img src="https://img.shields.io/badge/Download-Linux%20AppImage-FCC624?logo=linux&logoColor=black" alt="Download Linux AppImage"></a>
+</p>
+
+Then run it:
+
+- **Windows** — double-click the `.exe`.
+- **macOS** — unzip and open `mycat.app` (first launch: right-click → **Open** to get past Gatekeeper).
+- **Linux `.deb`** — `sudo apt install ./mycat-amd64.deb`.
+- **Linux AppImage** — `chmod +x mycat-x86_64.AppImage && ./mycat-x86_64.AppImage` (needs FUSE: `sudo apt install libfuse2`).
 
 > Builds for every release live on the **[Releases](https://github.com/yumiaura/myCat/releases)** page.
 
