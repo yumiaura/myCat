@@ -886,13 +886,19 @@ class PixelCatWindow(QtWidgets.QWidget):
         return base, base                                       # outside the pair -> parallel
 
     def gaze_target(self, x: int, y: int) -> QtCore.QPoint:
-        """Where the pupils look. Normally the cursor — but when the mouse tracker
-        is off (Activity dialog) the cat stops watching the cursor and looks at
-        its own nose: a point between and just below the eyes, so the pupils
-        converge downward."""
+        """Where the pupils look: the cursor while the mouse tracker is on AND the
+        cursor is on the cat's screen; otherwise the cat's own nose — a point
+        between and just below the eyes so the pupils converge downward. So the
+        cat looks at its nose when the mouse tracker is off (Activity dialog) or
+        when the cursor has left for another monitor."""
         collector = getattr(self, "activity_collector", None)
-        if collector is None or collector.settings.mouse_enabled:
-            return QtGui.QCursor.pos()
+        tracking = collector is None or collector.settings.mouse_enabled
+        if tracking:
+            cursor = QtGui.QCursor.pos()
+            app = QtWidgets.QApplication.instance()
+            cat_screen = self.screen()
+            if app is not None and cat_screen is not None and app.screenAt(cursor) is cat_screen:
+                return cursor
         eyes = self.char_pack.eyes
         nose_x = (eyes.left.x() + eyes.right.x()) / 2.0
         nose_y = max(eyes.left.y(), eyes.right.y()) + eyes.travel_radius * 2

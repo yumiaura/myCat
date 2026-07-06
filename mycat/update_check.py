@@ -19,7 +19,26 @@ RELEASES_PAGE = "https://github.com/yumiaura/myCat/releases/latest"
 
 
 def current_version() -> str:
-    """Installed mycat version, or "0.0.0" when run from an unpacked source tree."""
+    """Version of the code actually running.
+
+    Prefer the repo's ``pyproject.toml`` when run from a source checkout (that is
+    the code in front of you, not whatever — possibly stale — version pip has
+    installed). Fall back to the installed package metadata (pip / exe), then
+    ``"0.0.0"``.
+    """
+    import re
+    from pathlib import Path
+
+    try:
+        pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+        if pyproject.is_file():
+            match = re.search(
+                r'(?m)^version\s*=\s*"([^"]+)"', pyproject.read_text(encoding="utf-8")
+            )
+            if match:
+                return match.group(1)
+    except Exception:
+        pass
     try:
         from importlib.metadata import version
 
