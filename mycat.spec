@@ -14,14 +14,16 @@
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_submodules, copy_metadata
 
 # Make the in-tree `mycat` package importable while the spec is evaluated, so
 # collect_submodules() below can enumerate it even when the package is not
 # pip-installed in the build environment.
 sys.path.insert(0, str(Path.cwd()))
 
-datas = []
+# Ship the package metadata so importlib.metadata.version("mycat") resolves in
+# the frozen exe (used for the startup version log + update check).
+datas = copy_metadata("mycat")
 
 # Bundled cat chars (cat.zip, classic.zip, ...). The folder was renamed
 # images/ -> chars/; support both so older tags keep building and the runtime

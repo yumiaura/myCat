@@ -172,6 +172,7 @@ class ActivityCollector(QtCore.QObject):
         self.bucket_clicks = 0
         self.key_listener = None
         self.mouse_listener = None
+        self.xinput = None  # pure-Python X11 counter, the fallback when pynput is absent
         self.purged_today = False
         # Idle-edge detection (auto-pomodoro trigger) + current activity run.
         self.last_input_at = None
@@ -203,6 +204,7 @@ class ActivityCollector(QtCore.QObject):
             self.poll_timer.stop()
         self.stop_keyboard_hook()
         self.stop_mouse_hook()
+        self.stop_xinput()
         self.flush()
         logger.info("Activity collector stopped")
 
@@ -228,15 +230,15 @@ class ActivityCollector(QtCore.QObject):
         else:
             self.stop_mouse_hook()
 
-    # -- tier 2: pynput hooks (counts only, need mycat[basic]) --------------------
+    # -- tier 2: key/click counts — pynput (Windows/macOS) or python-xlib (Linux) --
 
     def start_keyboard_hook(self) -> None:
         if self.key_listener is not None:
             return
         try:
             from pynput import keyboard
-        except Exception:  # noqa: BLE001 - optional dep, Wayland, missing perms…
-            logger.warning("pynput unavailable — key counting off (install mycat[basic]); cursor path still recorded")
+        except Exception:  # noqa: BLE001 - pynput absent (Linux base install) -> X11 fallback
+            self.ensure_xinput()
             return
 
         def on_press(key) -> None:
@@ -255,8 +257,8 @@ class ActivityCollector(QtCore.QObject):
             return
         try:
             from pynput import mouse
-        except Exception:  # noqa: BLE001 - optional dep, Wayland, missing perms…
-            logger.warning("pynput unavailable — click counting off (install mycat[basic]); cursor path still recorded")
+        except Exception:  # noqa: BLE001 - pynput absent (Linux base install) -> X11 fallback
+            self.ensure_xinput()
             return
 
         def on_click(x, y, button, pressed) -> None:
@@ -285,6 +287,43 @@ class ActivityCollector(QtCore.QObject):
             except Exception:  # noqa: BLE001
                 pass
             self.mouse_listener = None
+
+    def ensure_xinput(self) -> None:
+        """Fallback counter for Linux, where pynput isn't installed. One X RECORD
+        context feeds both tallies; the settings gate which are counted."""
+        if self.xinput is not None:
+            return
+        try:
+            from . import xinput_linux
+        except Exception:  # noqa: BLE001
+            logger.warning("key/click counting off — no pynput and no python-xlib; cursor path still recorded")
+            return
+        if not xinput_linux.available():
+            logger.warning("key/click counting off — no X11 RECORD (Wayland?); cursor path still recorded")
+            return
+        counter = xinput_linux.InputCounter(on_key=self.on_xinput_key, on_click=self.on_xinput_click)
+        if counter.start():
+            self.xinput = counter
+            logger.info("Key/click counting via python-xlib (X11)")
+        else:
+            logger.warning("key/click counting off — X11 RECORD unavailable; cursor path still recorded")
+
+    def on_xinput_key(self) -> None:
+        # The key identity never leaves the record thread — only the count survives.
+        if self.settings.keyboard_enabled:
+            self.bucket_keys += 1
+
+    def on_xinput_click(self) -> None:
+        if self.settings.mouse_enabled:
+            self.bucket_clicks += 1
+
+    def stop_xinput(self) -> None:
+        if self.xinput is not None:
+            try:
+                self.xinput.stop()
+            except Exception:  # noqa: BLE001
+                pass
+            self.xinput = None
 
     # -- tier 1: cursor sampling ---------------------------------------------------
 

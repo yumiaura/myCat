@@ -39,6 +39,7 @@ if __package__:
         llm,
         reminder,
         secret_store,
+        update_check,
     )
 else:
     import importlib
@@ -57,6 +58,7 @@ else:
     calendar_ics = importlib.import_module("mycat.calendar_ics")
     activity = importlib.import_module("mycat.activity")
     digest = importlib.import_module("mycat.digest")
+    update_check = importlib.import_module("mycat.update_check")
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -1717,6 +1719,10 @@ def main() -> None:
 
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
+
+    app_version = update_check.current_version()
+    logger.info("mycat %s", app_version)
+    update_check.check_in_background(app_version)
 
     llm_context = llm.initialize(args)
     
