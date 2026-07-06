@@ -14,14 +14,24 @@
 import sys
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_submodules
+
+# Make the in-tree `mycat` package importable while the spec is evaluated, so
+# collect_submodules() below can enumerate it even when the package is not
+# pip-installed in the build environment.
+sys.path.insert(0, str(Path.cwd()))
+
 datas = []
 
-# Bundled cat skins (cat.zip, cat1.zip, girl1.zip, ...).
-images_dir = Path("mycat") / "images"
-if images_dir.is_dir():
-    for p in sorted(images_dir.iterdir()):
-        if p.is_file():
-            datas.append((str(p), "mycat/images"))
+# Bundled cat chars (cat.zip, classic.zip, ...). The folder was renamed
+# images/ -> chars/; support both so older tags keep building and the runtime
+# char_catalog (which now looks in mycat/chars) finds them.
+for skin_dirname in ("chars", "images"):
+    skin_dir = Path("mycat") / skin_dirname
+    if skin_dir.is_dir():
+        for p in sorted(skin_dir.iterdir()):
+            if p.is_file():
+                datas.append((str(p), f"mycat/{skin_dirname}"))
 
 # LLM prompt template — handle both the current spelling (PROMPT.j2) and the
 # legacy mis-spelling (PROMT.j2) so older tags also build.
@@ -47,10 +57,13 @@ a = Analysis(
     pathex=['.'],
     binaries=[],
     datas=datas,
-    # No hiddenimports — PyInstaller's static analysis walks the imports
-    # in mycat/main.py and pulls in whichever optional modules are
-    # actually referenced in the checked-out source.
-    hiddenimports=[],
+    # Collect the whole `mycat` package explicitly. In the frozen exe the
+    # entry runs as `__main__` (empty `__package__`), so main.py imports its
+    # submodules dynamically via `importlib.import_module("mycat.llm")` — a
+    # string import PyInstaller's static analysis cannot follow. Without this
+    # the exe dies at startup with `ModuleNotFoundError: No module named
+    # 'mycat.llm'`.
+    hiddenimports=collect_submodules('mycat'),
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
