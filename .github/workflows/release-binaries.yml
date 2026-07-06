@@ -97,10 +97,11 @@ jobs:
           if-no-files-found: error
 
   build-macos-intel:
-    # macos-13 is the last Intel (x86_64) macOS runner GitHub offers. Mirrors
+    # macos-15-intel is GitHub's x86_64 runner (macos-13 was retired Dec 2025;
+    # macos-15-intel is the last Intel image, supported until ~Aug 2027). Mirrors
     # build-macos exactly; only the runner arch and the ``-macos-x64`` suffix
     # differ.
-    runs-on: macos-13
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v5
 
