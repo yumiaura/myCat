@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## [0.1.11] - 2026-07-06
 
 ### Added
 - **Key/click counts now work out of the box on a plain `pip install mycat` — including Linux.** The activity diary counts key presses and mouse clicks; on Windows/macOS that's `pynput`, and on **Linux** it's now a pure-Python `python-xlib` backend (X11 `XRecord`) — so a plain `pip install mycat` gives the counts with **no compiler and no `evdev`**. Only integers are ever kept (the key identity is dropped inside the callback). Off X11 (e.g. Wayland) it degrades to cursor-only. The now-redundant `basic` extra is **removed** — it only re-added `pynput`, and on Linux that dragged in `evdev` (needs a compiler) for no benefit now that counts work by default (branch `feat/linux-counts-and-startup`).
