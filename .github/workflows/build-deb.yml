@@ -44,7 +44,10 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             VERSION="${GITHUB_REF#refs/tags/}"
           else
-            VERSION="0.0.0~dev${GITHUB_SHA::7}"
+            # Non-tag (manual dispatch) build: take the version from pyproject so a
+            # dispatched build of a release commit yields a correctly-versioned
+            # package — e.g. to backfill a release that predates this workflow.
+            VERSION="$(grep -m1 -E '^version *= *' pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')"
           fi
           PKG="mycat_${VERSION}_amd64"
           root="pkg/${PKG}"
