@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Changed
+- **New defaults for fresh installs.** The reminder plane now defaults to **white** (was pink), the default reminder message is **"Do you feed mycat?"** (was "Reminder!"), and the Activity **Enable Tooltip** toggle starts **off** (was on). Existing configs keep whatever they already saved (branch `feat/default-tweaks`).
+
 ## [0.1.8] - 2026-07-06
 
 ### Added

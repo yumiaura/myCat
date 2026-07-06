@@ -68,7 +68,7 @@ def format_elapsed(seconds: float) -> str:
 @dataclass
 class FocusSettings:
     focus_minutes: int = 25  # a run this long earns a 🍅; anything shorter is a 🍌
-    tooltip_enabled: bool = True  # show the live stats tooltip when hovering the cat
+    tooltip_enabled: bool = False  # show the live stats tooltip when hovering the cat
 
 
 def load_focus_settings(cfg_file: Path = CFG_FILE) -> FocusSettings:
