@@ -5,6 +5,7 @@ EN | [RU](https://github.com/yumiaura/myCat/blob/main/docs/README_RU.md) | [CN](
 [<img src="https://raw.githubusercontent.com/yumiaura/myCat/refs/heads/main/docs/cat.gif" width="164" alt="cat.gif"/>](https://github.com/yumiaura)
 
 <p class="badges">
+  <a href="https://github.com/yumiaura/myCat/releases/latest"><img src="https://img.shields.io/github/v/release/yumiaura/myCat?label=download&color=blue" alt="Latest release"></a>
   <img src="https://img.shields.io/pypi/pyversions/mycat?color=brightgreen" alt="Python Versions">
   <a href="https://pypi.org/project/mycat/"><img src="https://img.shields.io/pypi/v/mycat?color=brightgreen" alt="PyPI Version"></a>
   <a href="https://pypi.org/project/mycat/"><img src="https://img.shields.io/pepy/dt/mycat?label=pypi%20%7C%20downloads&color=brightgreen" alt="Pepy Total Downloads"/></a>
@@ -32,12 +33,22 @@ Pick whichever is easiest — the cat runs on **Windows, macOS and Linux**.
 
 ### Option A — prebuilt binary (no Python needed)
 
-Download the build for your OS from the **[latest release](https://github.com/yumiaura/myCat/releases/latest)**, then run it:
+Grab the build for your OS — each button downloads the **latest release**:
 
-| OS | File | How to run |
-| --- | --- | --- |
-| **Windows** | `mycat-<version>-windows-x64.exe` | double-click it |
-| **macOS** | `mycat-<version>-macos-arm64.zip` | unzip, then open `mycat.app` |
+<p>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-windows-x64.exe"><img src="https://img.shields.io/badge/Download-Windows-0078D6?logo=windows&logoColor=white" alt="Download for Windows"></a>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-macos-arm64.zip"><img src="https://img.shields.io/badge/Download-macOS%20Apple%20Silicon-000000?logo=apple&logoColor=white" alt="Download for macOS (Apple Silicon)"></a>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-macos-x64.zip"><img src="https://img.shields.io/badge/Download-macOS%20Intel-555555?logo=apple&logoColor=white" alt="Download for macOS (Intel)"></a>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-linux-amd64.deb"><img src="https://img.shields.io/badge/Download-Linux%20.deb-A81D33?logo=debian&logoColor=white" alt="Download Linux .deb"></a>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-linux-x86_64.AppImage"><img src="https://img.shields.io/badge/Download-Linux%20AppImage-FCC624?logo=linux&logoColor=black" alt="Download Linux AppImage"></a>
+</p>
+
+Then run it:
+
+- **Windows** — double-click the `.exe`.
+- **macOS** — unzip and open `mycat.app` (first launch: right-click → **Open** to get past Gatekeeper).
+- **Linux `.deb`** — `sudo apt install ./mycat-linux-amd64.deb`.
+- **Linux AppImage** — `chmod +x mycat-linux-x86_64.AppImage && ./mycat-linux-x86_64.AppImage` (needs FUSE: `sudo apt install libfuse2`).
 
 > Builds for every release live on the **[Releases](https://github.com/yumiaura/myCat/releases)** page.
 
