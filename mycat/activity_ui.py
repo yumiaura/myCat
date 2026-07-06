@@ -290,10 +290,11 @@ class ActivityDialog(QtWidgets.QDialog):
         self.mouse_box.setEnabled(settings.enabled)
         self.keyboard_box.setEnabled(settings.enabled)
 
-        # Cursor path works without pynput; only the counts need mycat[basic].
-        if not activity_mod.pynput_available():
+        # Cursor path always records; only the key/click COUNTS need input access.
+        if not activity_mod.counts_available():
             hint = QtWidgets.QLabel(
-                "Key/click counts need <code>pip install mycat[basic]</code> — cursor path works without it."
+                "Key/click counts aren't available here (needs X11, or macOS Input "
+                "Monitoring permission) — the cursor path still records."
             )
             hint.setTextFormat(QtCore.Qt.TextFormat.RichText)
             hint.setWordWrap(True)

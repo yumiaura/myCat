@@ -17,9 +17,9 @@ Two tiers:
 
 - Tier 1 (no dependencies, no OS permissions): cursor distance via
   ``QCursor.pos()`` polling at 10 Hz.
-- Tier 2 (``pynput``, installed with ``mycat[basic]``): key press and mouse
-  click *counts* via global hooks. Where hooks can't work (pynput not
-  installed, Wayland, missing macOS Input Monitoring permission) the collector
+- Tier 2 (global key/click *counts*): ``pynput`` on Windows/macOS, or a
+  pure-Python ``python-xlib`` backend on Linux/X11. Where neither can run
+  (e.g. Wayland, or missing macOS Input Monitoring permission) the collector
   degrades to tier 1 at runtime.
 
 The two COUNT tracks switch independently (``mouse_enabled`` = click counts,
@@ -73,8 +73,8 @@ class ActivitySettings:
     # The diary is core product behaviour: on by default, with an opt-out,
     # a retention limit and a delete-everything button in the dialog.
     enabled: bool = True
-    # Two switchable COUNT tracks (both tier 2, need mycat[basic]): mouse = click
-    # counts, keyboard = key counts. The tier-1 cursor path always records while
+    # Two switchable COUNT tracks (both tier 2): mouse = click counts, keyboard =
+    # key counts. The tier-1 cursor path always records while
     # the diary is on — the cat's eyes need the cursor anyway — so it has no toggle.
     mouse_enabled: bool = True
     keyboard_enabled: bool = True
@@ -83,11 +83,23 @@ class ActivitySettings:
 
 
 def pynput_available() -> bool:
-    """Whether the tier-2 hooks (mycat[basic]) can be imported at all."""
+    """Whether the pynput hooks can be imported at all (Windows/macOS)."""
     try:
         import pynput  # noqa: F401
 
         return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def counts_available() -> bool:
+    """Whether key/click counting can run: pynput, or python-xlib on Linux/X11."""
+    if pynput_available():
+        return True
+    try:
+        from . import xinput_linux
+
+        return xinput_linux.available()
     except Exception:  # noqa: BLE001
         return False
 

@@ -40,10 +40,6 @@ dev = [
 
 # Optional: store API keys in the OS keyring instead of plaintext config.
 [project.optional-dependencies]
-# On Windows/macOS `pynput` is a base dependency; on Linux it lives here so it
-# stays opt-in (it pulls the `evdev` C extension, which needs a compiler). Linux
-# users who want key/click counts: `pip install mycat[basic]`.
-basic = ["pynput>=1.7"]
 secure = ["keyring>=24"]
 # ICS calendar reminders: RRULE expansion (the daily standup) is a swamp not
 # worth hand-rolling, so the calendar feature needs these two small libs.
