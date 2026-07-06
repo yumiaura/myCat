@@ -946,7 +946,22 @@ class PixelCatWindow(QtWidgets.QWidget):
         pos = self.pos()
         config = {"x": pos.x(), "y": pos.y()}
         save_config(config)
-    
+
+    def _reset_position(self) -> None:
+        """Snap the cat to the bottom-right corner, an equal inset from each edge.
+
+        Measured from the true screen corner (full geometry, not the
+        panel-aware area) so the cat sits right by the edge. A rescue for when
+        it wanders off-screen or gets lost across multiple monitors.
+        """
+        margin = 18
+        screen = QtWidgets.QApplication.primaryScreen()
+        rect = screen.geometry() if screen is not None else usable_screen_rect()
+        x = rect.x() + rect.width() - self.width() - margin
+        y = rect.y() + rect.height() - self.height() - margin
+        self.move(x, y)
+        self._save_position()
+
     def _load_image(self, image_name: str) -> None:
         """Switch chars — a new interactive pack or a legacy single-GIF."""
         zip_path = char_catalog.find_char(image_name)
@@ -1141,6 +1156,9 @@ class PixelCatWindow(QtWidgets.QWidget):
                     action.setChecked(True)
                 action.triggered.connect(lambda checked, name=img_name: self._load_image(name))
             menu.addSeparator()
+
+        reset_action = menu.addAction("Reset")
+        reset_action.triggered.connect(self._reset_position)
 
         if autostart.is_supported():
             login_action = menu.addAction("Autostart")
@@ -1672,6 +1690,7 @@ def setup_tray(app, window, icon_pixmap):
 
     # Focus is fully automatic now (earned from activity) — no tray toggle.
 
+    menu.addAction("Reset", window._reset_position)
     if autostart.is_supported():
         menu.addSeparator()
         login_action = menu.addAction("Autostart")

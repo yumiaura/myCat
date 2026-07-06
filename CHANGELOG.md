@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Added
+- **Reset — recenter the cat.** Right-click (and the system-tray menu) now have a **Reset** entry, placed just above **Autostart**, that moves the cat back to the bottom-right of the primary screen — a rescue for when it wanders off-screen or gets lost across multiple monitors. Restores the position-reset action originally added in #52 that was dropped during the 0.1.7 companion rework (branch `feat/reset-position`).
+
 ### Changed
 - **The cat now blinks in the plane cockpit and sits deeper in it.** On the banner flyby (plane1) the cat is sunk further into the fuselage so only the top of the head peeks out instead of the whole head sticking up, and its eyes blink on a slow cycle using the char's closed-eyes frame (the same frames the demo GIF uses) — GIF chars with no blink frame just stay awake. Tuning: `CAT_SINK_FRAC`, `BLINK_PERIOD_S`, `BLINK_DUR_S` in `reminder_ui.py` (branch `feat/flyby-cat-sink-blink`).
 
