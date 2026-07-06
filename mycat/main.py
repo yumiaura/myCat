@@ -885,12 +885,25 @@ class PixelCatWindow(QtWidgets.QWidget):
             return (base, mirrored) if left_nearer else (mirrored, base)
         return base, base                                       # outside the pair -> parallel
 
+    def gaze_target(self, x: int, y: int) -> QtCore.QPoint:
+        """Where the pupils look. Normally the cursor — but when the mouse tracker
+        is off (Activity dialog) the cat stops watching the cursor and looks at
+        its own nose: a point between and just below the eyes, so the pupils
+        converge downward."""
+        collector = getattr(self, "activity_collector", None)
+        if collector is None or collector.settings.mouse_enabled:
+            return QtGui.QCursor.pos()
+        eyes = self.char_pack.eyes
+        nose_x = (eyes.left.x() + eyes.right.x()) / 2.0
+        nose_y = max(eyes.left.y(), eyes.right.y()) + eyes.travel_radius * 2
+        return self.mapToGlobal(QtCore.QPoint(round(x + nose_x), round(y + nose_y)))
+
     def _draw_pupils(self, painter, x: int, y: int) -> None:
         """Draw the L/R pupil sprites at the computed gaze offsets."""
         pack = self.char_pack
         if not pack.eyes or pack.eye_left is None or pack.eye_right is None:
             return
-        left_off, right_off = self.pupil_offsets(x, y, QtGui.QCursor.pos())
+        left_off, right_off = self.pupil_offsets(x, y, self.gaze_target(x, y))
         for center, sprite, (ox, oy) in (
             (pack.eyes.left, pack.eye_left, left_off),
             (pack.eyes.right, pack.eye_right, right_off),
