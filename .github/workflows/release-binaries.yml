@@ -43,18 +43,14 @@ jobs:
       - name: Rename artefact
         shell: bash
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            VERSION="${GITHUB_REF#refs/tags/}"
-          else
-            VERSION="dev-${GITHUB_SHA::7}"
-          fi
-          mv dist/mycat.exe "dist/mycat-${VERSION}-windows-x64.exe"
+          # Version-less name so /releases/latest/download/<name> is a stable link.
+          mv dist/mycat.exe "dist/mycat-windows-x64.exe"
           ls -la dist/
 
       - uses: actions/upload-artifact@v4
         with:
           name: mycat-windows
-          path: dist/mycat-*-windows-x64.exe
+          path: dist/mycat-windows-x64.exe
           if-no-files-found: error
 
   build-macos:
@@ -79,21 +75,17 @@ jobs:
 
       - name: Zip .app bundle
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            VERSION="${GITHUB_REF#refs/tags/}"
-          else
-            VERSION="dev-${GITHUB_SHA::7}"
-          fi
           cd dist
           # ditto is the recommended way to zip a macOS bundle — preserves
-          # extended attrs/resource forks unlike plain `zip -r`.
-          ditto -c -k --keepParent mycat.app "mycat-${VERSION}-macos-arm64.zip"
+          # extended attrs/resource forks unlike plain `zip -r`. Version-less
+          # name so /releases/latest/download/<name> is a stable link.
+          ditto -c -k --keepParent mycat.app "mycat-macos-arm64.zip"
           ls -la
 
       - uses: actions/upload-artifact@v4
         with:
           name: mycat-macos
-          path: dist/mycat-*-macos-arm64.zip
+          path: dist/mycat-macos-arm64.zip
           if-no-files-found: error
 
   build-macos-intel:
@@ -121,21 +113,17 @@ jobs:
 
       - name: Zip .app bundle
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            VERSION="${GITHUB_REF#refs/tags/}"
-          else
-            VERSION="dev-${GITHUB_SHA::7}"
-          fi
           cd dist
           # ditto is the recommended way to zip a macOS bundle — preserves
-          # extended attrs/resource forks unlike plain `zip -r`.
-          ditto -c -k --keepParent mycat.app "mycat-${VERSION}-macos-x64.zip"
+          # extended attrs/resource forks unlike plain `zip -r`. Version-less
+          # name so /releases/latest/download/<name> is a stable link.
+          ditto -c -k --keepParent mycat.app "mycat-macos-x64.zip"
           ls -la
 
       - uses: actions/upload-artifact@v4
         with:
           name: mycat-macos-intel
-          path: dist/mycat-*-macos-x64.zip
+          path: dist/mycat-macos-x64.zip
           if-no-files-found: error
 
   release:

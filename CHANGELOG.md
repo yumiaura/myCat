@@ -5,8 +5,12 @@ All notable changes to this project are documented in this file.
 ## Unreleased
 
 ### Added
-- **Prebuilt macOS Intel (x86_64) binary.** The release workflow now also builds `mycat-<version>-macos-x64.zip` on GitHub's Intel runner (`macos-15-intel`), alongside the existing Apple Silicon (`-macos-arm64`) and Windows builds, so Intel Macs get a native download (branches `ci/macos-intel-x64`, `fix/intel-runner-macos-15`).
-- **Prebuilt Debian package (`.deb`) for Linux.** A new CI workflow wraps the PyInstaller onefile binary in a `mycat_<version>_amd64.deb` (installs `/usr/bin/mycat`, a `.desktop` launcher, and a cat-head icon) and attaches it to each GitHub Release. Install with `sudo apt install ./mycat_<version>_amd64.deb`; it's self-contained (bundles its own Python + Qt), depending only on common system libs like `libxcb-cursor0` (branch `ci/linux-deb`).
+- **Prebuilt macOS Intel (x86_64) binary.** The release workflow now also builds `mycat-macos-x64.zip` on GitHub's Intel runner (`macos-15-intel`), alongside the existing Apple Silicon (`-macos-arm64`) and Windows builds, so Intel Macs get a native download (branches `ci/macos-intel-x64`, `fix/intel-runner-macos-15`).
+- **Prebuilt Debian package (`.deb`) for Linux.** A new CI workflow wraps the PyInstaller onefile binary in a `mycat-amd64.deb` (installs `/usr/bin/mycat`, a `.desktop` launcher, and a cat-head icon) and attaches it to each GitHub Release. Install with `sudo apt install ./mycat-amd64.deb`; it's self-contained (bundles its own Python + Qt), depending only on common system libs like `libxcb-cursor0` (branch `ci/linux-deb`).
+- **Prebuilt Linux AppImage.** A new CI workflow packs the same onefile binary into a portable `mycat-x86_64.AppImage` — a single user-writable file that runs on most distros (needs FUSE) and is the format used for one-click self-updates. Attached to each GitHub Release (branch `ci/versionless-names-appimage`).
+
+### Changed
+- **Release asset filenames are now version-less** (`mycat-windows-x64.exe`, `mycat-macos-arm64.zip`, `mycat-macos-x64.zip`, `mycat-amd64.deb`, `mycat-x86_64.AppImage`), so `https://github.com/yumiaura/myCat/releases/latest/download/<name>` is a stable link that always fetches the current build — used by the README download buttons and the in-app updater (branch `ci/versionless-names-appimage`).
 
 ## [0.1.11] - 2026-07-06
 
