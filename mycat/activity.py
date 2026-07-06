@@ -196,7 +196,7 @@ class ActivityCollector(QtCore.QObject):
             self.poll_timer = QtCore.QTimer(self)
             self.poll_timer.setInterval(CURSOR_POLL_MS)
             self.poll_timer.timeout.connect(self.sample)
-            if self.settings.enabled:
+            if self.settings.mouse_enabled or self.settings.keyboard_enabled:
                 self.start()
 
     # -- lifecycle --------------------------------------------------------------
@@ -221,14 +221,16 @@ class ActivityCollector(QtCore.QObject):
         logger.info("Activity collector stopped")
 
     def apply_settings(self, settings: ActivitySettings) -> None:
-        was_enabled = self.settings.enabled
+        # "Enable Tracking" (settings.enabled) drives only the cat's eyes; the
+        # diary runs whenever either count track is on, independent of it.
+        was_recording = self.settings.mouse_enabled or self.settings.keyboard_enabled
         self.settings = settings
-        if settings.enabled and not was_enabled:
+        recording = settings.mouse_enabled or settings.keyboard_enabled
+        if recording and not was_recording:
             self.start()
-        elif not settings.enabled and was_enabled:
+        elif not recording and was_recording:
             self.stop()
-        elif settings.enabled:
-            # Still on — reconcile each tier to its own toggle.
+        elif recording:
             self.reconcile_hooks()
 
     def reconcile_hooks(self) -> None:
@@ -350,8 +352,8 @@ class ActivityCollector(QtCore.QObject):
 
         moved = 0.0
         pos = self.cursor_pos_fn()
-        # Cursor path always records while the diary is on — the cat's eyes track
-        # the cursor anyway, so "Enable Mouse" gates only the click count, not this.
+        # Cursor path (distance) records whenever the diary is running; the Mouse
+        # toggle gates the click count, not this. `moved` also feeds idle/focus.
         if pos is not None and self.last_pos is not None:
             dx = pos.x() - self.last_pos.x()
             dy = pos.y() - self.last_pos.y()

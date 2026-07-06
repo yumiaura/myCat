@@ -206,17 +206,17 @@ def test_short_run_shows_banana(tmp_path, qapp):
     assert dialog.table.item(0, 0).text() == "🍌 09:00"
 
 
-def test_activity_checkboxes_reflect_and_gate(tmp_path, qapp):
+def test_activity_checkboxes_are_independent(tmp_path, qapp):
     dialog, controller, now = make_dialog(tmp_path)
-    # Defaults on; both sub-tracks enabled while Activity is on.
     assert dialog.mouse_box.isChecked()
     assert dialog.keyboard_box.isChecked()
     assert dialog.mouse_box.isEnabled()
     assert dialog.keyboard_box.isEnabled()
-    # Master off greys both sub-tracks; back on re-enables them.
+    # Tracking, Mouse and Keyboard are independent: toggling Tracking (the eyes)
+    # never greys out the Mouse/Keyboard count tracks.
     dialog.enabled_box.setChecked(False)
-    assert not dialog.mouse_box.isEnabled()
-    assert not dialog.keyboard_box.isEnabled()
+    assert dialog.mouse_box.isEnabled()
+    assert dialog.keyboard_box.isEnabled()
     dialog.enabled_box.setChecked(True)
     assert dialog.mouse_box.isEnabled()
     assert dialog.keyboard_box.isEnabled()

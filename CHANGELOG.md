@@ -9,7 +9,7 @@ All notable changes to this project are documented in this file.
 - **Version line + update check at startup.** mycat logs its version on launch, and a background, fail-silent check asks GitHub for the latest release; if a newer one exists it logs `Update available: mycat X (you have Y) — <releases url>`. Nothing is ever downloaded or installed; skipped for source/dev builds (branch `feat/linux-counts-and-startup`).
 
 ### Changed
-- **Activity dialog: "Enable Activity" → "Enable Tracking", and the Mouse toggle now drives the cat's gaze.** Turn the mouse tracker off and the cat stops following the cursor and looks at its own nose (pupils converge downward); turn it back on and the eyes follow the cursor again (branch `feat/linux-counts-and-startup`).
+- **Activity dialog: "Enable Activity" → "Enable Tracking"; Tracking / Mouse / Keyboard are now three independent toggles.** "Enable Tracking" controls only the cat's **eyes** — on, the pupils follow the cursor; off (or when the cursor is on another monitor) the cat looks at its own nose. **Mouse** and **Keyboard** are the diary count tracks and stay independently clickable (no more greying-out), and turning Tracking off no longer stops recording (branch `feat/linux-counts-and-startup`).
 
 ## [0.1.10] - 2026-07-06
 
