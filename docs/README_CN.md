@@ -30,16 +30,16 @@
   <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-windows-x64.exe"><img src="https://img.shields.io/badge/Download-Windows-0078D6?logo=windows&logoColor=white" alt="Windows"></a>
   <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-macos-arm64.zip"><img src="https://img.shields.io/badge/Download-macOS%20Apple%20Silicon-000000?logo=apple&logoColor=white" alt="macOS Apple Silicon"></a>
   <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-macos-x64.zip"><img src="https://img.shields.io/badge/Download-macOS%20Intel-555555?logo=apple&logoColor=white" alt="macOS Intel"></a>
-  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-amd64.deb"><img src="https://img.shields.io/badge/Download-Linux%20.deb-A81D33?logo=debian&logoColor=white" alt="Linux .deb"></a>
-  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-x86_64.AppImage"><img src="https://img.shields.io/badge/Download-Linux%20AppImage-FCC624?logo=linux&logoColor=black" alt="Linux AppImage"></a>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-linux-amd64.deb"><img src="https://img.shields.io/badge/Download-Linux%20.deb-A81D33?logo=debian&logoColor=white" alt="Linux .deb"></a>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-linux-x86_64.AppImage"><img src="https://img.shields.io/badge/Download-Linux%20AppImage-FCC624?logo=linux&logoColor=black" alt="Linux AppImage"></a>
 </p>
 
 然后运行：
 
 - **Windows** —— 双击 `.exe`。
 - **macOS** —— 解压并打开 `mycat.app`（首次启动：右键 → **打开** 以绕过 Gatekeeper）。
-- **Linux `.deb`** —— `sudo apt install ./mycat-amd64.deb`。
-- **Linux AppImage** —— `chmod +x mycat-x86_64.AppImage && ./mycat-x86_64.AppImage`（需要 FUSE：`sudo apt install libfuse2`）。
+- **Linux `.deb`** —— `sudo apt install ./mycat-linux-amd64.deb`。
+- **Linux AppImage** —— `chmod +x mycat-linux-x86_64.AppImage && ./mycat-linux-x86_64.AppImage`（需要 FUSE：`sudo apt install libfuse2`）。
 
 > 所有版本的构建都在 **[Releases](https://github.com/yumiaura/myCat/releases)** 页面。
 
