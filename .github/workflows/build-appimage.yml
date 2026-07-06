@@ -53,18 +53,18 @@ jobs:
           wget -qO appimagetool https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool
           # --appimage-extract-and-run avoids needing FUSE on the runner.
-          ARCH=x86_64 ./appimagetool --appimage-extract-and-run AppDir mycat-x86_64.AppImage
-          ls -la mycat-x86_64.AppImage
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run AppDir mycat-linux-x86_64.AppImage
+          ls -la mycat-linux-x86_64.AppImage
 
       - uses: actions/upload-artifact@v4
         with:
           name: mycat-appimage
-          path: mycat-x86_64.AppImage
+          path: mycat-linux-x86_64.AppImage
           if-no-files-found: error
 
       - name: Attach AppImage to the GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: mycat-x86_64.AppImage
+          files: mycat-linux-x86_64.AppImage
           fail_on_unmatched_files: true

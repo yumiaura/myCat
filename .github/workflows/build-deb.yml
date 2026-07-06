@@ -61,20 +61,20 @@ jobs:
           sed "s/@VERSION@/${VERSION}/" packaging/control.in > "$root/DEBIAN/control"
           dpkg-deb --root-owner-group --build "$root"
           # Internal control keeps the real version; the file name is version-less
-          # so /releases/latest/download/mycat-amd64.deb is a stable link.
-          mv "pkg/${PKG}.deb" "mycat-amd64.deb"
-          echo "::group::deb info";     dpkg-deb --info "mycat-amd64.deb";     echo "::endgroup::"
-          echo "::group::deb contents"; dpkg-deb --contents "mycat-amd64.deb"; echo "::endgroup::"
+          # so /releases/latest/download/mycat-linux-amd64.deb is a stable link.
+          mv "pkg/${PKG}.deb" "mycat-linux-amd64.deb"
+          echo "::group::deb info";     dpkg-deb --info "mycat-linux-amd64.deb";     echo "::endgroup::"
+          echo "::group::deb contents"; dpkg-deb --contents "mycat-linux-amd64.deb"; echo "::endgroup::"
 
       - uses: actions/upload-artifact@v4
         with:
           name: mycat-deb
-          path: mycat-amd64.deb
+          path: mycat-linux-amd64.deb
           if-no-files-found: error
 
       - name: Attach .deb to the GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: mycat-amd64.deb
+          files: mycat-linux-amd64.deb
           fail_on_unmatched_files: true
