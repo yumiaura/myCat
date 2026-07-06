@@ -1,0 +1,12 @@
+Package: mycat
+Version: @VERSION@
+Section: utils
+Priority: optional
+Architecture: amd64
+Depends: libc6, libxcb-cursor0, libgl1, libegl1, libglib2.0-0, libxkbcommon0, fontconfig
+Maintainer: yumiaura <yumiaura@users.noreply.github.com>
+Homepage: https://github.com/yumiaura/myCat
+Description: tiny animated desktop pet cat
+ A small cat that sits on your desktop, blinks, follows your cursor, and flies
+ little reminder banners across the screen. This is a self-contained build that
+ bundles its own Python runtime and Qt, so no extra Python packages are needed.

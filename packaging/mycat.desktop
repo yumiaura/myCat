@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=myCat
+GenericName=Desktop pet
+Comment=A tiny animated desktop pet cat
+Exec=mycat
+Icon=mycat
+Terminal=false
+Categories=Utility;Amusement;
+Keywords=cat;pet;desktop;companion;
