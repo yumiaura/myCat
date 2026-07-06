@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+## [0.1.10] - 2026-07-06
+
+### Fixed
+- **`pip install mycat` no longer fails to build on Linux.** 0.1.9 made `pynput` a hard dependency to turn on the key/click counts, but on Linux `pynput` pulls `evdev` — a C extension with no wheel — so the install died compiling it on machines without a compiler and Python headers (`fatal error: Python.h`). `pynput` is now a base dependency only on **Windows/macOS**, where it installs cleanly and the counts work out of the box (including the prebuilt exe). On **Linux** it is opt-in: `pip install mycat[basic]`.
+
+### Changed
+- **Docs.** Moved the "make your own cat" guide out of README into a step-by-step Quick start in `docs/CHARS.md`; README now links to it and stays focused on install options and CLI keys (branch `docs/chars-guide`).
+
 ## [0.1.9] - 2026-07-06
 
 ### Changed
