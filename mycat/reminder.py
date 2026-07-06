@@ -33,7 +33,7 @@ CFG_FILE = CFG_DIR / "config.ini"
 DIRECTION_LTR = "ltr"  # plane flies left -> right, banner trailing on the left
 DIRECTION_RTL = "rtl"  # plane flies right -> left, banner trailing on the right
 
-DEFAULT_TEXT = "Reminder!"
+DEFAULT_TEXT = "Do you feed mycat?"
 # How the flyby duration scales: 1.0 = the leisurely default in FlybyWindow.
 DEFAULT_SPEED = 1.0
 
@@ -51,7 +51,7 @@ class Reminder:
     # One of "pink" / "white" / "blue" / "red" (or any QColor-valid hex). The
     # FlybyWindow recolours a single shared plane sprite via multiply-blend, so
     # all colour variants stay geometrically identical.
-    plane_color: str = "pink"
+    plane_color: str = "white"
     # Plane width in screen pixels; the height scales by the sprite's aspect
     # ratio (after alpha-bbox crop) so the plane never gets squashed.
     plane_width: int = 160
@@ -91,7 +91,7 @@ def load_reminder() -> Reminder | None:
             repeat_daily=section.getboolean("repeat_daily", fallback=False),
             enabled=section.getboolean("enabled", fallback=True),
             speed=section.getfloat("speed", fallback=DEFAULT_SPEED),
-            plane_color=section.get("plane_color", "pink"),
+            plane_color=section.get("plane_color", "white"),
             plane_width=section.getint("plane_width", fallback=160),
             plane=section.get("plane", "plane1"),
             mode=section.get("mode", "in"),

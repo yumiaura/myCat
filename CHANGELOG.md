@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+## [0.1.9] - 2026-07-06
+
+### Changed
+- **New defaults for fresh installs.** The reminder plane now defaults to **white** (was pink), the default reminder message is **"Do you feed mycat?"** (was "Reminder!"), and the Activity **Enable Tooltip** toggle starts **off** (was on). Existing configs keep whatever they already saved (branch `feat/default-tweaks`).
+
+### Fixed
+- **Keyboard and mouse-click counts now work on `pip install` and the prebuilt exe.** The Activity diary counts key presses and clicks via `pynput`, but it was an *optional* extra (`mycat[basic]`) — so a plain `pip install mycat` and the bundled Windows/macOS executables shipped without it, and the counts silently stayed at zero (only the cursor path was recorded). `pynput` is now a base dependency, so the counts work out of the box; the PyInstaller `pynput` hook bundles the platform backend into the exe. It still degrades to cursor-only where global hooks can't run — Wayland, or macOS without Input Monitoring permission (branch `chore/release-0.1.9`).
+
 ## [0.1.8] - 2026-07-06
 
 ### Added

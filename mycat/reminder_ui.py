@@ -80,13 +80,13 @@ PLANE_COLORS = {
 
 
 def _resolve_plane_color(name: str) -> QtGui.QColor:
-    """Map a colour name (or hex) to a QColor; fall back to pink if unknown."""
+    """Map a colour name (or hex) to a QColor; fall back to white if unknown."""
     if name in PLANE_COLORS:
         return PLANE_COLORS[name]
     qc = QtGui.QColor(name)
     if qc.isValid():
         return qc
-    return PLANE_COLORS["pink"]
+    return PLANE_COLORS["white"]
 
 
 def _tinted_pixmap(base: QtGui.QPixmap, tint: QtGui.QColor) -> QtGui.QPixmap:
@@ -227,7 +227,7 @@ class FlybyWindow(QtWidgets.QWidget):
 
         # Plane colour — applied to the sprite via multiply-blend. Same shape,
         # four liveries, all chosen client-side.
-        self._plane_color = _resolve_plane_color(getattr(reminder, "plane_color", "pink"))
+        self._plane_color = _resolve_plane_color(getattr(reminder, "plane_color", "white"))
 
         # Chosen plane sprite (assets/planes/<name>.png, falling back to the
         # bundled plane.png). Tint baked in here so per-frame drawing is just a
@@ -940,7 +940,7 @@ class ReminderDialog(QtWidgets.QDialog):
     def _build_reminder(self) -> Reminder:
         text = self._text_edit.text().strip() or reminder_mod.DEFAULT_TEXT
         direction = self._direction.currentData()
-        plane_color = self._color.currentData() or "pink"
+        plane_color = self._color.currentData() or "white"
         plane_width = self._plane_width_spin.value()
         plane = self.plane_combo.currentData() or "plane1"
         now = datetime.now()
