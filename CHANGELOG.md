@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+## [0.1.8] - 2026-07-06
+
 ### Added
 - **Reset — recenter the cat.** Right-click (and the system-tray menu) now have a **Reset** entry, placed just above **Autostart**, that moves the cat back to the bottom-right of the primary screen — a rescue for when it wanders off-screen or gets lost across multiple monitors. Restores the position-reset action originally added in #52 that was dropped during the 0.1.7 companion rework (branch `feat/reset-position`).
 
