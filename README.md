@@ -5,6 +5,7 @@ EN | [RU](https://github.com/yumiaura/myCat/blob/main/docs/README_RU.md) | [CN](
 [<img src="https://raw.githubusercontent.com/yumiaura/myCat/refs/heads/main/docs/cat.gif" width="164" alt="cat.gif"/>](https://github.com/yumiaura)
 
 <p class="badges">
+  <a href="https://github.com/yumiaura/myCat/releases/latest"><img src="https://img.shields.io/github/v/release/yumiaura/myCat?label=download&color=blue" alt="Latest release"></a>
   <img src="https://img.shields.io/pypi/pyversions/mycat?color=brightgreen" alt="Python Versions">
   <a href="https://pypi.org/project/mycat/"><img src="https://img.shields.io/pypi/v/mycat?color=brightgreen" alt="PyPI Version"></a>
   <a href="https://pypi.org/project/mycat/"><img src="https://img.shields.io/pepy/dt/mycat?label=pypi%20%7C%20downloads&color=brightgreen" alt="Pepy Total Downloads"/></a>
@@ -37,7 +38,9 @@ Download the build for your OS from the **[latest release](https://github.com/yu
 | OS | File | How to run |
 | --- | --- | --- |
 | **Windows** | `mycat-<version>-windows-x64.exe` | double-click it |
-| **macOS** | `mycat-<version>-macos-arm64.zip` | unzip, then open `mycat.app` |
+| **macOS** (Apple Silicon) | `mycat-<version>-macos-arm64.zip` | unzip, then open `mycat.app` |
+| **macOS** (Intel) | `mycat-<version>-macos-x64.zip` | unzip, then open `mycat.app` |
+| **Linux** (Debian/Ubuntu) | `mycat_<version>_amd64.deb` | `sudo apt install ./mycat_<version>_amd64.deb` |
 
 > Builds for every release live on the **[Releases](https://github.com/yumiaura/myCat/releases)** page.
 

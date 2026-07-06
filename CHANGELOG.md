@@ -8,6 +8,9 @@ All notable changes to this project are documented in this file.
 - **Prebuilt macOS Intel (x86_64) binary.** The release workflow now also builds `mycat-<version>-macos-x64.zip` on GitHub's Intel runner (`macos-15-intel`), alongside the existing Apple Silicon (`-macos-arm64`) and Windows builds, so Intel Macs get a native download (branches `ci/macos-intel-x64`, `fix/intel-runner-macos-15`).
 - **Prebuilt Debian package (`.deb`) for Linux.** A new CI workflow wraps the PyInstaller onefile binary in a `mycat_<version>_amd64.deb` (installs `/usr/bin/mycat`, a `.desktop` launcher, and a cat-head icon) and attaches it to each GitHub Release. Install with `sudo apt install ./mycat_<version>_amd64.deb`; it's self-contained (bundles its own Python + Qt), depending only on common system libs like `libxcb-cursor0` (branch `ci/linux-deb`).
 
+### Changed
+- **README: a "download | latest" release badge and an up-to-date download table.** Added a shields.io latest-release badge (linking to `/releases/latest`) to the top of the README, and expanded the Option A prebuilt-binary table to list all four builds — Windows, macOS Apple Silicon, macOS Intel, and the Linux `.deb` (branch `docs/readme-latest-badge`).
+
 ## [0.1.11] - 2026-07-06
 
 ### Added
