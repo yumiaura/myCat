@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Fixed
+- **The prebuilt Windows/macOS executables now actually launch.** The frozen build crashed at startup with `ModuleNotFoundError: No module named 'mycat.llm'`: the exe entry runs as `__main__`, so `main.py` pulls its submodules in dynamically (`importlib.import_module("mycat.llm")`), which PyInstaller's static analysis never bundled. The spec now bundles the whole `mycat` package via `collect_submodules('mycat')` (with the source tree added to `sys.path` so it works whether or not the package is pip-installed). It also fixes bundled chars: the folder was renamed `images/` → `chars/`, but the spec still shipped `mycat/images/`, so the exe launched with no cats — it now bundles `mycat/chars/` (both names supported for older tags). Verified with a real PyInstaller build (branch `fix/frozen-exe-imports`).
+
 ### Changed
 - **The cat now blinks in the plane cockpit and sits deeper in it.** On the banner flyby (plane1) the cat is sunk further into the fuselage so only the top of the head peeks out instead of the whole head sticking up, and its eyes blink on a slow cycle using the char's closed-eyes frame (the same frames the demo GIF uses) — GIF chars with no blink frame just stay awake. Tuning: `CAT_SINK_FRAC`, `BLINK_PERIOD_S`, `BLINK_DUR_S` in `reminder_ui.py` (branch `feat/flyby-cat-sink-blink`).
 
