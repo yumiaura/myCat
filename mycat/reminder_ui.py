@@ -928,6 +928,41 @@ class ReminderDialog(QtWidgets.QDialog):
         layout.addWidget(self.status_label)
         layout.addLayout(buttons)
 
+        # On reopen, the dialog must visibly reflect the live schedule (Olya:
+        # "if I open it again it looks reset"). A 1-second countdown keeps the
+        # status line honest about how much time is left until the flyby.
+        self._countdown = QtCore.QTimer(self)
+        self._countdown.setInterval(1000)
+        self._countdown.timeout.connect(self._refresh_pending)
+        self._refresh_pending()
+        if self.status_label.text():
+            self._countdown.start()
+
+    def _refresh_pending(self) -> None:
+        """Show the scheduled reminder's time-remaining, ticking once a second."""
+        reminder = self._controller.reminder
+        if reminder is None or not reminder.enabled or reminder.fire_at is None:
+            self._countdown.stop()
+            return
+        remaining = int((reminder.fire_at - datetime.now()).total_seconds())
+        if remaining <= 0:
+            self._countdown.stop()
+            return
+        minutes, seconds = divmod(remaining, 60)
+        hours, minutes = divmod(minutes, 60)
+        if hours:
+            left = f"{hours} h {minutes} min"
+        elif minutes:
+            left = f"{minutes} min {seconds:02d} sec"
+        else:
+            left = f"{seconds} sec"
+        at = reminder.fire_at.strftime("%H:%M")
+        daily = ", daily" if reminder.repeat_daily else ""
+        self.status_label.setStyleSheet("color: #1c7c2f;")
+        self.status_label.setText(
+            f'⏰ Scheduled: "{reminder.text}" — fires in {left} (at {at}{daily}).'
+        )
+
     def _sync_timing_enabled(self) -> None:
         in_mode = self._in_radio.isChecked()
         self._in_spin.setEnabled(in_mode)
@@ -981,11 +1016,18 @@ class ReminderDialog(QtWidgets.QDialog):
         self._controller.test(self._build_reminder())
 
     def _on_clear(self) -> None:
-        self._controller.clear()
+        self._countdown.stop()
+        # Cancel the schedule but keep the typed message and look, so reopening
+        # doesn't wipe the user's text — they can re-arm without retyping.
+        kept = self._build_reminder()
+        kept.enabled = False
+        kept.fire_at = None
+        self._controller.set_reminder(kept)
         self.status_label.setStyleSheet("color: #777777;")
-        self.status_label.setText("Reminder cleared.")
+        self.status_label.setText("Reminder turned off — message kept.")
 
     def _on_save(self) -> None:
+        self._countdown.stop()
         reminder = self._build_reminder()
         self._controller.set_reminder(reminder)
         when = f"in {reminder.in_minutes} min" if reminder.mode == "in" else reminder.fire_at.strftime("at %H:%M")

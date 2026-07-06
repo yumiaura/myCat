@@ -10,6 +10,10 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 - **Activity dialog: "Enable Activity" → "Enable Tracking"; Tracking / Mouse / Keyboard are now three independent toggles.** "Enable Tracking" controls only the cat's **eyes** — on, the pupils follow the cursor; off (or when the cursor is on another monitor) the cat looks at its own nose. **Mouse** and **Keyboard** are the diary count tracks and stay independently clickable (no more greying-out), and turning Tracking off no longer stops recording (branch `feat/linux-counts-and-startup`).
+- **Reminder dialog now shows the live time-remaining, and Reset keeps your message.** Reopening the reminder no longer looks "reset": the status line shows a ticking `⏰ Scheduled: "…" — fires in Xm Ys (at HH:MM)` for the pending reminder (the saved settings were always kept; now it's visible). **Reset** cancels the schedule but **preserves the typed message and plane look**, so you can re-arm without retyping (branch `feat/linux-counts-and-startup`).
+
+### Fixed
+- **All four reminder planes now ship in the exe/.app, not just the pip wheel.** The four selectable plane sprites (`plane1`–`plane4`) are tracked in git and already bundled in `pip install mycat` via package-data, but the PyInstaller spec only copied the single legacy `plane.png` — so the prebuilt Windows/macOS builds had an empty plane picker. The spec now bundles `mycat/assets/planes/*.png` too (branch `feat/linux-counts-and-startup`).
 
 ## [0.1.10] - 2026-07-06
 

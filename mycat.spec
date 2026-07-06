@@ -42,16 +42,21 @@ for name in ("PROMPT.j2", "PROMT.j2"):
     if p.is_file():
         datas.append((str(p), "mycat"))
 
-# Optional AI-generated plane sprite + canopy manifest used by the reminder
-# flyby. Gitignored, so the CI build normally ships without them — the
-# reminder feature degrades to a flag-only flyby. Local builds will include
-# whatever the developer has in mycat/assets/.
+# Plane sprites for the reminder flyby. plane.png is the legacy single sprite;
+# planes/plane1..plane4.png are the four selectable variants. All are tracked in
+# git and shipped in the pip wheel (see [tool.setuptools.package-data]), so bundle
+# them into the frozen build too — otherwise the plane picker is empty in the
+# exe/.app and every reminder falls back to the single default plane.
 assets_dir = Path("mycat") / "assets"
 if assets_dir.is_dir():
     for name in ("plane.png", "plane.json"):
         p = assets_dir / name
         if p.is_file():
             datas.append((str(p), "mycat/assets"))
+    planes_dir = assets_dir / "planes"
+    if planes_dir.is_dir():
+        for sprite in sorted(planes_dir.glob("*.png")):
+            datas.append((str(sprite), "mycat/assets/planes"))
 
 
 a = Analysis(
