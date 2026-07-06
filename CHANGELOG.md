@@ -11,8 +11,6 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 - **Release asset filenames are now version-less** (`mycat-windows-x64.exe`, `mycat-macos-arm64.zip`, `mycat-macos-x64.zip`, `mycat-linux-amd64.deb`, `mycat-linux-x86_64.AppImage`), so `https://github.com/yumiaura/myCat/releases/latest/download/<name>` is a stable link that always fetches the current build — used by the README download buttons and the in-app updater (branch `ci/versionless-names-appimage`).
-
-### Changed
 - **README download buttons + a "download | latest" badge.** Replaced the Option A table with per-platform **Download** buttons that link straight to the latest build — Windows, macOS (Apple Silicon), macOS (Intel), Linux `.deb`, Linux AppImage — and added a shields.io latest-release badge at the top of the README (branch `docs/readme-latest-badge`).
 - **The cat's "Quit" now hides it to the system tray.** Right-click → **Hide** tucks the cat into the tray instead of quitting; bring it back with a tray double-click or the tray's new **Show**. The real **Quit** stays in the tray menu; where no system tray is available the cat menu keeps a real **Quit** (branch `docs/readme-latest-badge`).
 
