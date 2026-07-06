@@ -12,10 +12,10 @@ def test_focus_goal_round_trip(tmp_path):
     loaded = load_focus_settings(cfg_file=cfg)
     assert loaded.focus_minutes == 30
     assert loaded.tooltip_enabled is False
-    # Defaults (no file): 25-minute Pomodoro, hover tooltip on.
+    # Defaults (no file): 25-minute Pomodoro, hover tooltip off.
     default = load_focus_settings(cfg_file=tmp_path / "none.ini")
     assert default.focus_minutes == 25
-    assert default.tooltip_enabled is True
+    assert default.tooltip_enabled is False
 
 
 class FakeNow:
@@ -99,10 +99,11 @@ def test_tooltip_toggle_controls_the_hover_tooltip(tmp_path, qapp):
     col = FakeCollector()
     controller.attach_collector(col)
     col.run = run_stats(now(), keys=100)
-    # On (default): the tooltip carries the live stats.
+    # On: the tooltip carries the live stats.
+    controller.settings.tooltip_enabled = True
     controller.refresh_visuals()
     assert window.tip and "⌨ 100" in window.tip
-    # Off: the tooltip is cleared (empty string also kills the hover-show).
+    # Off (default): the tooltip is cleared (empty string also kills the hover-show).
     controller.settings.tooltip_enabled = False
     controller.refresh_visuals()
     assert window.tip == ""

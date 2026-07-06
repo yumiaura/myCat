@@ -259,12 +259,12 @@ def test_save_persists_and_applies_tooltip_toggle(tmp_path, qapp, monkeypatch):
     focus_saved = []
     monkeypatch.setattr("mycat.activity.save_activity_settings", lambda settings, **kw: None)
     monkeypatch.setattr("mycat.focus.save_focus_settings", lambda settings, **kw: focus_saved.append(settings))
-    assert dialog.tooltip_box.isChecked()  # on by default
-    dialog.tooltip_box.setChecked(False)
+    assert not dialog.tooltip_box.isChecked()  # off by default
+    dialog.tooltip_box.setChecked(True)
     dialog.save_settings()
-    assert focus_saved[0].tooltip_enabled is False  # persisted
-    assert controller.settings.tooltip_enabled is False  # applied live
-    assert "tooltip ✗" in dialog.status_label.text()
+    assert focus_saved[0].tooltip_enabled is True  # persisted
+    assert controller.settings.tooltip_enabled is True  # applied live
+    assert "tooltip ✓" in dialog.status_label.text()
 
 
 def test_brief_run_is_a_banana(tmp_path, qapp):
