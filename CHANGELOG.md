@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Added
 - **Prebuilt macOS Intel (x86_64) binary.** The release workflow now also builds `mycat-<version>-macos-x64.zip` on an Intel runner (`macos-13`), alongside the existing Apple Silicon (`-macos-arm64`) and Windows builds, so Intel Macs get a native download (branch `ci/macos-intel-x64`).
+- **Prebuilt Debian package (`.deb`) for Linux.** A new CI workflow wraps the PyInstaller onefile binary in a `mycat_<version>_amd64.deb` (installs `/usr/bin/mycat`, a `.desktop` launcher, and a cat-head icon) and attaches it to each GitHub Release. Install with `sudo apt install ./mycat_<version>_amd64.deb`; it's self-contained (bundles its own Python + Qt), depending only on common system libs like `libxcb-cursor0` (branch `ci/linux-deb`).
 
 ## [0.1.11] - 2026-07-06
 
