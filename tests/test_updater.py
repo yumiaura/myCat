@@ -33,3 +33,8 @@ def test_asset_url_uses_stable_latest_download():
 def test_staging_path_for_temp_kinds():
     # deb/macos/windows stage in the temp dir under their asset name.
     assert updater.staging_path("deb").endswith("mycat-linux-amd64.deb")
+
+
+def test_source_update_command_is_git_pull_in_checkout():
+    # The test suite runs from the git checkout, so it should suggest git pull.
+    assert updater.source_update_command() == "git pull"

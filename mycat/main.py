@@ -11,6 +11,7 @@ pip install PySide6
 
 import argparse
 import configparser
+import getpass
 import io
 import logging
 import math
@@ -63,7 +64,7 @@ else:
     update_check = importlib.import_module("mycat.update_check")
     updater = importlib.import_module("mycat.updater")
 
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtNetwork, QtWidgets
 
 # Make logs readable for non-ASCII text (Cyrillic, emoji): force UTF-8 on the
 # console streams when the locale left them as ASCII (otherwise the logger
@@ -88,6 +89,10 @@ logger.debug("LLM integration module path: %s", getattr(llm, "__file__", "builti
 # Config paths
 CFG_DIR = Path.home() / ".config" / "mycat"
 CFG_FILE = CFG_DIR / "config.ini"
+
+# Per-user local-socket name: a second `mycat` launch uses it to raise the
+# running cat's window (so hiding it to a flaky tray is always recoverable).
+SINGLE_INSTANCE_NAME = f"mycat-{getpass.getuser()}"
 
 # Image scaling settings
 IMAGE_WIDTH_MAX = 300  # Maximum width for images in pixels (images will be scaled down if larger)
@@ -1347,13 +1352,13 @@ class PixelCatWindow(QtWidgets.QWidget):
             )
             return
         if not updater.can_self_update(kind):
+            command = updater.source_update_command()
             box = QtWidgets.QMessageBox(self)
-            box.setWindowTitle("mycat")
+            box.setWindowTitle("Update available")
             box.setText(f"mycat {latest} is available (you have {current}).")
-            box.setInformativeText(
-                "You're running from source — update with git/pip, or grab a prebuilt build."
-            )
-            open_button = box.addButton("Open releases", QtWidgets.QMessageBox.ButtonRole.AcceptRole)
+            box.setInformativeText(f"Update with:\n\n    {command}")
+            box.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+            open_button = box.addButton("Open releases", QtWidgets.QMessageBox.ButtonRole.ActionRole)
             box.addButton(QtWidgets.QMessageBox.StandardButton.Close)
             box.exec()
             if box.clickedButton() is open_button:
@@ -1786,6 +1791,45 @@ def ensure_virtual_monitor() -> None:
     logger.info("No active RANDR monitor — registered virtual monitor %s so Qt sees the screen.", geometry)
 
 
+def activate_running_instance(name: str) -> bool:
+    """Ask an already-running mycat (via its local socket) to show its window.
+
+    Returns True if a running instance answered. This is the safety net for
+    hiding the cat to a system tray that some Linux panels don't render: a second
+    launch just raises the existing cat instead of doing nothing.
+    """
+    socket = QtNetwork.QLocalSocket()
+    socket.connectToServer(name)
+    if not socket.waitForConnected(500):
+        return False
+    socket.write(b"show")
+    socket.flush()
+    socket.waitForBytesWritten(500)
+    socket.disconnectFromServer()
+    return True
+
+
+def start_activation_server(name: str, window):
+    """Listen for a second launch and raise ``window`` when one arrives."""
+    QtNetwork.QLocalServer.removeServer(name)  # clear a socket left by a crash
+    server = QtNetwork.QLocalServer(window)
+    if not server.listen(name):
+        logger.warning("Single-instance socket unavailable: %s", server.errorString())
+        return None
+
+    def on_connection() -> None:
+        connection = server.nextPendingConnection()
+        if connection is not None:
+            connection.disconnectFromServer()
+        window.show()
+        window.raise_()
+        window.activateWindow()
+        logger.info("Second launch — raising the existing cat")
+
+    server.newConnection.connect(on_connection)
+    return server
+
+
 def ensure_emoji_font(app) -> None:
     """Give emoji glyphs a fallback so they don't render as tofu boxes on systems
     with no emoji font (common on minimal Linux `pip install`s).
@@ -1832,6 +1876,109 @@ def make_app_icon() -> QtGui.QIcon:
     return QtGui.QIcon(pixmap)
 
 
+def is_dark_theme(app) -> bool:
+    """True when the desktop uses a dark colour scheme (so the tray wants the
+    light icon). Prefers Qt's colorScheme(), falls back to palette lightness."""
+    try:
+        scheme = app.styleHints().colorScheme()
+        if scheme == QtCore.Qt.ColorScheme.Dark:
+            return True
+        if scheme == QtCore.Qt.ColorScheme.Light:
+            return False
+    except (AttributeError, TypeError):
+        pass
+    return app.palette().color(QtGui.QPalette.ColorRole.Window).lightness() < 128
+
+
+def make_tray_icon(app) -> QtGui.QIcon:
+    """Theme-adaptive tray icon: the light silhouette (icon-w) on a dark panel,
+    the dark one (icon-b) on a light panel; falls back to the app icon."""
+    assets = Path(__file__).resolve().parent / "assets"
+    path = assets / ("icon-w.png" if is_dark_theme(app) else "icon-b.png")
+    if path.is_file():
+        icon = QtGui.QIcon(str(path))
+        if not icon.isNull():
+            return icon
+    return make_app_icon()
+
+
+def desktop_exec_command() -> str:
+    """The command a menu launcher should run to start mycat, for this install."""
+    if getattr(sys, "frozen", False):
+        target = os.environ.get("APPIMAGE") or sys.executable
+        return f'"{target}"'
+    console = shutil.which("mycat")
+    if console:
+        return f'"{console}"'
+    # Running from source, not pip-installed: launch main.py by absolute path
+    # (its import shim works when run as a script from any working directory).
+    return f'"{sys.executable}" "{Path(__file__).resolve()}"'
+
+
+def desktop_version(path) -> str | None:
+    """The mycat version recorded in a .desktop entry (``X-mycat-version``), or None."""
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("X-mycat-version="):
+                return line.split("=", 1)[1].strip() or None
+    except OSError:
+        return None
+    return None
+
+
+def install_desktop_entry() -> None:
+    """Keep the Linux applications-menu entry pointing at the newest mycat the user
+    has launched (git, pip or AppImage), so switching between installs fixes the
+    launcher's command and icon. The .deb ships its own system-wide entry.
+
+    The entry is only (re)written when this install is at least as new as whatever
+    the menu currently launches, so running an older build never downgrades it."""
+    if sys.platform != "linux" or updater.install_kind() == "deb":
+        return
+    share = Path.home() / ".local" / "share"
+    user_desktop = share / "applications" / "mycat.desktop"
+    system_desktop = Path("/usr/share/applications/mycat.desktop")
+    current = update_check.current_version()
+    # A user entry shadows the .deb's system one, so the menu runs whichever the
+    # user entry points at; fall back to the .deb's recorded version otherwise.
+    best = desktop_version(user_desktop) or desktop_version(system_desktop)
+    if best is not None and update_check.parse_version(current) < update_check.parse_version(best):
+        return
+    source_icon = Path(__file__).resolve().parent / "assets" / "icon.png"
+    if not source_icon.is_file():
+        return
+    # Copy the icon to a stable path and reference it ABSOLUTELY in Icon= — the
+    # themed `Icon=mycat` form needs the user icon dir to be a full hicolor theme
+    # (index.theme + right size folder) and a refreshed cache, which often isn't
+    # there; an absolute path just works.
+    icon_target = share / "mycat" / "icon.png"
+    try:
+        icon_target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_icon, icon_target)
+        user_desktop.parent.mkdir(parents=True, exist_ok=True)
+        user_desktop.write_text(
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Name=myCat\n"
+            "GenericName=Desktop pet\n"
+            "Comment=A tiny animated desktop pet cat\n"
+            f"Exec={desktop_exec_command()}\n"
+            f"Icon={icon_target}\n"
+            "Terminal=false\n"
+            "Categories=Utility;Amusement;\n"
+            "Keywords=cat;pet;desktop;\n"
+            f"X-mycat-version={current}\n",
+            encoding="utf-8",
+        )
+        logger.info("Application-menu entry now points at mycat %s (%s)", current, user_desktop)
+        if shutil.which("update-desktop-database"):
+            subprocess.run(  # noqa: S603
+                ["update-desktop-database", str(user_desktop.parent)], check=False, capture_output=True
+            )
+    except OSError as exc:
+        logger.debug("Could not install the application-menu entry: %s", exc)
+
+
 def setup_tray(app, window):
     """A persistent cat icon in the system tray with a quick-action menu.
 
@@ -1841,10 +1988,13 @@ def setup_tray(app, window):
     if not QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
         logger.warning("System tray not available — the cat can't be sent to a tray")
         return None
-    # A large, mostly-transparent char frame renders as a near-invisible speck at
-    # tray size, so always use the dedicated app icon for the tray.
-    icon = make_app_icon()
-    tray = QtWidgets.QSystemTrayIcon(icon, app)
+    # Theme-adaptive monochrome icon (light on dark panels, dark on light ones);
+    # a full char frame would shrink to a near-invisible speck at tray size.
+    tray = QtWidgets.QSystemTrayIcon(make_tray_icon(app), app)
+    # Re-pick the icon if the desktop switches between light and dark.
+    hints = app.styleHints()
+    if hasattr(hints, "colorSchemeChanged"):
+        hints.colorSchemeChanged.connect(lambda _=None: tray.setIcon(make_tray_icon(app)))
     tray.setToolTip("mycat 🐱")
 
     def show_window():
@@ -1896,6 +2046,10 @@ def setup_tray(app, window):
 
     tray.activated.connect(on_activated)
     tray.show()
+    # Some X11 panels (e.g. XFCE) aren't ready for the tray when we first show it
+    # (before the event loop runs), so the icon silently fails to embed. Re-assert
+    # it a moment after the loop starts — show() is idempotent.
+    QtCore.QTimer.singleShot(1500, tray.show)
     logger.info("Tray icon shown (visible=%s)", tray.isVisible())
     return tray
 
@@ -1941,6 +2095,7 @@ def main() -> None:
         # other python "main.py" apps. setDesktopFileName drives the X11 class.
         app.setApplicationName("mycat")
         app.setDesktopFileName("mycat")
+        install_desktop_entry()  # so mycat shows in the Linux applications menu
         platform_name = (app.platformName() or "").lower()
     except Exception as e:
         logger.error(f"Failed to initialize Qt application: {e}")
@@ -1955,7 +2110,8 @@ def main() -> None:
         instance_lock = QtCore.QLockFile(str(CFG_DIR / "mycat.lock"))
         instance_lock.setStaleLockTime(0)
         if not instance_lock.tryLock(100):
-            logger.info("Another mycat instance is already running — exiting.")
+            logger.info("Another mycat instance is already running — raising it and exiting.")
+            activate_running_instance(SINGLE_INSTANCE_NAME)
             sys.exit(0)
 
     # Setup signal handlers for graceful shutdown
@@ -2019,6 +2175,9 @@ def main() -> None:
         window.show()
         # Persistent cat tray icon (kept on the window so it isn't GC'd).
         window.tray_icon = setup_tray(app, window)
+        # Safety net: let a second launch raise this window, so a cat hidden to a
+        # tray the panel doesn't render can always be brought back with `mycat`.
+        window.activation_server = start_activation_server(SINGLE_INSTANCE_NAME, window)
         # Live in the tray: hiding/closing windows no longer quits the app —
         # only the explicit Quit action does. With no tray to quit from, keep
         # the old behaviour so the user is never stuck with an invisible process.
