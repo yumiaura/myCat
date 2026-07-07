@@ -85,6 +85,29 @@ a = Analysis(
 )
 pyz = PYZ(a.pure, a.zipped_data)
 
+# Build the platform app icon from mycat/assets/icon.png so the frozen .exe / .app
+# carry a real icon (the PNG stays the single source of truth). Pillow is in the
+# build env (a mycat dependency); never fail the build over the icon.
+app_icon = None
+icon_png = Path("mycat") / "assets" / "icon.png"
+if icon_png.is_file():
+    try:
+        from PIL import Image
+
+        Path("build").mkdir(exist_ok=True)
+        if sys.platform == "win32":
+            app_icon = str(Path("build") / "mycat.ico")
+            Image.open(icon_png).save(
+                app_icon,
+                sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+            )
+        elif sys.platform == "darwin":
+            app_icon = str(Path("build") / "mycat.icns")
+            Image.open(icon_png).convert("RGBA").resize((1024, 1024)).save(app_icon)
+    except Exception as icon_error:  # noqa: BLE001
+        print(f"mycat.spec: could not build the app icon ({icon_error})")
+        app_icon = None
+
 exe = EXE(
     pyz,
     a.scripts,
@@ -93,6 +116,7 @@ exe = EXE(
     a.datas,
     [],
     name='mycat',
+    icon=app_icon if sys.platform == 'win32' else None,  # .ico; macOS uses BUNDLE
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -110,7 +134,7 @@ if sys.platform == 'darwin':
     app = BUNDLE(
         exe,
         name='mycat.app',
-        icon=None,
+        icon=app_icon,
         bundle_identifier='app.mycat',
         info_plist={
             'NSHighResolutionCapable': True,
