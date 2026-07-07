@@ -1435,9 +1435,15 @@ class PixelCatWindow(QtWidgets.QWidget):
         dialog.exec()
 
     def finish_update(self) -> None:
-        """New build spawned — quit so the old process exits (and frees the file)."""
+        """New build spawned — this process MUST die now so the swapper can see the
+        old PID vanish, overwrite the file, and relaunch.
+
+        ``QApplication.quit()`` is not enough: this runs inside the progress dialog's
+        modal ``exec()`` nested event loop, which quit() does not break — so the
+        process lingered forever and the Windows swapper hung on its wait loop. Flush
+        pending state, then hard-exit so the swapper always proceeds."""
         flush_activity_on_quit(self)
-        QtWidgets.QApplication.quit()
+        os._exit(0)
 
     def on_update_failed(self, message: str) -> None:
         logger.warning("Update failed: %s", message)

@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 RELEASE_DOWNLOAD = "https://github.com/yumiaura/myCat/releases/latest/download"
 RELEASES_PAGE = "https://github.com/yumiaura/myCat/releases/latest"
 
+# Windows CreateProcess flag: run the update swapper with a hidden console so no
+# black window flashes up (and none lingers if the swap stalls).
+CREATE_NO_WINDOW = 0x08000000
+
 
 def install_kind() -> str:
     """How this instance was installed.
@@ -89,24 +93,43 @@ def make_executable(path: str) -> None:
     os.chmod(path, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
-def download(url: str, dest: str, progress=None) -> None:
+DOWNLOAD_ATTEMPTS = 3
+
+
+def download(url: str, dest: str, progress=None, attempts: int = DOWNLOAD_ATTEMPTS) -> None:
     """Stream ``url`` to ``dest``; call ``progress(done, total)`` as it goes.
 
-    ``total`` is 0 when the server doesn't send Content-Length.
+    The finished file is verified against ``Content-Length`` and a truncated or
+    interrupted transfer is retried, so a dropped connection can never leave a
+    half-written build behind for the swapper to install — that produced a
+    corrupt exe that died with "Failed to load Python DLL". ``total`` is 0 when
+    the server sends no Content-Length (then we can't verify, and take what we
+    got). ``progress`` may raise to cancel; that is not a network error, so it
+    propagates immediately instead of being retried.
     """
     request = urllib.request.Request(url, headers={"User-Agent": "mycat"})
-    with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310 - official HTTPS release URL
-        total = int(response.headers.get("Content-Length") or 0)
-        done = 0
-        with open(dest, "wb") as out:
-            while True:
-                chunk = response.read(1 << 16)
-                if not chunk:
-                    break
-                out.write(chunk)
-                done += len(chunk)
-                if progress is not None:
-                    progress(done, total)
+    last_error: OSError | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310 - official HTTPS release URL
+                total = int(response.headers.get("Content-Length") or 0)
+                done = 0
+                with open(dest, "wb") as out:
+                    while True:
+                        chunk = response.read(1 << 16)
+                        if not chunk:
+                            break
+                        out.write(chunk)
+                        done += len(chunk)
+                        if progress is not None:
+                            progress(done, total)
+            if total and done != total:
+                raise OSError(f"incomplete download: got {done} of {total} bytes")
+            return
+        except OSError as error:  # network / truncation — retry, then give up
+            last_error = error
+            logger.warning("download attempt %d/%d failed: %s", attempt, attempts, error)
+    raise last_error
 
 
 def staging_path(kind: str) -> str:
@@ -156,9 +179,9 @@ def apply_windows(downloaded: str) -> None:
     # Wait for this process (and its bootloader) to exit and release the exe, then
     # KEEP RETRYING the overwrite: a onefile build stays locked for a moment after
     # the app PID is gone, so a single `move` right away fails and nothing
-    # relaunches. Delays use `ping`, not `timeout`: this swapper runs detached with
-    # no console, and `timeout` errors out ("input redirection is not supported")
-    # without one — which was breaking the wait/retry loops entirely.
+    # relaunches. Delays use `ping`, not `timeout`: the swapper's hidden console has
+    # no interactive stdin, and `timeout` errors out ("input redirection is not
+    # supported") without one — which was breaking the wait/retry loops entirely.
     body = (
         "@echo off\r\n"
         "setlocal enabledelayedexpansion\r\n"
@@ -179,6 +202,18 @@ def apply_windows(downloaded: str) -> None:
         "if !TRIES! LSS 30 ( ping -n 2 127.0.0.1 >nul & goto swap )\r\n"
         'echo gave up swapping after !TRIES! tries >> "%LOG%"\r\n'
         ":launch\r\n"
+        # Clear the PyInstaller onefile bootloader's private env vars before
+        # relaunching. The swapper is a descendant of the old frozen process, so
+        # the new exe would otherwise inherit these and the bootloader would think
+        # it is the already-extracted second stage — looking for its DLLs in the
+        # old (now deleted) _MEI dir and dying with "Failed to load Python DLL".
+        # This is why the first auto-relaunch failed but a manual launch (clean
+        # Explorer env) always worked.
+        'set "_MEIPASS2="\r\n'
+        'set "_PYI_ARCHIVE_FILE="\r\n'
+        'set "_PYI_APPLICATION_HOME_DIR="\r\n'
+        'set "_PYI_PARENT_PROCESS_LEVEL="\r\n'
+        'set "_PYI_SPLASH_IPC="\r\n'
         'echo launching "%EXE%" >> "%LOG%"\r\n'
         'start "" "%EXE%"\r\n'
         'echo done >> "%LOG%"\r\n'
@@ -186,10 +221,23 @@ def apply_windows(downloaded: str) -> None:
     )
     with open(script, "w", encoding="utf-8") as handle:
         handle.write(body)
-    # DETACHED_PROCESS only — combining it with CREATE_NO_WINDOW can make
-    # CreateProcess fail (then the swapper never runs). Detached alone survives
-    # this process exiting and shows no console for a plain @echo off batch.
-    subprocess.Popen(["cmd", "/c", script], creationflags=0x00000008, close_fds=True)  # noqa: S603
+    # CREATE_NO_WINDOW: give the swapper a HIDDEN console. DETACHED_PROCESS (used
+    # before) gives cmd no console at all, so every `ping`/`tasklist`/`find` it runs
+    # made Windows allocate a fresh console — a black window that flashed up and,
+    # when the swap stalled, sat there showing the wait loop. A hidden console the
+    # child console tools reuse means nothing is ever visible. The swapper still
+    # outlives this process (child processes aren't tied to the parent's lifetime).
+    # Also hand the swapper an environment with the PyInstaller onefile vars
+    # stripped, so the relaunched exe (our descendant) never inherits them and
+    # extracts fresh — belt-and-suspenders with the `set ""` lines in the batch.
+    clean_env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("_PYI") and not key.startswith("_MEIPASS")
+    }
+    subprocess.Popen(  # noqa: S603
+        ["cmd", "/c", script], creationflags=CREATE_NO_WINDOW, close_fds=True, env=clean_env
+    )
     logger.info("Windows update swapper launched for %s (log: %s)", exe, log)
 
 
