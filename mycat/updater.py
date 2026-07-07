@@ -180,29 +180,35 @@ def apply_windows(downloaded: str) -> None:
     pid = os.getpid()
     log = os.path.join(tempfile.gettempdir(), "mycat-update.log")
     script = os.path.join(tempfile.gettempdir(), "mycat-update.bat")
-    # Wait for this process to exit, then KEEP RETRYING the overwrite: a onefile
-    # build stays locked by its bootloader for a moment after the app PID is
-    # gone, so a single `move` right away fails and nothing relaunches. Retry for
-    # ~15 s, then start the (now updated) exe. Delayed expansion for the counter.
+    # Wait for this process (and its bootloader) to exit and release the exe, then
+    # KEEP RETRYING the overwrite: a onefile build stays locked for a moment after
+    # the app PID is gone, so a single `move` right away fails and nothing
+    # relaunches. Delays use `ping`, not `timeout`: this swapper runs detached with
+    # no console, and `timeout` errors out ("input redirection is not supported")
+    # without one — which was breaking the wait/retry loops entirely.
     body = (
         "@echo off\r\n"
         "setlocal enabledelayedexpansion\r\n"
         f'set "LOG={log}"\r\n'
-        'echo update swapper started > "%LOG%"\r\n'
+        f'set "NEW={downloaded}"\r\n'
+        f'set "EXE={exe}"\r\n'
+        'echo swapper started %DATE% %TIME% > "%LOG%"\r\n'
         ":wait\r\n"
         f'tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul\r\n'
-        "if not errorlevel 1 ( timeout /t 1 /nobreak >nul & goto wait )\r\n"
-        f'echo pid {pid} gone, swapping >> "%LOG%"\r\n'
+        "if not errorlevel 1 ( ping -n 2 127.0.0.1 >nul & goto wait )\r\n"
+        'echo app exited >> "%LOG%"\r\n'
         "set /a TRIES=0\r\n"
         ":swap\r\n"
-        f'move /Y "{downloaded}" "{exe}" >nul 2>>"%LOG%"\r\n'
-        "if not errorlevel 1 goto start\r\n"
+        'move /Y "%NEW%" "%EXE%" >nul 2>>"%LOG%"\r\n'
+        "if not errorlevel 1 goto launch\r\n"
         "set /a TRIES+=1\r\n"
-        "if !TRIES! LSS 15 ( timeout /t 1 /nobreak >nul & goto swap )\r\n"
-        'echo move failed after retries >> "%LOG%"\r\n'
-        ":start\r\n"
-        f'echo starting >> "%LOG%"\r\n'
-        f'start "" "{exe}"\r\n'
+        'echo move attempt !TRIES! failed >> "%LOG%"\r\n'
+        "if !TRIES! LSS 30 ( ping -n 2 127.0.0.1 >nul & goto swap )\r\n"
+        'echo gave up swapping after !TRIES! tries >> "%LOG%"\r\n'
+        ":launch\r\n"
+        'echo launching "%EXE%" >> "%LOG%"\r\n'
+        'start "" "%EXE%"\r\n'
+        'echo done >> "%LOG%"\r\n'
         'del "%~f0"\r\n'
     )
     with open(script, "w", encoding="utf-8") as handle:

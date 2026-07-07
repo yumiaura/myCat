@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Fixed
+- **Windows self-update relaunch (again).** The swap script runs in a detached, console-less process, where `timeout` errors out — so the wait/retry delays never actually happened and the app closed without reopening. It now uses `ping` for the delays (works with no console) and retries the swap up to 30×, with a step-by-step `%TEMP%\mycat-update.log`. Since an update runs the *currently installed* version's code, this takes effect for updates **from 0.1.15 onward** (branch `fix/windows-update-relaunch`).
+
 ## [0.1.14] - 2026-07-07
 
 ### Added
