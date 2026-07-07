@@ -1787,7 +1787,13 @@ def ensure_virtual_monitor() -> None:
 
 
 def make_app_icon() -> QtGui.QIcon:
-    """A 😽 cat icon, used for the tray, the app icon and the splash."""
+    """The app icon (tray, window, splash): mycat/assets/icon.png, falling back
+    to a drawn 😽 if the file is missing."""
+    icon_path = Path(__file__).resolve().parent / "assets" / "icon.png"
+    if icon_path.is_file():
+        icon = QtGui.QIcon(str(icon_path))
+        if not icon.isNull():
+            return icon
     pixmap = QtGui.QPixmap(64, 64)
     pixmap.fill(QtCore.Qt.GlobalColor.transparent)
     painter = QtGui.QPainter(pixmap)
