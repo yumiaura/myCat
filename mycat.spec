@@ -49,9 +49,8 @@ for name in ("PROMPT.j2", "PROMT.j2"):
 # exe/.app and every reminder falls back to the single default plane.
 assets_dir = Path("mycat") / "assets"
 if assets_dir.is_dir():
-    for name in ("plane.png", "plane.json", "icon.png"):
-        p = assets_dir / name
-        if p.is_file():
+    for p in sorted(assets_dir.iterdir()):
+        if p.is_file():  # plane.png/.json, icon.png, icon-w/icon-b.png, ...
             datas.append((str(p), "mycat/assets"))
     planes_dir = assets_dir / "planes"
     if planes_dir.is_dir():
