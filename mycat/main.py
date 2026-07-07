@@ -1800,15 +1800,18 @@ def make_app_icon() -> QtGui.QIcon:
     return QtGui.QIcon(pixmap)
 
 
-def setup_tray(app, window, icon_pixmap):
+def setup_tray(app, window):
     """A persistent cat icon in the system tray with a quick-action menu.
 
     Returns the tray icon (kept alive by the caller), or None when no system
     tray is available.
     """
     if not QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
+        logger.warning("System tray not available — the cat can't be sent to a tray")
         return None
-    icon = QtGui.QIcon(icon_pixmap) if icon_pixmap and not icon_pixmap.isNull() else make_app_icon()
+    # A large, mostly-transparent char frame renders as a near-invisible speck at
+    # tray size, so always use the dedicated app icon for the tray.
+    icon = make_app_icon()
     tray = QtWidgets.QSystemTrayIcon(icon, app)
     tray.setToolTip("mycat 🐱")
 
@@ -1861,6 +1864,7 @@ def setup_tray(app, window, icon_pixmap):
 
     tray.activated.connect(on_activated)
     tray.show()
+    logger.info("Tray icon shown (visible=%s)", tray.isVisible())
     return tray
 
 
@@ -1981,7 +1985,7 @@ def main() -> None:
     else:
         window.show()
         # Persistent cat tray icon (kept on the window so it isn't GC'd).
-        window.tray_icon = setup_tray(app, window, window.png_pixmap)
+        window.tray_icon = setup_tray(app, window)
         # Live in the tray: hiding/closing windows no longer quits the app —
         # only the explicit Quit action does. With no tray to quit from, keep
         # the old behaviour so the user is never stuck with an invisible process.
