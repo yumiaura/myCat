@@ -6,7 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 - **Windows self-update now relaunches instead of just closing.** A onefile exe stays locked by its bootloader for a moment after the app exits, so the single overwrite failed and nothing restarted; the swap batch now retries until the lock clears, then launches (logs to `%TEMP%\mycat-update.log`) (branch `fix/windows-update-and-messages`).
-- **Transparent tray/app icon** so it doesn't render as a dark square that vanishes on a dark panel; the tray icon is also re-asserted after the event loop starts (helps XFCE/X11 register it) (branch `fix/windows-update-and-messages`).
+- **Theme-adaptive, transparent tray icon.** The app/window icon is the transparent cat head, and the tray uses a monochrome silhouette that follows the desktop colour scheme — light (`icon-w.png`) on a dark panel, dark (`icon-b.png`) on a light one — so it never vanishes into the background. It's re-asserted after the event loop starts and re-picked when the theme changes (branch `fix/windows-update-and-messages`).
 - **Hiding the cat to the tray is always recoverable.** Some Linux panels (e.g. XFCE with only an SNI host — the kind that shows Telegram) don't render Qt's tray icon, so **Close** hid the cat with no way back. A second `mycat` launch now raises the running cat's window (via a per-user local socket) instead of just exiting, so the cat can always be brought back — tray icon or not (branch `fix/windows-update-and-messages`).
 
 ### Changed
