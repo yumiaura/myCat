@@ -11,6 +11,7 @@ pip install PySide6
 
 import argparse
 import configparser
+import getpass
 import io
 import logging
 import math
@@ -63,7 +64,7 @@ else:
     update_check = importlib.import_module("mycat.update_check")
     updater = importlib.import_module("mycat.updater")
 
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtNetwork, QtWidgets
 
 # Make logs readable for non-ASCII text (Cyrillic, emoji): force UTF-8 on the
 # console streams when the locale left them as ASCII (otherwise the logger
@@ -88,6 +89,10 @@ logger.debug("LLM integration module path: %s", getattr(llm, "__file__", "builti
 # Config paths
 CFG_DIR = Path.home() / ".config" / "mycat"
 CFG_FILE = CFG_DIR / "config.ini"
+
+# Per-user local-socket name: a second `mycat` launch uses it to raise the
+# running cat's window (so hiding it to a flaky tray is always recoverable).
+SINGLE_INSTANCE_NAME = f"mycat-{getpass.getuser()}"
 
 # Image scaling settings
 IMAGE_WIDTH_MAX = 300  # Maximum width for images in pixels (images will be scaled down if larger)
@@ -1786,6 +1791,45 @@ def ensure_virtual_monitor() -> None:
     logger.info("No active RANDR monitor — registered virtual monitor %s so Qt sees the screen.", geometry)
 
 
+def activate_running_instance(name: str) -> bool:
+    """Ask an already-running mycat (via its local socket) to show its window.
+
+    Returns True if a running instance answered. This is the safety net for
+    hiding the cat to a system tray that some Linux panels don't render: a second
+    launch just raises the existing cat instead of doing nothing.
+    """
+    socket = QtNetwork.QLocalSocket()
+    socket.connectToServer(name)
+    if not socket.waitForConnected(500):
+        return False
+    socket.write(b"show")
+    socket.flush()
+    socket.waitForBytesWritten(500)
+    socket.disconnectFromServer()
+    return True
+
+
+def start_activation_server(name: str, window):
+    """Listen for a second launch and raise ``window`` when one arrives."""
+    QtNetwork.QLocalServer.removeServer(name)  # clear a socket left by a crash
+    server = QtNetwork.QLocalServer(window)
+    if not server.listen(name):
+        logger.warning("Single-instance socket unavailable: %s", server.errorString())
+        return None
+
+    def on_connection() -> None:
+        connection = server.nextPendingConnection()
+        if connection is not None:
+            connection.disconnectFromServer()
+        window.show()
+        window.raise_()
+        window.activateWindow()
+        logger.info("Second launch — raising the existing cat")
+
+    server.newConnection.connect(on_connection)
+    return server
+
+
 def ensure_emoji_font(app) -> None:
     """Give emoji glyphs a fallback so they don't render as tofu boxes on systems
     with no emoji font (common on minimal Linux `pip install`s).
@@ -1959,7 +2003,8 @@ def main() -> None:
         instance_lock = QtCore.QLockFile(str(CFG_DIR / "mycat.lock"))
         instance_lock.setStaleLockTime(0)
         if not instance_lock.tryLock(100):
-            logger.info("Another mycat instance is already running — exiting.")
+            logger.info("Another mycat instance is already running — raising it and exiting.")
+            activate_running_instance(SINGLE_INSTANCE_NAME)
             sys.exit(0)
 
     # Setup signal handlers for graceful shutdown
@@ -2023,6 +2068,9 @@ def main() -> None:
         window.show()
         # Persistent cat tray icon (kept on the window so it isn't GC'd).
         window.tray_icon = setup_tray(app, window)
+        # Safety net: let a second launch raise this window, so a cat hidden to a
+        # tray the panel doesn't render can always be brought back with `mycat`.
+        window.activation_server = start_activation_server(SINGLE_INSTANCE_NAME, window)
         # Live in the tray: hiding/closing windows no longer quits the app —
         # only the explicit Quit action does. With no tray to quit from, keep
         # the old behaviour so the user is never stuck with an invisible process.
