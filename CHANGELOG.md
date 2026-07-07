@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Fixed
+- **Windows self-update now relaunches instead of just closing.** A onefile exe stays locked by its bootloader for a moment after the app exits, so the single overwrite failed and nothing restarted; the swap batch now retries until the lock clears, then launches (logs to `%TEMP%\mycat-update.log`) (branch `fix/windows-update-and-messages`).
+- **Transparent tray/app icon** so it doesn't render as a dark square that vanishes on a dark panel; the tray icon is also re-asserted after the event loop starts (helps XFCE/X11 register it) (branch `fix/windows-update-and-messages`).
+
+### Changed
+- **"Update…" from a source/pip install shows the upgrade command.** `git pull` for a git checkout, otherwise `pip install --upgrade mycat` (it previously only offered a releases link) (branch `fix/windows-update-and-messages`).
+
 ## [0.1.13] - 2026-07-07
 
 ### Changed
