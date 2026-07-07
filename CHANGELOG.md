@@ -4,7 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Changed
+- **Tray menu: a single Open/Close toggle, and Quit lives only in the tray.** The cat's right-click "Hide" is renamed **Close** (still tucks it into the tray). The tray entry now flips with state: **Open** when the cat is hidden, **Close** when it's on screen. **Quit** is only in the tray menu now (branch `feat/tray-open-close-menu`).
+
 ### Fixed
+- **The tray icon is now actually visible.** It used the char's full frame, which shrank to a near-invisible speck at tray size; it now uses the dedicated cat-face app icon (`mycat/assets/icon.png`). The startup log also reports whether the tray was created (`Tray icon shown` / `System tray not available`) (branch `feat/tray-open-close-menu`).
 - **Emoji no longer show as tofu boxes where the system has no emoji font.** On a minimal `pip install` (typically Linux without `fonts-noto-color-emoji`), the Activity dialog's 🍅 / ⌨ / 🖱 and other emoji rendered as empty squares. mycat now ships a monochrome NotoEmoji and registers it as a fallback **only when no system emoji font is present** — systems that already have one keep their colour emoji, bare ones get monochrome glyphs instead of boxes (branch `feat/bundled-emoji-fallback`).
 
 ## [0.1.12] - 2026-07-06
