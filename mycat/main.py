@@ -1786,6 +1786,32 @@ def ensure_virtual_monitor() -> None:
     logger.info("No active RANDR monitor — registered virtual monitor %s so Qt sees the screen.", geometry)
 
 
+def ensure_emoji_font(app) -> None:
+    """Give emoji glyphs a fallback so they don't render as tofu boxes on systems
+    with no emoji font (common on minimal Linux `pip install`s).
+
+    If the system already has any emoji font (Noto Color Emoji, Segoe UI Emoji,
+    Apple Color Emoji, …) this is a no-op, so colour emoji stay colour. Only when
+    none is present do we register the bundled monochrome NotoEmoji and add it as
+    a fallback on the application font — which flows to every widget and to the
+    banners' QFont().
+    """
+    families = QtGui.QFontDatabase.families()
+    if any("emoji" in family.lower() for family in families):
+        return
+    font_path = Path(__file__).resolve().parent / "assets" / "fonts" / "NotoEmoji-Regular.ttf"
+    if not font_path.is_file():
+        return
+    font_id = QtGui.QFontDatabase.addApplicationFont(str(font_path))
+    bundled = QtGui.QFontDatabase.applicationFontFamilies(font_id)
+    if not bundled:
+        return
+    base = app.font()
+    base.setFamilies([base.family(), bundled[0]])
+    app.setFont(base)
+    logger.info("No system emoji font — using the bundled %s fallback", bundled[0])
+
+
 def make_app_icon() -> QtGui.QIcon:
     """The app icon (tray, window, splash): mycat/assets/icon.png, falling back
     to a drawn 😽 if the file is missing."""
@@ -1909,6 +1935,7 @@ def main() -> None:
     try:
         app = QtWidgets.QApplication(sys.argv)
         app.setQuitOnLastWindowClosed(True)
+        ensure_emoji_font(app)
         app.setWindowIcon(make_app_icon())  # 😽 — used for the taskbar entry and dialogs
         # Give the window a distinct WM_CLASS so the taskbar doesn't group it with
         # other python "main.py" apps. setDesktopFileName drives the X11 class.

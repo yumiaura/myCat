@@ -58,7 +58,7 @@ include = ["mycat*"]
 # Bundle non-Python data inside the wheel: char zips, the plane sprite and the
 # prompt template.
 [tool.setuptools.package-data]
-mycat = ["chars/*", "chars/*/*", "assets/*", "assets/planes/*", "*.j2"]
+mycat = ["chars/*", "chars/*/*", "assets/*", "assets/planes/*", "assets/fonts/*", "*.j2"]
 
 [tool.mypy]
 strict = true
