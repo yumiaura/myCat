@@ -509,7 +509,7 @@ def harden_pixmap(pixmap: QtGui.QPixmap, threshold: int = 128) -> QtGui.QPixmap:
 class UpdateSignals(QtCore.QObject):
     """Marshals the self-update worker threads back onto the GUI thread."""
 
-    checked = QtCore.Signal(str)          # latest tag if newer, else ""
+    checked = QtCore.Signal(str)          # latest release tag, or "" if the check couldn't reach GitHub
     progress = QtCore.Signal(int, int)    # bytes done, total (0 = unknown)
     applied = QtCore.Signal()             # new build swapped in + spawned
     failed = QtCore.Signal(str)           # error message
@@ -1338,8 +1338,11 @@ class PixelCatWindow(QtWidgets.QWidget):
         signals.failed.connect(self.on_update_failed)
 
         def check() -> None:
+            # Emit the raw latest tag (or "" when GitHub couldn't be reached) and
+            # let on_update_checked decide up-to-date vs. newer vs. check-failed —
+            # so a rate-limited/offline check never poses as "you're up to date".
             try:
-                signals.checked.emit(update_check.newer_release(current) or "")
+                signals.checked.emit(update_check.latest_release_tag() or "")
             except Exception as exc:  # noqa: BLE001 - surfaced to the user
                 signals.failed.emit(str(exc))
 
@@ -1360,6 +1363,17 @@ class PixelCatWindow(QtWidgets.QWidget):
 
     def on_update_checked(self, kind: str, current: str, latest: str) -> None:
         if not latest:
+            # The check couldn't reach GitHub (offline, or the API rate-limited
+            # this IP). Don't claim we're up to date — say the check failed and
+            # point at the releases page so they can look for themselves.
+            self.open_releases_box(
+                "Update check",
+                "Couldn't check for updates right now.",
+                "GitHub may be unreachable or rate-limited — try again in a bit, "
+                "or open the releases page to check by hand.",
+            )
+            return
+        if update_check.parse_version(latest) <= update_check.parse_version(current):
             # Up to date — reassure, and still offer the releases page.
             self.open_releases_box(
                 "mycat", f"You're on the latest version ({current}). 🐱", "Everything's up to date."
