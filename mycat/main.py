@@ -1202,12 +1202,13 @@ class PixelCatWindow(QtWidgets.QWidget):
             login_action.setChecked(autostart.is_enabled())
             login_action.toggled.connect(autostart.set_enabled)
 
-        # With a system tray, "Quit" from the cat only hides it to the tray —
-        # the real Quit lives in the tray menu (restore via tray double-click or
-        # its "Show"). Without a tray there's nowhere to hide, so keep a real Quit.
+        # With a system tray, "Close" from the cat menu only hides it to the tray
+        # (reopen from the tray's Open, or a tray double-click); the real Quit
+        # lives only in the tray menu. Without a tray there's nowhere to hide, so
+        # keep a real Quit here.
         if getattr(self, "tray_icon", None) is not None:
-            hide_action = menu.addAction("Hide")
-            hide_action.triggered.connect(self.hide)
+            close_action = menu.addAction("Close")
+            close_action.triggered.connect(self.hide)
         else:
             quit_action = menu.addAction("Quit")
             quit_action.triggered.connect(QtWidgets.QApplication.quit)
@@ -1815,6 +1816,12 @@ def setup_tray(app, window, icon_pixmap):
         window.show()
         window.raise_()
 
+    def toggle_window():
+        if window.isVisible():
+            window.hide()
+        else:
+            show_window()
+
     menu = QtWidgets.QMenu(window)
     toggle_chat = getattr(window, "_toggle_llm_chat", None)
     if callable(toggle_chat):
@@ -1837,9 +1844,16 @@ def setup_tray(app, window, icon_pixmap):
         login_action.setChecked(autostart.is_enabled())
         login_action.toggled.connect(autostart.set_enabled)
     menu.addSeparator()
-    menu.addAction("Show", show_window)
+    # Dynamic label: "Open" when the cat is hidden, "Close" when it's on screen.
+    toggle_action = menu.addAction("Close")
+    toggle_action.triggered.connect(toggle_window)
     menu.addAction("Quit", QtWidgets.QApplication.quit)
     tray.setContextMenu(menu)
+
+    def sync_toggle_label():
+        toggle_action.setText("Close" if window.isVisible() else "Open")
+
+    menu.aboutToShow.connect(sync_toggle_label)
 
     def on_activated(reason):
         if reason == QtWidgets.QSystemTrayIcon.ActivationReason.DoubleClick:
