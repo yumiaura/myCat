@@ -202,6 +202,18 @@ def apply_windows(downloaded: str) -> None:
         "if !TRIES! LSS 30 ( ping -n 2 127.0.0.1 >nul & goto swap )\r\n"
         'echo gave up swapping after !TRIES! tries >> "%LOG%"\r\n'
         ":launch\r\n"
+        # Clear the PyInstaller onefile bootloader's private env vars before
+        # relaunching. The swapper is a descendant of the old frozen process, so
+        # the new exe would otherwise inherit these and the bootloader would think
+        # it is the already-extracted second stage — looking for its DLLs in the
+        # old (now deleted) _MEI dir and dying with "Failed to load Python DLL".
+        # This is why the first auto-relaunch failed but a manual launch (clean
+        # Explorer env) always worked.
+        'set "_MEIPASS2="\r\n'
+        'set "_PYI_ARCHIVE_FILE="\r\n'
+        'set "_PYI_APPLICATION_HOME_DIR="\r\n'
+        'set "_PYI_PARENT_PROCESS_LEVEL="\r\n'
+        'set "_PYI_SPLASH_IPC="\r\n'
         'echo launching "%EXE%" >> "%LOG%"\r\n'
         'start "" "%EXE%"\r\n'
         'echo done >> "%LOG%"\r\n'
@@ -215,7 +227,17 @@ def apply_windows(downloaded: str) -> None:
     # when the swap stalled, sat there showing the wait loop. A hidden console the
     # child console tools reuse means nothing is ever visible. The swapper still
     # outlives this process (child processes aren't tied to the parent's lifetime).
-    subprocess.Popen(["cmd", "/c", script], creationflags=CREATE_NO_WINDOW, close_fds=True)  # noqa: S603
+    # Also hand the swapper an environment with the PyInstaller onefile vars
+    # stripped, so the relaunched exe (our descendant) never inherits them and
+    # extracts fresh — belt-and-suspenders with the `set ""` lines in the batch.
+    clean_env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("_PYI") and not key.startswith("_MEIPASS")
+    }
+    subprocess.Popen(  # noqa: S603
+        ["cmd", "/c", script], creationflags=CREATE_NO_WINDOW, close_fds=True, env=clean_env
+    )
     logger.info("Windows update swapper launched for %s (log: %s)", exe, log)
 
 
