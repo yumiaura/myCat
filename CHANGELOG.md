@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## [0.1.14] - 2026-07-07
 
 ### Added
 - **mycat adds itself to the Linux applications menu, always pointing at your newest install.** On launch it installs/updates a user `~/.local/share/applications/mycat.desktop` (with the cat icon referenced by absolute path, so it never shows blank). The entry records its version, so running a newer **git / pip / AppImage** build updates the launcher's command and icon to that one, while an older run never downgrades it — and the `.deb`'s system-wide entry is respected in the comparison (branch `fix/windows-update-and-messages`).
