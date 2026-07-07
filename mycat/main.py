@@ -1915,15 +1915,34 @@ def desktop_exec_command() -> str:
     return f'"{sys.executable}" "{Path(__file__).resolve()}"'
 
 
+def desktop_version(path) -> str | None:
+    """The mycat version recorded in a .desktop entry (``X-mycat-version``), or None."""
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("X-mycat-version="):
+                return line.split("=", 1)[1].strip() or None
+    except OSError:
+        return None
+    return None
+
+
 def install_desktop_entry() -> None:
-    """Add a user application-menu entry (Linux) so mycat shows up in the launcher
-    with its cat icon. Idempotent; skips if a user or system (.deb) entry exists,
-    and never recreates one the user has deleted."""
-    if sys.platform != "linux":
+    """Keep the Linux applications-menu entry pointing at the newest mycat the user
+    has launched (git, pip or AppImage), so switching between installs fixes the
+    launcher's command and icon. The .deb ships its own system-wide entry.
+
+    The entry is only (re)written when this install is at least as new as whatever
+    the menu currently launches, so running an older build never downgrades it."""
+    if sys.platform != "linux" or updater.install_kind() == "deb":
         return
     share = Path.home() / ".local" / "share"
     user_desktop = share / "applications" / "mycat.desktop"
-    if user_desktop.exists() or Path("/usr/share/applications/mycat.desktop").is_file():
+    system_desktop = Path("/usr/share/applications/mycat.desktop")
+    current = update_check.current_version()
+    # A user entry shadows the .deb's system one, so the menu runs whichever the
+    # user entry points at; fall back to the .deb's recorded version otherwise.
+    best = desktop_version(user_desktop) or desktop_version(system_desktop)
+    if best is not None and update_check.parse_version(current) < update_check.parse_version(best):
         return
     source_icon = Path(__file__).resolve().parent / "assets" / "icon.png"
     if not source_icon.is_file():
@@ -1947,10 +1966,11 @@ def install_desktop_entry() -> None:
             f"Icon={icon_target}\n"
             "Terminal=false\n"
             "Categories=Utility;Amusement;\n"
-            "Keywords=cat;pet;desktop;\n",
+            "Keywords=cat;pet;desktop;\n"
+            f"X-mycat-version={current}\n",
             encoding="utf-8",
         )
-        logger.info("Installed application-menu entry: %s", user_desktop)
+        logger.info("Application-menu entry now points at mycat %s (%s)", current, user_desktop)
         if shutil.which("update-desktop-database"):
             subprocess.run(  # noqa: S603
                 ["update-desktop-database", str(user_desktop.parent)], check=False, capture_output=True

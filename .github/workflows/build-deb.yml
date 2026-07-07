@@ -57,6 +57,9 @@ jobs:
                    "$root/usr/share/icons/hicolor/256x256/apps"
           install -m0755 dist/mycat "$root/usr/bin/mycat"
           install -m0644 packaging/mycat.desktop "$root/usr/share/applications/mycat.desktop"
+          # Record the version so the in-app "newest install wins" menu logic can
+          # compare this .deb against a git/pip/AppImage run.
+          echo "X-mycat-version=${VERSION}" >> "$root/usr/share/applications/mycat.desktop"
           install -m0644 packaging/mycat.png "$root/usr/share/icons/hicolor/256x256/apps/mycat.png"
           sed "s/@VERSION@/${VERSION}/" packaging/control.in > "$root/DEBIAN/control"
           dpkg-deb --root-owner-group --build "$root"

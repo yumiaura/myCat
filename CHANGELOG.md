@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 ## Unreleased
 
 ### Added
-- **mycat adds itself to the Linux applications menu.** On first launch it installs a user `~/.local/share/applications/mycat.desktop` (plus a hicolor cat icon) so it shows up in the launcher — for pip, source and AppImage runs (the `.deb` already ships a system-wide entry). It's idempotent and won't recreate one you've deleted (branch `fix/windows-update-and-messages`).
+- **mycat adds itself to the Linux applications menu, always pointing at your newest install.** On launch it installs/updates a user `~/.local/share/applications/mycat.desktop` (with the cat icon referenced by absolute path, so it never shows blank). The entry records its version, so running a newer **git / pip / AppImage** build updates the launcher's command and icon to that one, while an older run never downgrades it — and the `.deb`'s system-wide entry is respected in the comparison (branch `fix/windows-update-and-messages`).
 
 ### Fixed
 - **Windows self-update now relaunches instead of just closing.** A onefile exe stays locked by its bootloader for a moment after the app exits, so the single overwrite failed and nothing restarted; the swap batch now retries until the lock clears, then launches (logs to `%TEMP%\mycat-update.log`) (branch `fix/windows-update-and-messages`).
