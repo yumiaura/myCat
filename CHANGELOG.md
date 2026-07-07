@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **Windows self-update no longer hangs on a black window.** After downloading the new build, the app called `QApplication.quit()` from inside the progress dialog's modal event loop — which doesn't break it, so the process never exited, and the update swapper waited forever for the old PID to vanish (the visible `find "<pid>"` console). The app now hard-exits after launching the swapper, so the swap + relaunch always completes. The swapper also runs with a hidden console (`CREATE_NO_WINDOW`) instead of `DETACHED_PROCESS`, so no black window flashes up or lingers (branch `fix/windows-update-hang`).
+
 ## [0.1.16] - 2026-07-07
 
 ### Fixed

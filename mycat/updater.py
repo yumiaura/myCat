@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 RELEASE_DOWNLOAD = "https://github.com/yumiaura/myCat/releases/latest/download"
 RELEASES_PAGE = "https://github.com/yumiaura/myCat/releases/latest"
 
+# Windows CreateProcess flag: run the update swapper with a hidden console so no
+# black window flashes up (and none lingers if the swap stalls).
+CREATE_NO_WINDOW = 0x08000000
+
 
 def install_kind() -> str:
     """How this instance was installed.
@@ -156,9 +160,9 @@ def apply_windows(downloaded: str) -> None:
     # Wait for this process (and its bootloader) to exit and release the exe, then
     # KEEP RETRYING the overwrite: a onefile build stays locked for a moment after
     # the app PID is gone, so a single `move` right away fails and nothing
-    # relaunches. Delays use `ping`, not `timeout`: this swapper runs detached with
-    # no console, and `timeout` errors out ("input redirection is not supported")
-    # without one — which was breaking the wait/retry loops entirely.
+    # relaunches. Delays use `ping`, not `timeout`: the swapper's hidden console has
+    # no interactive stdin, and `timeout` errors out ("input redirection is not
+    # supported") without one — which was breaking the wait/retry loops entirely.
     body = (
         "@echo off\r\n"
         "setlocal enabledelayedexpansion\r\n"
@@ -186,10 +190,13 @@ def apply_windows(downloaded: str) -> None:
     )
     with open(script, "w", encoding="utf-8") as handle:
         handle.write(body)
-    # DETACHED_PROCESS only — combining it with CREATE_NO_WINDOW can make
-    # CreateProcess fail (then the swapper never runs). Detached alone survives
-    # this process exiting and shows no console for a plain @echo off batch.
-    subprocess.Popen(["cmd", "/c", script], creationflags=0x00000008, close_fds=True)  # noqa: S603
+    # CREATE_NO_WINDOW: give the swapper a HIDDEN console. DETACHED_PROCESS (used
+    # before) gives cmd no console at all, so every `ping`/`tasklist`/`find` it runs
+    # made Windows allocate a fresh console — a black window that flashed up and,
+    # when the swap stalled, sat there showing the wait loop. A hidden console the
+    # child console tools reuse means nothing is ever visible. The swapper still
+    # outlives this process (child processes aren't tied to the parent's lifetime).
+    subprocess.Popen(["cmd", "/c", script], creationflags=CREATE_NO_WINDOW, close_fds=True)  # noqa: S603
     logger.info("Windows update swapper launched for %s (log: %s)", exe, log)
 
 
