@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Added
+- **mycat adds itself to the Linux applications menu.** On first launch it installs a user `~/.local/share/applications/mycat.desktop` (plus a hicolor cat icon) so it shows up in the launcher — for pip, source and AppImage runs (the `.deb` already ships a system-wide entry). It's idempotent and won't recreate one you've deleted (branch `fix/windows-update-and-messages`).
+
 ### Fixed
 - **Windows self-update now relaunches instead of just closing.** A onefile exe stays locked by its bootloader for a moment after the app exits, so the single overwrite failed and nothing restarted; the swap batch now retries until the lock clears, then launches (logs to `%TEMP%\mycat-update.log`) (branch `fix/windows-update-and-messages`).
 - **Theme-adaptive, transparent tray icon.** The app/window icon is the transparent cat head, and the tray uses a monochrome silhouette that follows the desktop colour scheme — light (`icon-w.png`) on a dark panel, dark (`icon-b.png`) on a light one — so it never vanishes into the background. It's re-asserted after the event loop starts and re-picked when the theme changes (branch `fix/windows-update-and-messages`).

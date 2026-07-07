@@ -1902,6 +1902,61 @@ def make_tray_icon(app) -> QtGui.QIcon:
     return make_app_icon()
 
 
+def desktop_exec_command() -> str:
+    """The command a menu launcher should run to start mycat, for this install."""
+    if getattr(sys, "frozen", False):
+        target = os.environ.get("APPIMAGE") or sys.executable
+        return f'"{target}"'
+    console = shutil.which("mycat")
+    if console:
+        return f'"{console}"'
+    # Running from source, not pip-installed: launch main.py by absolute path
+    # (its import shim works when run as a script from any working directory).
+    return f'"{sys.executable}" "{Path(__file__).resolve()}"'
+
+
+def install_desktop_entry() -> None:
+    """Add a user application-menu entry (Linux) so mycat shows up in the launcher
+    with its cat icon. Idempotent; skips if a user or system (.deb) entry exists,
+    and never recreates one the user has deleted."""
+    if sys.platform != "linux":
+        return
+    share = Path.home() / ".local" / "share"
+    user_desktop = share / "applications" / "mycat.desktop"
+    if user_desktop.exists() or Path("/usr/share/applications/mycat.desktop").is_file():
+        return
+    source_icon = Path(__file__).resolve().parent / "assets" / "icon.png"
+    if not source_icon.is_file():
+        return
+    icon_dir = share / "icons" / "hicolor" / "256x256" / "apps"
+    try:
+        icon_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_icon, icon_dir / "mycat.png")
+        user_desktop.parent.mkdir(parents=True, exist_ok=True)
+        user_desktop.write_text(
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Name=myCat\n"
+            "GenericName=Desktop pet\n"
+            "Comment=A tiny animated desktop pet cat\n"
+            f"Exec={desktop_exec_command()}\n"
+            "Icon=mycat\n"
+            "Terminal=false\n"
+            "Categories=Utility;Amusement;\n"
+            "Keywords=cat;pet;desktop;\n",
+            encoding="utf-8",
+        )
+        logger.info("Installed application-menu entry: %s", user_desktop)
+        for tool, target in (
+            ("update-desktop-database", str(user_desktop.parent)),
+            ("gtk-update-icon-cache", str(share / "icons" / "hicolor")),
+        ):
+            if shutil.which(tool):
+                subprocess.run([tool, target], check=False, capture_output=True)  # noqa: S603
+    except OSError as exc:
+        logger.debug("Could not install the application-menu entry: %s", exc)
+
+
 def setup_tray(app, window):
     """A persistent cat icon in the system tray with a quick-action menu.
 
@@ -2018,6 +2073,7 @@ def main() -> None:
         # other python "main.py" apps. setDesktopFileName drives the X11 class.
         app.setApplicationName("mycat")
         app.setDesktopFileName("mycat")
+        install_desktop_entry()  # so mycat shows in the Linux applications menu
         platform_name = (app.platformName() or "").lower()
     except Exception as e:
         logger.error(f"Failed to initialize Qt application: {e}")
