@@ -93,24 +93,43 @@ def make_executable(path: str) -> None:
     os.chmod(path, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
 
-def download(url: str, dest: str, progress=None) -> None:
+DOWNLOAD_ATTEMPTS = 3
+
+
+def download(url: str, dest: str, progress=None, attempts: int = DOWNLOAD_ATTEMPTS) -> None:
     """Stream ``url`` to ``dest``; call ``progress(done, total)`` as it goes.
 
-    ``total`` is 0 when the server doesn't send Content-Length.
+    The finished file is verified against ``Content-Length`` and a truncated or
+    interrupted transfer is retried, so a dropped connection can never leave a
+    half-written build behind for the swapper to install — that produced a
+    corrupt exe that died with "Failed to load Python DLL". ``total`` is 0 when
+    the server sends no Content-Length (then we can't verify, and take what we
+    got). ``progress`` may raise to cancel; that is not a network error, so it
+    propagates immediately instead of being retried.
     """
     request = urllib.request.Request(url, headers={"User-Agent": "mycat"})
-    with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310 - official HTTPS release URL
-        total = int(response.headers.get("Content-Length") or 0)
-        done = 0
-        with open(dest, "wb") as out:
-            while True:
-                chunk = response.read(1 << 16)
-                if not chunk:
-                    break
-                out.write(chunk)
-                done += len(chunk)
-                if progress is not None:
-                    progress(done, total)
+    last_error: OSError | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310 - official HTTPS release URL
+                total = int(response.headers.get("Content-Length") or 0)
+                done = 0
+                with open(dest, "wb") as out:
+                    while True:
+                        chunk = response.read(1 << 16)
+                        if not chunk:
+                            break
+                        out.write(chunk)
+                        done += len(chunk)
+                        if progress is not None:
+                            progress(done, total)
+            if total and done != total:
+                raise OSError(f"incomplete download: got {done} of {total} bytes")
+            return
+        except OSError as error:  # network / truncation — retry, then give up
+            last_error = error
+            logger.warning("download attempt %d/%d failed: %s", attempt, attempts, error)
+    raise last_error
 
 
 def staging_path(kind: str) -> str:
