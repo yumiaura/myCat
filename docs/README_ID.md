@@ -14,20 +14,20 @@
 </p>
 
 Saya membuat animasi kucing kecil yang lucu 🐈 untuk menemani desktop Anda.<br>
-Aplikasi Python + Qt yang ringan — tanpa bingkai, dan mudah diseret.<br>
+Aplikasi Python + Qt yang ringan - tanpa bingkai, dan mudah diseret.<br>
 Menampilkan bingkai pertama statis selama 5 detik, lalu memutar animasi GIF sekali, kemudian kembali ke bingkai statis.<br>
 Jika Anda menyukainya, mungkin lain kali saya akan membagikan versi [AnimeGirl](https://github.com/yumiaura/mycat/discussions/1)~ 😉
 
 ## 🚀 Mulai cepat
 
-Pilih cara yang paling mudah — kucing berjalan di **Windows, macOS, dan Linux**.
+Pilih cara yang paling mudah - kucing berjalan di **Windows, macOS, dan Linux**.
 
-### Opsi A — biner siap pakai (tanpa Python)
+### Opsi A - biner siap pakai (tanpa Python)
 
-Ambil build untuk OS Anda — setiap tombol mengunduh **rilis terbaru**:
+Ambil build untuk OS Anda - setiap tombol mengunduh **rilis terbaru**:
 
 <p>
-  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-windows-x64.exe"><img src="https://img.shields.io/badge/Download-Windows-0078D6?logo=windows&logoColor=white" alt="Windows"></a>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-windows-x64.exe"><img src="https://img.shields.io/badge/Download-Windows-0078D6?logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0wIDMuNDQ5IDkuNzUgMi4xdjkuNDUxSDB6TTEwLjk0OSAxLjk0OSAyNCAwdjExLjRIMTAuOTQ5ek0wIDEyLjZoOS43NXY5LjQ1MUwwIDIwLjY5OXpNMTAuOTQ5IDEyLjZIMjRWMjRsLTEyLjktMS44MDF6Ii8%2BPC9zdmc%2B" alt="Windows"></a>
   <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-macos-arm64.zip"><img src="https://img.shields.io/badge/Download-macOS%20Apple%20Silicon-000000?logo=apple&logoColor=white" alt="macOS Apple Silicon"></a>
   <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-macos-x64.zip"><img src="https://img.shields.io/badge/Download-macOS%20Intel-555555?logo=apple&logoColor=white" alt="macOS Intel"></a>
   <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-linux-amd64.deb"><img src="https://img.shields.io/badge/Download-Linux%20.deb-A81D33?logo=debian&logoColor=white" alt="Linux .deb"></a>
@@ -36,14 +36,14 @@ Ambil build untuk OS Anda — setiap tombol mengunduh **rilis terbaru**:
 
 Lalu jalankan:
 
-- **Windows** — klik dua kali `.exe`.
-- **macOS** — ekstrak dan buka `mycat.app` (peluncuran pertama: klik kanan → **Open** untuk melewati Gatekeeper).
-- **Linux `.deb`** — `sudo apt install ./mycat-linux-amd64.deb`.
-- **Linux AppImage** — `chmod +x mycat-linux-x86_64.AppImage && ./mycat-linux-x86_64.AppImage` (perlu FUSE: `sudo apt install libfuse2`).
+- **Windows** - klik dua kali `.exe`.
+- **macOS** - ekstrak dan buka `mycat.app` (peluncuran pertama: klik kanan → **Open** untuk melewati Gatekeeper).
+- **Linux `.deb`** - `sudo apt install ./mycat-linux-amd64.deb`.
+- **Linux AppImage** - `chmod +x mycat-linux-x86_64.AppImage && ./mycat-linux-x86_64.AppImage` (perlu FUSE: `sudo apt install libfuse2`).
 
 > Build untuk setiap rilis ada di halaman **[Releases](https://github.com/yumiaura/myCat/releases)**.
 
-### Opsi B — pip (Windows / macOS / Linux, Python ≥ 3.10)
+### Opsi B - pip (Windows / macOS / Linux, Python ≥ 3.10)
 
 ```bash
 pip install mycat
@@ -58,7 +58,7 @@ sudo apt install -y libxcb-cursor0
 
 Perbarui atau hapus nanti dengan `pip install -U mycat` / `pip uninstall mycat`.
 
-### Opsi C — dari sumber
+### Opsi C - dari sumber
 
 ```bash
 git clone https://github.com/yumiaura/myCat
@@ -69,13 +69,13 @@ mycat                 # atau tanpa instal: python3 mycat/main.py
 
 ## ✨ Fitur
 
-- **Overlay animasi** 🐱 — kucing tanpa bingkai, selalu di atas, bisa diseret. Klik kanan untuk menu (ganti char, keluar).
-- **Pengingat** 🛩️ — atur pesan dan waktu (sekali atau harian), dan kucing terbang dengan pesawat berspanduk melintasi atas layar. Klik kanan → *Reminder…* untuk pesan, arah, pesawat, dan warna.
-- **Obrolan (Ollama)** 💬 — mengobrol dengan kucing lewat **model [Ollama](https://ollama.com) lokal**, tanpa akun atau kunci API (lihat di bawah).
+- **Overlay animasi** 🐱 - kucing tanpa bingkai, selalu di atas, bisa diseret. Klik kanan untuk menu (ganti char, keluar).
+- **Pengingat** 🛩️ - atur pesan dan waktu (sekali atau harian), dan kucing terbang dengan pesawat berspanduk melintasi atas layar. Klik kanan → *Reminder…* untuk pesan, arah, pesawat, dan warna.
+- **Obrolan (Ollama)** 💬 - mengobrol dengan kucing lewat **model [Ollama](https://ollama.com) lokal**, tanpa akun atau kunci API (lihat di bawah).
 
 ## 💬 Mengobrol dengan kucing (Ollama)
 
-Kucing bisa mengobrol memakai model yang dijalankan secara lokal oleh [Ollama](https://ollama.com) — semuanya tetap di mesin Anda, tanpa kunci API.
+Kucing bisa mengobrol memakai model yang dijalankan secara lokal oleh [Ollama](https://ollama.com) - semuanya tetap di mesin Anda, tanpa kunci API.
 
 1. Instal [Ollama](https://ollama.com) dan tarik sebuah model:
    ```bash
@@ -89,7 +89,7 @@ Kucing bisa mengobrol memakai model yang dijalankan secara lokal oleh [Ollama](h
 
 Jalankan `mycat` (atau `python3 mycat/main.py` dari sumber) dan sesuaikan dengan opsi baris perintah.
 
-**`--image, -i <path>`** 🖼️ — gunakan ZIP kustom (berisi satu GIF) sebagai pengganti kucing default:
+**`--image, -i <path>`** 🖼️ - gunakan ZIP kustom (berisi satu GIF) sebagai pengganti kucing default:
 
 ```bash
 mycat --image ~/my-custom-cat.zip
@@ -97,15 +97,15 @@ mycat --image ~/my-custom-cat.zip
 
 ZIP **char** harus berisi tepat satu `.gif`: bingkai pertamanya menjadi pose statis, lalu GIF diputar sekali dan kembali ke bingkai itu. Gambar lebih besar dari 300×500 diperkecil otomatis.
 
-**`--pos <x> <y>`** 📍 — mulai di posisi layar tertentu (jika tidak, kucing muncul di kanan-bawah dan mengingat posisi terakhir):
+**`--pos <x> <y>`** 📍 - mulai di posisi layar tertentu (jika tidak, kucing muncul di kanan-bawah dan mengingat posisi terakhir):
 
 ```bash
 mycat --pos 960 540        # tengah layar 1920x1080
 ```
 
-**`--wait <detik>`** ⏱️ — berapa lama menahan bingkai pertama statis sebelum animasi.
+**`--wait <detik>`** ⏱️ - berapa lama menahan bingkai pertama statis sebelum animasi.
 
-**`--debug`** 🐞 — log per-bingkai yang rinci.
+**`--debug`** 🐞 - log per-bingkai yang rinci.
 
 ### Kontrol
 
@@ -154,7 +154,7 @@ docker compose -f docker-compose.mac.yml up
 - Transparansi X11 membutuhkan compositor. Tanpa compositor, mycat memotong jendela mengikuti garis kucing, jadi ini jarang terjadi; jika masih ada kotak, aktifkan display compositing (XFCE: *Window Manager Tweaks → Compositor*) atau jalankan compositor seperti `picom`.
 
 **Jendela tidak di atas / tidak muncul di taskbar** 📌
-- Beberapa window manager menimpa "selalu di atas" — mulai ulang sesi desktop atau periksa pengaturan WM.
+- Beberapa window manager menimpa "selalu di atas" - mulai ulang sesi desktop atau periksa pengaturan WM.
 
 **Char kustom tidak dimuat** ❌
 - ZIP harus berisi tepat satu `.gif` yang valid. Periksa path dan pastikan file tidak rusak.

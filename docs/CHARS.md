@@ -1,21 +1,21 @@
 # Make your own mycat char
 
-A char is a single `<name>.zip`. The simplest is one animated **GIF** — see the
+A char is a single `<name>.zip`. The simplest is one animated **GIF** - see the
 Quick start below. The full format turns the cat into a small **state machine**:
 a base "awake" pose whose pupils follow the cursor, plus optional expressions and
 animations that play on idle, on click, on wake/sleep, and on low battery.
 
 ---
 
-## Quick start — a simple char (one GIF)
+## Quick start - a simple char (one GIF)
 
-The simplest char needs no `config.json` and no eyes — just **one animated GIF**
+The simplest char needs no `config.json` and no eyes - just **one animated GIF**
 in a zip. Its first frame is the resting pose myCat shows while idle; the rest is
 the little animation that plays now and then.
 
 1. **Draw a few frames** with a transparent background (PNGs work well). Frame 1
    is the calm idle pose; the rest are a blink, a stretch, a wave… up to you.
-2. **Build the animated GIF** — any tool works (GIMP, Aseprite, [ezgif.com](https://ezgif.com),
+2. **Build the animated GIF** - any tool works (GIMP, Aseprite, [ezgif.com](https://ezgif.com),
    or ImageMagick):
    ```bash
    # from separate frames (frame1 = the idle pose):
@@ -24,7 +24,7 @@ the little animation that plays now and then.
    # …or from a 2-frame sprite sheet (left half = idle, right half = action):
    convert sheet.png -crop 50%x100% +repage -set delay '200,100' -loop 0 redcat.gif
    ```
-3. **Package it** — the zip's filename is the name shown in the menu:
+3. **Package it** - the zip's filename is the name shown in the menu:
    ```bash
    zip redcat.zip redcat.gif
    ```
@@ -35,7 +35,7 @@ the little animation that plays now and then.
      - **Linux:** `~/.local/share/mycat/chars/` (or `$XDG_DATA_HOME/mycat/chars/`)
      - **macOS:** `~/Library/Application Support/mycat/chars/`
      - **Windows:** `%LOCALAPPDATA%\mycat\chars\`
-5. **Share it** (optional) — put `redcat.zip` in `mycat/chars/` and open a pull
+5. **Share it** (optional) - put `redcat.zip` in `mycat/chars/` and open a pull
    request. ⚠️ Only share art **you drew yourself**.
 
 Keep it within ~300×500 (anything larger is scaled down proportionally). Want
@@ -47,7 +47,7 @@ cursor-tracking eyes, blinking, sleeping and click reactions? Read on.
 
 Everything is **convention over configuration**: you drop files with the
 reserved names below into the zip and they are picked up automatically. Anything
-missing simply disables that behaviour — so a char can be as small as one PNG and
+missing simply disables that behaviour - so a char can be as small as one PNG and
 grow incrementally. `config.json` only carries *parameters* (timings, pupil
 geometry, thresholds), never file paths.
 
@@ -79,23 +79,23 @@ Pupils only render when both sprites **and** `config.eyes` are present.
 ### Expression stills (optional)
 | File | Type | Drives |
 |------|------|--------|
-| `blink.png` | still | Eyes closed — shown for the periodic blink and the click squint. |
+| `blink.png` | still | Eyes closed - shown for the periodic blink and the click squint. |
 | `sleep.png` | still | The sleeping pose, held for the whole sleep state. |
 
-### Transition animations — play **once**, then settle (optional)
+### Transition animations - play **once**, then settle (optional)
 | File | Type | Plays when | Settles to |
 |------|------|-----------|-----------|
 | `sleep_in.gif` | anim | entering sleep (long idle) | `sleep.png` |
 | `sleep_out.gif` | anim | waking (interaction while asleep) | `static.png` |
 | `yawn.gif` | anim | cursor still for `idle.yawn_after` | `static.png` |
 
-### Reaction pools — play **once**, picked at random (optional)
+### Reaction pools - play **once**, picked at random (optional)
 Numbered sets; the runtime globs `<role><n>.gif` (`n` ≥ 1) and picks one at random.
 | Pattern | Plays when |
 |---------|-----------|
 | `idle1.gif`, `idle2.gif`, … | spontaneously while awake, every `idle.random_every` |
 | `click1.gif`, `click2.gif`, … | the cat is clicked (falls back to the `blink.png` squint if none) |
-| `hungry1.gif`, `hungry2.gif`, … | battery is low — "feed me", every `battery.every` |
+| `hungry1.gif`, `hungry2.gif`, … | battery is low - "feed me", every `battery.every` |
 
 > Conventions: lowercase names, role prefix, optional integer index for pools,
 > `.png` for stills, `.gif` for animations. Unknown files are ignored.
@@ -147,18 +147,18 @@ One state is active at a time. Highest applicable wins:
 hungry  >  sleep  >  yawn  >  reaction (idle/click)  >  blink  >  awake
 ```
 
-- **awake** — `static.png` + pupils tracking the cursor. The resting state.
-- **blink** — `blink.png` for `blink.duration`, every `blink.every`. (No pupils.)
-- **click** — on click: a random `clickN.gif` once, else `blink.png` for
+- **awake** - `static.png` + pupils tracking the cursor. The resting state.
+- **blink** - `blink.png` for `blink.duration`, every `blink.every`. (No pupils.)
+- **click** - on click: a random `clickN.gif` once, else `blink.png` for
   `click_squint`. Resets the idle timers.
-- **reaction (idle random)** — every `idle.random_every`, a random `idleN.gif`
+- **reaction (idle random)** - every `idle.random_every`, a random `idleN.gif`
   once, then back to awake.
-- **yawn** — cursor hasn't moved for `idle.yawn_after`: `yawn.gif` once, then
+- **yawn** - cursor hasn't moved for `idle.yawn_after`: `yawn.gif` once, then
   awake. A precursor to sleep.
-- **sleep** — no interaction (move/click) for `idle.sleep_after` (~5 min):
+- **sleep** - no interaction (move/click) for `idle.sleep_after` (~5 min):
   `sleep_in.gif` once → hold `sleep.png`. Pupils do not track while asleep.
   Any interaction → `sleep_out.gif` once → awake.
-- **hungry** — while battery ≤ `battery.hungry_below`: a random `hungryN.gif`
+- **hungry** - while battery ≤ `battery.hungry_below`: a random `hungryN.gif`
   every `battery.every`, then back to the underlying state. (Battery is read
   natively where available; on a desktop with no battery this never triggers.)
 
@@ -214,6 +214,6 @@ The full state machine is **live** (`mycat/char_pack.py` + `PixelCatWindow`):
 awake (cursor-tracking pupils), blink, click reaction (`clickN.gif` or squint),
 idle-random (`idleN.gif`), yawn, sleep (`sleep_in/out` + held `sleep.png`), and
 hungry (`hungryN.gif` on low battery), plus the `idle` and `battery` config
-sections. Every state is **gated on its assets** — a char only does what
+sections. Every state is **gated on its assets** - a char only does what
 its files allow, so behaviour grows as you add GIFs. (No GIFs ship yet; the
 bundled chars use only static/blink/eyes/periodic-anim.)

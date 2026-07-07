@@ -14,20 +14,20 @@
 </p>
 
 Я сделала милого анимированного котика 🐈 для рабочего стола.<br>
-Это лёгкое приложение на Python + Qt — без рамок, легко перетаскивается.<br>
+Это лёгкое приложение на Python + Qt - без рамок, легко перетаскивается.<br>
 Показывает статичный первый кадр 5 секунд, потом один раз проигрывает GIF и возвращается к статике.<br>
-Если понравится — может, в следующий раз поделюсь версией [AnimeGirl](https://github.com/yumiaura/mycat/discussions/1)~ 😉
+Если понравится - может, в следующий раз поделюсь версией [AnimeGirl](https://github.com/yumiaura/mycat/discussions/1)~ 😉
 
 ## 🚀 Быстрый старт
 
-Выбери, что удобнее — котик работает на **Windows, macOS и Linux**.
+Выбери, что удобнее - котик работает на **Windows, macOS и Linux**.
 
-### Вариант A — готовый бинарник (без Python)
+### Вариант A - готовый бинарник (без Python)
 
-Возьми сборку под свою ОС — каждая кнопка скачивает **последний релиз**:
+Возьми сборку под свою ОС - каждая кнопка скачивает **последний релиз**:
 
 <p>
-  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-windows-x64.exe"><img src="https://img.shields.io/badge/Download-Windows-0078D6?logo=windows&logoColor=white" alt="Windows"></a>
+  <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-windows-x64.exe"><img src="https://img.shields.io/badge/Download-Windows-0078D6?logo=data:image/svg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0wIDMuNDQ5IDkuNzUgMi4xdjkuNDUxSDB6TTEwLjk0OSAxLjk0OSAyNCAwdjExLjRIMTAuOTQ5ek0wIDEyLjZoOS43NXY5LjQ1MUwwIDIwLjY5OXpNMTAuOTQ5IDEyLjZIMjRWMjRsLTEyLjktMS44MDF6Ii8%2BPC9zdmc%2B" alt="Windows"></a>
   <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-macos-arm64.zip"><img src="https://img.shields.io/badge/Download-macOS%20Apple%20Silicon-000000?logo=apple&logoColor=white" alt="macOS Apple Silicon"></a>
   <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-macos-x64.zip"><img src="https://img.shields.io/badge/Download-macOS%20Intel-555555?logo=apple&logoColor=white" alt="macOS Intel"></a>
   <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-linux-amd64.deb"><img src="https://img.shields.io/badge/Download-Linux%20.deb-A81D33?logo=debian&logoColor=white" alt="Linux .deb"></a>
@@ -36,14 +36,14 @@
 
 Затем запусти:
 
-- **Windows** — двойной клик по `.exe`.
-- **macOS** — распакуй и открой `mycat.app` (при первом запуске: правый клик → **Открыть**, чтобы обойти Gatekeeper).
-- **Linux `.deb`** — `sudo apt install ./mycat-linux-amd64.deb`.
-- **Linux AppImage** — `chmod +x mycat-linux-x86_64.AppImage && ./mycat-linux-x86_64.AppImage` (нужен FUSE: `sudo apt install libfuse2`).
+- **Windows** - двойной клик по `.exe`.
+- **macOS** - распакуй и открой `mycat.app` (при первом запуске: правый клик → **Открыть**, чтобы обойти Gatekeeper).
+- **Linux `.deb`** - `sudo apt install ./mycat-linux-amd64.deb`.
+- **Linux AppImage** - `chmod +x mycat-linux-x86_64.AppImage && ./mycat-linux-x86_64.AppImage` (нужен FUSE: `sudo apt install libfuse2`).
 
-> Сборки для каждого релиза — на странице **[Releases](https://github.com/yumiaura/myCat/releases)**.
+> Сборки для каждого релиза - на странице **[Releases](https://github.com/yumiaura/myCat/releases)**.
 
-### Вариант B — pip (Windows / macOS / Linux, Python ≥ 3.10)
+### Вариант B - pip (Windows / macOS / Linux, Python ≥ 3.10)
 
 ```bash
 pip install mycat
@@ -58,7 +58,7 @@ sudo apt install -y libxcb-cursor0
 
 Обновить или удалить позже: `pip install -U mycat` / `pip uninstall mycat`.
 
-### Вариант C — из исходников
+### Вариант C - из исходников
 
 ```bash
 git clone https://github.com/yumiaura/myCat
@@ -69,13 +69,13 @@ mycat                 # или без установки: python3 mycat/main.py
 
 ## ✨ Возможности
 
-- **Анимированный оверлей** 🐱 — котик без рамки, поверх окон, перетаскивается. Правый клик — меню (сменить персонаж, выход).
-- **Напоминание** 🛩️ — задай сообщение и время (разово или ежедневно), и котик пролетит на самолётике с баннером по верху экрана. Правый клик → *Reminder…* (сообщение, направление, самолёт, цвет).
-- **Чат (Ollama)** 💬 — общайся с котиком через **локальную модель [Ollama](https://ollama.com)**, без аккаунта и API-ключа (см. ниже).
+- **Анимированный оверлей** 🐱 - котик без рамки, поверх окон, перетаскивается. Правый клик - меню (сменить персонаж, выход).
+- **Напоминание** 🛩️ - задай сообщение и время (разово или ежедневно), и котик пролетит на самолётике с баннером по верху экрана. Правый клик → *Reminder…* (сообщение, направление, самолёт, цвет).
+- **Чат (Ollama)** 💬 - общайся с котиком через **локальную модель [Ollama](https://ollama.com)**, без аккаунта и API-ключа (см. ниже).
 
 ## 💬 Чат с котиком (Ollama)
 
-Котик умеет болтать через модель, запущенную локально в [Ollama](https://ollama.com) — всё остаётся на твоей машине, без API-ключа.
+Котик умеет болтать через модель, запущенную локально в [Ollama](https://ollama.com) - всё остаётся на твоей машине, без API-ключа.
 
 1. Установи [Ollama](https://ollama.com) и скачай модель:
    ```bash
@@ -83,35 +83,35 @@ mycat                 # или без установки: python3 mycat/main.py
    ```
 2. Запусти **mycat**, правый клик по котику → **Ollama…**
 3. Укажи host/port (по умолчанию `localhost:11434`), нажми **Load models**, выбери модель, нажми **Test**, затем **Save** и поставь галочку **LLM enabled**.
-4. Правый клик → **Chat** — и общайся. 🐾
+4. Правый клик → **Chat** - и общайся. 🐾
 
 ## 🎮 Запуск и опции
 
 Запусти `mycat` (или из исходников `python3 mycat/main.py`) и настрой опциями командной строки.
 
-**`--image, -i <путь>`** 🖼️ — свой ZIP (с одним GIF) вместо котика по умолчанию:
+**`--image, -i <путь>`** 🖼️ - свой ZIP (с одним GIF) вместо котика по умолчанию:
 
 ```bash
 mycat --image ~/my-custom-cat.zip
 ```
 
-ZIP-**персонаж** должен содержать ровно один `.gif`: первый кадр — статичная поза, потом GIF проигрывается один раз и возвращается к нему. Картинки больше 300×500 уменьшаются автоматически.
+ZIP-**персонаж** должен содержать ровно один `.gif`: первый кадр - статичная поза, потом GIF проигрывается один раз и возвращается к нему. Картинки больше 300×500 уменьшаются автоматически.
 
-**`--pos <x> <y>`** 📍 — стартовая позиция (иначе котик появляется снизу-справа и запоминает последнее положение):
+**`--pos <x> <y>`** 📍 - стартовая позиция (иначе котик появляется снизу-справа и запоминает последнее положение):
 
 ```bash
 mycat --pos 960 540        # центр экрана 1920x1080
 ```
 
-**`--wait <секунды>`** ⏱️ — сколько держать статичный первый кадр до анимации.
+**`--wait <секунды>`** ⏱️ - сколько держать статичный первый кадр до анимации.
 
-**`--debug`** 🐞 — подробный лог по кадрам.
+**`--debug`** 🐞 - подробный лог по кадрам.
 
 ### Управление
 
-- **Левая кнопка** — перетаскивать котика.
-- **Правая кнопка** — меню (персонажи, Reminder…, Ollama…, Chat, Quit).
-- **Выход** — из меню или Ctrl+C в терминале.
+- **Левая кнопка** - перетаскивать котика.
+- **Правая кнопка** - меню (персонажи, Reminder…, Ollama…, Chat, Quit).
+- **Выход** - из меню или Ctrl+C в терминале.
 
 Котик запоминает позицию и выбранный персонаж в `~/.config/mycat/config.ini`.
 
@@ -151,16 +151,16 @@ docker compose -f docker-compose.mac.yml up
 ## 🔧 Решение проблем
 
 **Котик в чёрном квадрате / прозрачность не работает** 🫥
-- Прозрачность на X11 требует композитора. Без него mycat обрезает окно по контуру котика, так что это редкость; если квадрат всё же есть — включи композитинг (XFCE: *Window Manager Tweaks → Compositor*) или запусти композитор вроде `picom`.
+- Прозрачность на X11 требует композитора. Без него mycat обрезает окно по контуру котика, так что это редкость; если квадрат всё же есть - включи композитинг (XFCE: *Window Manager Tweaks → Compositor*) или запусти композитор вроде `picom`.
 
 **Окно не поверх всех / нет в таскбаре** 📌
-- Некоторые оконные менеджеры перекрывают «поверх всех» — перезапусти сессию рабочего стола или проверь настройки WM.
+- Некоторые оконные менеджеры перекрывают «поверх всех» - перезапусти сессию рабочего стола или проверь настройки WM.
 
 **Свой персонаж не загружается** ❌
 - В ZIP должен быть ровно один корректный `.gif`. Проверь путь и что файл не повреждён.
 
 **Позиция не сохраняется** 💾
-- Убедись, что `~/.config/mycat/` существует и доступен на запись; файл конфига — `~/.config/mycat/config.ini`.
+- Убедись, что `~/.config/mycat/` существует и доступен на запись; файл конфига - `~/.config/mycat/config.ini`.
 
 **Проблемы запуска / Windows** 🪟
 - Для установки через pip нужен Python ≥ 3.10 (`python --version`), либо просто используй готовый `.exe`.
