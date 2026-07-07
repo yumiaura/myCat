@@ -37,9 +37,13 @@ Grab the build for your OS — each button downloads the **latest release**:
 
 <p>
   <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-windows-x64.exe"><img src="https://img.shields.io/badge/Download-Windows-0078D6?logo=windows&logoColor=white" alt="Download for Windows"></a>
+  <br>
   <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-macos-arm64.zip"><img src="https://img.shields.io/badge/Download-macOS%20Apple%20Silicon-000000?logo=apple&logoColor=white" alt="Download for macOS (Apple Silicon)"></a>
+  <br>
   <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-macos-x64.zip"><img src="https://img.shields.io/badge/Download-macOS%20Intel-555555?logo=apple&logoColor=white" alt="Download for macOS (Intel)"></a>
+  <br>
   <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-linux-amd64.deb"><img src="https://img.shields.io/badge/Download-Linux%20.deb-A81D33?logo=debian&logoColor=white" alt="Download Linux .deb"></a>
+  <br>
   <a href="https://github.com/yumiaura/myCat/releases/latest/download/mycat-linux-x86_64.AppImage"><img src="https://img.shields.io/badge/Download-Linux%20AppImage-FCC624?logo=linux&logoColor=black" alt="Download Linux AppImage"></a>
 </p>
 
