@@ -1345,25 +1345,35 @@ class PixelCatWindow(QtWidgets.QWidget):
 
         threading.Thread(target=check, name="mycat-update-check", daemon=True).start()
 
+    def open_releases_box(self, title: str, text: str, informative: str) -> None:
+        """A message box with an 'Open releases' button linking to GitHub."""
+        box = QtWidgets.QMessageBox(self)
+        box.setWindowTitle(title)
+        box.setText(text)
+        box.setInformativeText(informative)
+        box.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+        open_button = box.addButton("Open releases", QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        box.addButton(QtWidgets.QMessageBox.StandardButton.Close)
+        box.exec()
+        if box.clickedButton() is open_button:
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl(updater.RELEASES_PAGE))
+
     def on_update_checked(self, kind: str, current: str, latest: str) -> None:
         if not latest:
-            QtWidgets.QMessageBox.information(
-                self, "mycat", f"You're on the latest version ({current})."
+            # Up to date — reassure, and still offer the releases page.
+            self.open_releases_box(
+                "mycat", f"You're on the latest version ({current}). 🐱", "Everything's up to date."
             )
             return
         if not updater.can_self_update(kind):
-            command = updater.source_update_command()
-            box = QtWidgets.QMessageBox(self)
-            box.setWindowTitle("Update available")
-            box.setText(f"mycat {latest} is available (you have {current}).")
-            box.setInformativeText(f"Update with:\n\n    {command}")
-            box.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
-            open_button = box.addButton("Open releases", QtWidgets.QMessageBox.ButtonRole.ActionRole)
-            box.addButton(QtWidgets.QMessageBox.StandardButton.Close)
-            box.exec()
-            if box.clickedButton() is open_button:
-                QtGui.QDesktopServices.openUrl(QtCore.QUrl(updater.RELEASES_PAGE))
+            # pip / deb / AppImage / source: just tell them, with how-to + a link.
+            self.open_releases_box(
+                "Update available",
+                f"mycat {latest} is available (you have {current}).",
+                f"Update with:\n\n    {updater.update_hint(kind)}",
+            )
             return
+        # Windows / macOS: download the new build and restart.
         reply = QtWidgets.QMessageBox.question(
             self,
             "Update mycat",

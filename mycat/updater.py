@@ -48,13 +48,18 @@ def install_kind() -> str:
 
 
 def can_self_update(kind: str) -> bool:
-    """True for the frozen kinds we can actually replace + relaunch."""
-    return kind in ("appimage", "deb", "macos", "windows")
+    """Kinds that download + swap + relaunch on their own. Only the Windows exe
+    and macOS .app; pip/deb/AppImage installs are only *told* an update exists
+    (their package manager / a fresh download should apply it)."""
+    return kind in ("macos", "windows")
 
 
-def source_update_command() -> str:
-    """How to update a non-frozen install: ``git pull`` from a git checkout,
-    else ``pip install --upgrade mycat``."""
+def update_hint(kind: str) -> str:
+    """A one-line 'how to update' for the kinds that don't self-update."""
+    if kind == "deb":
+        return "Download the new .deb from the releases page and install it."
+    if kind == "appimage":
+        return "Download the new AppImage from the releases page."
     if (Path(__file__).resolve().parent.parent / ".git").is_dir():
         return "git pull"
     return "pip install --upgrade mycat"
@@ -105,51 +110,19 @@ def download(url: str, dest: str, progress=None) -> None:
 
 
 def staging_path(kind: str) -> str:
-    """Where to download the new build before swapping it in.
-
-    For the AppImage we stage next to the running file so the final swap is an
-    atomic same-filesystem rename; everything else stages in the temp dir.
-    """
-    if kind == "appimage":
-        current = os.environ["APPIMAGE"]
-        return os.path.join(os.path.dirname(current), ".mycat-update.AppImage")
+    """Where to download the new build before swapping it in (temp dir)."""
     return os.path.join(tempfile.gettempdir(), asset_name(kind))
 
 
 def apply_and_relaunch(kind: str, downloaded: str) -> None:
     """Swap in ``downloaded`` and spawn the new build. The caller must quit the
     app immediately afterwards so the old process exits."""
-    if kind == "appimage":
-        apply_appimage(downloaded)
-    elif kind == "deb":
-        apply_deb(downloaded)
-    elif kind == "macos":
+    if kind == "macos":
         apply_macos(downloaded)
     elif kind == "windows":
         apply_windows(downloaded)
     else:
         raise ValueError(f"cannot self-update install kind {kind!r}")
-
-
-def apply_appimage(downloaded: str) -> None:
-    target = os.environ["APPIMAGE"]
-    make_executable(downloaded)
-    # Same directory as the running file -> atomic replace; the running mount
-    # keeps the old inode until this process exits.
-    os.replace(downloaded, target)
-    subprocess.Popen([target], close_fds=True, start_new_session=True)  # noqa: S603
-    logger.info("AppImage updated in place: %s", target)
-
-
-def apply_deb(downloaded: str) -> None:
-    # /usr/bin/mycat is root-owned: install through polkit. apt replaces the
-    # file in place; the running process keeps its old inode until it exits.
-    subprocess.run(  # noqa: S603
-        ["pkexec", "apt-get", "install", "-y", "--only-upgrade", "--allow-downgrades", downloaded],
-        check=True,
-    )
-    subprocess.Popen([sys.executable], close_fds=True, start_new_session=True)  # noqa: S603
-    logger.info("deb installed via pkexec; relaunching %s", sys.executable)
 
 
 def apply_macos(zip_path: str) -> None:
@@ -223,6 +196,7 @@ def apply_windows(downloaded: str) -> None:
 __all__ = [
     "install_kind",
     "can_self_update",
+    "update_hint",
     "asset_name",
     "asset_url",
     "download",
