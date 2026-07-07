@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.request
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,14 @@ def install_kind() -> str:
 def can_self_update(kind: str) -> bool:
     """True for the frozen kinds we can actually replace + relaunch."""
     return kind in ("appimage", "deb", "macos", "windows")
+
+
+def source_update_command() -> str:
+    """How to update a non-frozen install: ``git pull`` from a git checkout,
+    else ``pip install --upgrade mycat``."""
+    if (Path(__file__).resolve().parent.parent / ".git").is_dir():
+        return "git pull"
+    return "pip install --upgrade mycat"
 
 
 def asset_name(kind: str) -> str:
@@ -169,26 +178,40 @@ def apply_macos(zip_path: str) -> None:
 def apply_windows(downloaded: str) -> None:
     exe = sys.executable
     pid = os.getpid()
+    log = os.path.join(tempfile.gettempdir(), "mycat-update.log")
     script = os.path.join(tempfile.gettempdir(), "mycat-update.bat")
+    # Wait for this process to exit, then KEEP RETRYING the overwrite: a onefile
+    # build stays locked by its bootloader for a moment after the app PID is
+    # gone, so a single `move` right away fails and nothing relaunches. Retry for
+    # ~15 s, then start the (now updated) exe. Delayed expansion for the counter.
     body = (
         "@echo off\r\n"
+        "setlocal enabledelayedexpansion\r\n"
+        f'set "LOG={log}"\r\n'
+        'echo update swapper started > "%LOG%"\r\n'
         ":wait\r\n"
-        f'tasklist /FI "PID eq {pid}" | find "{pid}" >nul\r\n'
-        "if not errorlevel 1 (\r\n"
-        "  timeout /t 1 /nobreak >nul\r\n"
-        "  goto wait\r\n"
-        ")\r\n"
-        f'move /Y "{downloaded}" "{exe}" >nul\r\n'
+        f'tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul\r\n'
+        "if not errorlevel 1 ( timeout /t 1 /nobreak >nul & goto wait )\r\n"
+        f'echo pid {pid} gone, swapping >> "%LOG%"\r\n'
+        "set /a TRIES=0\r\n"
+        ":swap\r\n"
+        f'move /Y "{downloaded}" "{exe}" >nul 2>>"%LOG%"\r\n'
+        "if not errorlevel 1 goto start\r\n"
+        "set /a TRIES+=1\r\n"
+        "if !TRIES! LSS 15 ( timeout /t 1 /nobreak >nul & goto swap )\r\n"
+        'echo move failed after retries >> "%LOG%"\r\n'
+        ":start\r\n"
+        f'echo starting >> "%LOG%"\r\n'
         f'start "" "{exe}"\r\n'
         'del "%~f0"\r\n'
     )
     with open(script, "w", encoding="utf-8") as handle:
         handle.write(body)
-    # DETACHED_PROCESS | CREATE_NO_WINDOW so the swapper outlives this process.
-    subprocess.Popen(  # noqa: S603
-        ["cmd", "/c", script], creationflags=0x00000008 | 0x08000000, close_fds=True
-    )
-    logger.info("Windows update swapper launched for %s", exe)
+    # DETACHED_PROCESS only — combining it with CREATE_NO_WINDOW can make
+    # CreateProcess fail (then the swapper never runs). Detached alone survives
+    # this process exiting and shows no console for a plain @echo off batch.
+    subprocess.Popen(["cmd", "/c", script], creationflags=0x00000008, close_fds=True)  # noqa: S603
+    logger.info("Windows update swapper launched for %s (log: %s)", exe, log)
 
 
 __all__ = [

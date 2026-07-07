@@ -1347,13 +1347,13 @@ class PixelCatWindow(QtWidgets.QWidget):
             )
             return
         if not updater.can_self_update(kind):
+            command = updater.source_update_command()
             box = QtWidgets.QMessageBox(self)
-            box.setWindowTitle("mycat")
+            box.setWindowTitle("Update available")
             box.setText(f"mycat {latest} is available (you have {current}).")
-            box.setInformativeText(
-                "You're running from source — update with git/pip, or grab a prebuilt build."
-            )
-            open_button = box.addButton("Open releases", QtWidgets.QMessageBox.ButtonRole.AcceptRole)
+            box.setInformativeText(f"Update with:\n\n    {command}")
+            box.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+            open_button = box.addButton("Open releases", QtWidgets.QMessageBox.ButtonRole.ActionRole)
             box.addButton(QtWidgets.QMessageBox.StandardButton.Close)
             box.exec()
             if box.clickedButton() is open_button:
@@ -1896,6 +1896,10 @@ def setup_tray(app, window):
 
     tray.activated.connect(on_activated)
     tray.show()
+    # Some X11 panels (e.g. XFCE) aren't ready for the tray when we first show it
+    # (before the event loop runs), so the icon silently fails to embed. Re-assert
+    # it a moment after the loop starts — show() is idempotent.
+    QtCore.QTimer.singleShot(1500, tray.show)
     logger.info("Tray icon shown (visible=%s)", tray.isVisible())
     return tray
 
