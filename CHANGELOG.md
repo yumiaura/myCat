@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Changed
+- **Tray menu: a single Open/Close toggle, and Quit lives only in the tray.** The cat's right-click "Hide" is renamed **Close** (still tucks it into the tray). The tray entry now flips with state: **Open** when the cat is hidden, **Close** when it's on screen. **Quit** is only in the tray menu now (branch `feat/tray-open-close-menu`).
+
+### Fixed
+- **The tray icon is now actually visible.** It used the char's full frame, which shrank to a near-invisible speck at tray size; it now uses the dedicated cat-face app icon. The startup log also reports whether the tray was created (`Tray icon shown` / `System tray not available`) (branch `feat/tray-open-close-menu`).
+
 ## [0.1.12] - 2026-07-06
 
 ### Added

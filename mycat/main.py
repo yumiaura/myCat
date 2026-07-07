@@ -1202,12 +1202,13 @@ class PixelCatWindow(QtWidgets.QWidget):
             login_action.setChecked(autostart.is_enabled())
             login_action.toggled.connect(autostart.set_enabled)
 
-        # With a system tray, "Quit" from the cat only hides it to the tray —
-        # the real Quit lives in the tray menu (restore via tray double-click or
-        # its "Show"). Without a tray there's nowhere to hide, so keep a real Quit.
+        # With a system tray, "Close" from the cat menu only hides it to the tray
+        # (reopen from the tray's Open, or a tray double-click); the real Quit
+        # lives only in the tray menu. Without a tray there's nowhere to hide, so
+        # keep a real Quit here.
         if getattr(self, "tray_icon", None) is not None:
-            hide_action = menu.addAction("Hide")
-            hide_action.triggered.connect(self.hide)
+            close_action = menu.addAction("Close")
+            close_action.triggered.connect(self.hide)
         else:
             quit_action = menu.addAction("Quit")
             quit_action.triggered.connect(QtWidgets.QApplication.quit)
@@ -1786,7 +1787,13 @@ def ensure_virtual_monitor() -> None:
 
 
 def make_app_icon() -> QtGui.QIcon:
-    """A 😽 cat icon, used for the tray, the app icon and the splash."""
+    """The app icon (tray, window, splash): mycat/assets/icon.png, falling back
+    to a drawn 😽 if the file is missing."""
+    icon_path = Path(__file__).resolve().parent / "assets" / "icon.png"
+    if icon_path.is_file():
+        icon = QtGui.QIcon(str(icon_path))
+        if not icon.isNull():
+            return icon
     pixmap = QtGui.QPixmap(64, 64)
     pixmap.fill(QtCore.Qt.GlobalColor.transparent)
     painter = QtGui.QPainter(pixmap)
@@ -1799,21 +1806,30 @@ def make_app_icon() -> QtGui.QIcon:
     return QtGui.QIcon(pixmap)
 
 
-def setup_tray(app, window, icon_pixmap):
+def setup_tray(app, window):
     """A persistent cat icon in the system tray with a quick-action menu.
 
     Returns the tray icon (kept alive by the caller), or None when no system
     tray is available.
     """
     if not QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
+        logger.warning("System tray not available — the cat can't be sent to a tray")
         return None
-    icon = QtGui.QIcon(icon_pixmap) if icon_pixmap and not icon_pixmap.isNull() else make_app_icon()
+    # A large, mostly-transparent char frame renders as a near-invisible speck at
+    # tray size, so always use the dedicated app icon for the tray.
+    icon = make_app_icon()
     tray = QtWidgets.QSystemTrayIcon(icon, app)
     tray.setToolTip("mycat 🐱")
 
     def show_window():
         window.show()
         window.raise_()
+
+    def toggle_window():
+        if window.isVisible():
+            window.hide()
+        else:
+            show_window()
 
     menu = QtWidgets.QMenu(window)
     toggle_chat = getattr(window, "_toggle_llm_chat", None)
@@ -1837,9 +1853,16 @@ def setup_tray(app, window, icon_pixmap):
         login_action.setChecked(autostart.is_enabled())
         login_action.toggled.connect(autostart.set_enabled)
     menu.addSeparator()
-    menu.addAction("Show", show_window)
+    # Dynamic label: "Open" when the cat is hidden, "Close" when it's on screen.
+    toggle_action = menu.addAction("Close")
+    toggle_action.triggered.connect(toggle_window)
     menu.addAction("Quit", QtWidgets.QApplication.quit)
     tray.setContextMenu(menu)
+
+    def sync_toggle_label():
+        toggle_action.setText("Close" if window.isVisible() else "Open")
+
+    menu.aboutToShow.connect(sync_toggle_label)
 
     def on_activated(reason):
         if reason == QtWidgets.QSystemTrayIcon.ActivationReason.DoubleClick:
@@ -1847,6 +1870,7 @@ def setup_tray(app, window, icon_pixmap):
 
     tray.activated.connect(on_activated)
     tray.show()
+    logger.info("Tray icon shown (visible=%s)", tray.isVisible())
     return tray
 
 
@@ -1967,7 +1991,7 @@ def main() -> None:
     else:
         window.show()
         # Persistent cat tray icon (kept on the window so it isn't GC'd).
-        window.tray_icon = setup_tray(app, window, window.png_pixmap)
+        window.tray_icon = setup_tray(app, window)
         # Live in the tray: hiding/closing windows no longer quits the app —
         # only the explicit Quit action does. With no tray to quit from, keep
         # the old behaviour so the user is never stuck with an invisible process.
