@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## [0.1.15] - 2026-07-07
 
 ### Changed
 - **Only Windows/macOS self-update; pip / `.deb` / AppImage are just notified.** "Update…" downloads and restarts automatically only on the Windows `.exe` and macOS `.app`. On pip, source, `.deb` and AppImage it now just says an update is available with how to get it (`pip install --upgrade mycat`, `git pull`, or "download the new .deb/AppImage") plus an **Open releases** link. The "you're up to date" message also links to the releases page (branch `fix/windows-update-relaunch`).
