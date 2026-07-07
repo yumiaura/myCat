@@ -1,12 +1,16 @@
 """New interactive char-pack format (loaded fully in memory, no temp files).
 
 A char ``<name>.zip`` contains:
-  static.png      body, eyes open (empty sockets where the pupils show)
-  blink.png       (optional) body, eyes closed / squint
-  eye_left.png    (optional) left pupil sprite (drawn over the open socket)
-  eye_right.png   (optional) right pupil sprite
-  config.json     parameters (below)
-  anim/*.gif      (optional) periodic full-body animations
+  static.png         body, eyes open (empty sockets where the pupils show)
+  blink.png          (optional) body, eyes closed / squint
+  eye_left.png       (optional) left pupil sprite (drawn over the open socket)
+  eye_right.png      (optional) right pupil sprite
+  config.json        parameters (below)
+  anim/*.gif         (optional) periodic full-body animations
+  hungry*.gif        (optional) low-battery / time-hunger animation pool
+  thirsty*.gif       (optional) thirst animation pool
+  play*.gif          (optional) play-request animation pool
+  cuddle*.gif        (optional) cuddle/affection animation pool
 
 config.json (coordinates are in static.png native pixels):
   {
@@ -18,8 +22,21 @@ config.json (coordinates are in static.png native pixels):
               "right": {"x": 693, "y": 433} },
     "blink": { "enabled": true, "every": [3, 7], "duration": 0.28 },
     "click_squint": 0.5,
-    "animations": [ {"file": "anim/stretch.gif", "enabled": true, "every": [20, 40]} ]
+    "animations": [ {"file": "anim/stretch.gif", "enabled": true, "every": [20, 40]} ],
+    "needs": {
+      "hungry_after": 3600,
+      "thirsty_after": 1800,
+      "play_after": 900,
+      "cuddle_after": 1200,
+      "every": [60, 120]
+    }
   }
+
+``needs`` controls time-based pet wellness (seconds until each need becomes
+active).  Omitting the section uses the defaults above.  Each need triggers
+its animation pool (``hungryN.gif``, ``thirstyN.gif``, etc.) and shows a
+speech bubble until satisfied via the right-click "Pet Needs" menu or by
+clicking the cat.  Long-unmet hunger also visually squeezes the cat.
 
 The char is scaled proportionally to fit within max_width × max_height
 (default 200×400, shrink-only); the renderer works in those scaled pixels.
@@ -113,12 +130,21 @@ class CharPack:
     idle_anims: list = field(default_factory=list)    # idleN.gif pool
     click_anims: list = field(default_factory=list)   # clickN.gif pool
     hungry_anims: list = field(default_factory=list)  # hungryN.gif pool (low battery)
+    thirsty_anims: list = field(default_factory=list) # thirstyN.gif pool
+    play_anims: list = field(default_factory=list)    # playN.gif pool
+    cuddle_anims: list = field(default_factory=list)  # cuddleN.gif pool
     # timings
     yawn_after: float = 60.0
     sleep_after: float = 300.0
     idle_random_every: tuple = (25.0, 60.0)
     hungry_below: float = 20.0
     hungry_every: tuple = (30.0, 60.0)
+    # time-based needs (seconds until need becomes active)
+    hungry_time_after: float = 3600.0
+    thirsty_after: float = 1800.0
+    play_need_after: float = 900.0
+    cuddle_after: float = 1200.0
+    needs_every: tuple = (60.0, 120.0)
 
 
 def is_new_pack(path) -> bool:
@@ -242,6 +268,7 @@ def load_pack(path, max_width: int = DEFAULT_MAX_WIDTH, max_height: int = DEFAUL
 
         idle_cfg = config.get("idle", {})
         battery_cfg = config.get("battery", {})
+        needs_cfg = config.get("needs", {})
 
         return CharPack(
             name=config.get("name") or Path(str(path)).stem,
@@ -262,9 +289,17 @@ def load_pack(path, max_width: int = DEFAULT_MAX_WIDTH, max_height: int = DEFAUL
             idle_anims=load_pool("idle"),
             click_anims=load_pool("click"),
             hungry_anims=load_pool("hungry"),
+            thirsty_anims=load_pool("thirsty"),
+            play_anims=load_pool("play"),
+            cuddle_anims=load_pool("cuddle"),
             yawn_after=float(idle_cfg.get("yawn_after", 60.0)),
             sleep_after=float(idle_cfg.get("sleep_after", 300.0)),
             idle_random_every=tuple(idle_cfg.get("random_every", [25.0, 60.0])),
             hungry_below=float(battery_cfg.get("hungry_below", 20.0)),
             hungry_every=tuple(battery_cfg.get("every", [30.0, 60.0])),
+            hungry_time_after=float(needs_cfg.get("hungry_after", 3600.0)),
+            thirsty_after=float(needs_cfg.get("thirsty_after", 1800.0)),
+            play_need_after=float(needs_cfg.get("play_after", 900.0)),
+            cuddle_after=float(needs_cfg.get("cuddle_after", 1200.0)),
+            needs_every=tuple(needs_cfg.get("every", [60.0, 120.0])),
         )

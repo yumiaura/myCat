@@ -38,6 +38,7 @@ if __package__:
         focus,
         github_notify,
         llm,
+        pet_needs,
         reminder,
         secret_store,
         update_check,
@@ -54,6 +55,7 @@ else:
     secret_store = importlib.import_module("mycat.secret_store")
     autostart = importlib.import_module("mycat.autostart")
     char_pack = importlib.import_module("mycat.char_pack")
+    pet_needs = importlib.import_module("mycat.pet_needs")
     announcer = importlib.import_module("mycat.announcer")
     focus = importlib.import_module("mycat.focus")
     github_notify = importlib.import_module("mycat.github_notify")
@@ -680,7 +682,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         return QtCore.QSize(width, height)
 
     def _setup_pack_content(self) -> None:
-        """Interactive char pack: drives the state machine (awake/blink/click/idle/yawn/sleep/hungry)."""
+        """Interactive char pack: drives the state machine (awake/blink/click/idle/yawn/sleep/hungry/needs)."""
         pack = self.char_pack
         # No compositor → snap body-frame edges to binary alpha (crisp, no fringe).
         # Pupil sprites stay smooth (drawn over the opaque face, never fringe).
@@ -721,6 +723,21 @@ class PixelCatWindow(QtWidgets.QWidget):
         self._last_cursor = QtGui.QCursor.pos()
         self._mask_cache: dict = {}
 
+        # pet needs: hunger (time-based), thirst, play, cuddle
+        needs = pet_needs.PetNeeds(
+            hunger=pet_needs.Need(threshold=pack.hungry_time_after, last_satisfied=now),
+            thirst=pet_needs.Need(threshold=pack.thirsty_after, last_satisfied=now),
+            play=pet_needs.Need(threshold=pack.play_need_after, last_satisfied=now),
+            cuddle=pet_needs.Need(threshold=pack.cuddle_after, last_satisfied=now),
+        )
+        self._pet_needs = needs
+        interval = pack.needs_every
+        self.next_need_hunger = now + random.uniform(*interval)
+        self.next_need_thirst = now + random.uniform(*interval)
+        self.next_need_play = now + random.uniform(*interval)
+        self.next_need_cuddle = now + random.uniform(*interval)
+        self._active_need: str | None = None
+
         self.pack_timer = QtCore.QTimer(self)
         self.pack_timer.timeout.connect(self._pack_tick)
         self.pack_timer.start(33)             # ~30 fps; only repaints when something changed
@@ -729,7 +746,8 @@ class PixelCatWindow(QtWidgets.QWidget):
             f"eyes={pack.eyes is not None} blink={pack.blink_enabled} "
             f"sleep={pack.sleep is not None} yawn={pack.yawn is not None} "
             f"idle={len(pack.idle_anims)} click={len(pack.click_anims)} "
-            f"hungry={len(pack.hungry_anims)} anims={len(pack.anims)})"
+            f"hungry={len(pack.hungry_anims)} thirsty={len(pack.thirsty_anims)} "
+            f"play={len(pack.play_anims)} cuddle={len(pack.cuddle_anims)} anims={len(pack.anims)})"
         )
 
     def _pack_now(self) -> float:
@@ -789,8 +807,70 @@ class PixelCatWindow(QtWidgets.QWidget):
             self._battery_pct = read_battery_percent()
         return self._battery_pct is not None and self._battery_pct <= self.char_pack.hungry_below
 
+    def _satisfy_hunger(self) -> None:
+        """Feed the cat: reset time-based hunger."""
+        needs = getattr(self, "_pet_needs", None)
+        if needs is None:
+            return
+        now = self._pack_now()
+        needs.hunger.satisfy(now)
+        self.next_need_hunger = now + random.uniform(*self.char_pack.needs_every)
+        self._active_need = None
+        logger.info("Cat fed.")
+
+    def _satisfy_thirst(self) -> None:
+        """Give the cat water: reset thirst."""
+        needs = getattr(self, "_pet_needs", None)
+        if needs is None:
+            return
+        now = self._pack_now()
+        needs.thirst.satisfy(now)
+        self.next_need_thirst = now + random.uniform(*self.char_pack.needs_every)
+        self._active_need = None
+        logger.info("Cat watered.")
+
+    def _satisfy_play(self) -> None:
+        """Play with the cat: reset play need."""
+        needs = getattr(self, "_pet_needs", None)
+        if needs is None:
+            return
+        now = self._pack_now()
+        needs.play.satisfy(now)
+        self.next_need_play = now + random.uniform(*self.char_pack.needs_every)
+        self._active_need = None
+        logger.info("Cat played with.")
+
+    def _satisfy_cuddle(self) -> None:
+        """Pet the cat: reset cuddle need."""
+        needs = getattr(self, "_pet_needs", None)
+        if needs is None:
+            return
+        now = self._pack_now()
+        needs.cuddle.satisfy(now)
+        self.next_need_cuddle = now + random.uniform(*self.char_pack.needs_every)
+        self._active_need = None
+        logger.info("Cat petted.")
+
+    def _need_bubble_text(self) -> str | None:
+        """Speech-bubble message for the most urgent active need, or None."""
+        needs = getattr(self, "_pet_needs", None)
+        if needs is None:
+            return None
+        now = self._pack_now()
+        urgent = needs.most_urgent(now)
+        if urgent == "hunger":
+            lvl = needs.hunger.level(now)
+            return "I'm starving..." if lvl > 2.0 else "Feed me!"
+        if urgent == "thirst":
+            return "I'm thirsty!"
+        if urgent == "play":
+            return "Let's play!"
+        if urgent == "cuddle":
+            return "Pet me!"
+        return None
+
     def _on_pack_click(self) -> None:
-        """Click reaction: wake if asleep, else play a clickN anim or squint."""
+        """Click reaction: satisfy cuddle/play if active, wake if asleep, else react."""
         if self.char_pack is None:
             return
         now = self._pack_now()
@@ -799,6 +879,18 @@ class PixelCatWindow(QtWidgets.QWidget):
         if self._wake(now):
             self.update()
             return
+        # clicking the cat satisfies whichever social need is most urgent
+        needs = getattr(self, "_pet_needs", None)
+        if needs is not None:
+            urgent = needs.most_urgent(now)
+            if urgent == "cuddle":
+                self._satisfy_cuddle()
+                self.update()
+                return
+            if urgent == "play":
+                self._satisfy_play()
+                self.update()
+                return
         pack = self.char_pack
         if pack.click_anims:
             self._start_clip(random.choice(pack.click_anims), "awake", now)
@@ -807,7 +899,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.update()
 
     def _update_pack_frame(self) -> str:
-        """State machine: hungry > sleep > yawn > reaction > blink > awake. Sets current_pixmap."""
+        """State machine: needs > battery_hungry > sleep > yawn > idle > blink > awake. Sets current_pixmap."""
         pack = self.char_pack
         now = self._pack_now()
 
@@ -831,7 +923,34 @@ class PixelCatWindow(QtWidgets.QWidget):
         idle_for = now - self.last_interaction
         cursor_still = now - self.last_cursor_move
 
-        # hungry (low battery)
+        needs = getattr(self, "_pet_needs", None)
+
+        # time-based hunger
+        if needs is not None and pack.hungry_anims and needs.hunger.is_active(now) and now >= self.next_need_hunger:
+            self._start_clip(random.choice(pack.hungry_anims), "awake", now)
+            self.next_need_hunger = now + random.uniform(*pack.needs_every)
+            self._active_need = "hunger"
+            return "anim"
+        # thirst
+        if needs is not None and pack.thirsty_anims and needs.thirst.is_active(now) and now >= self.next_need_thirst:
+            self._start_clip(random.choice(pack.thirsty_anims), "awake", now)
+            self.next_need_thirst = now + random.uniform(*pack.needs_every)
+            self._active_need = "thirst"
+            return "anim"
+        # play
+        if needs is not None and pack.play_anims and needs.play.is_active(now) and now >= self.next_need_play:
+            self._start_clip(random.choice(pack.play_anims), "awake", now)
+            self.next_need_play = now + random.uniform(*pack.needs_every)
+            self._active_need = "play"
+            return "anim"
+        # cuddle
+        if needs is not None and pack.cuddle_anims and needs.cuddle.is_active(now) and now >= self.next_need_cuddle:
+            self._start_clip(random.choice(pack.cuddle_anims), "awake", now)
+            self.next_need_cuddle = now + random.uniform(*pack.needs_every)
+            self._active_need = "cuddle"
+            return "anim"
+
+        # battery-level hunger (legacy)
         if pack.hungry_anims and now >= self.next_hungry and self._battery_low():
             self._start_clip(random.choice(pack.hungry_anims), "awake", now)
             self.next_hungry = now + random.uniform(*pack.hungry_every)
@@ -860,6 +979,12 @@ class PixelCatWindow(QtWidgets.QWidget):
                 self._start_clip(anim, "awake", now)
                 self.anim_next[index] = now + sum(anim.delays) / 1000.0 + random.uniform(*anim.every)
                 return "anim"
+        # clear active_need once the need is satisfied (bubble disappears)
+        if self._active_need is not None and needs is not None:
+            still_active = getattr(needs, self._active_need, None)
+            if still_active is None or not still_active.is_active(now):
+                self._active_need = None
+
         # blink
         if pack.blink_enabled and now >= self.next_blink:
             self.squint_until = now + pack.blink_duration
@@ -1169,6 +1294,19 @@ class PixelCatWindow(QtWidgets.QWidget):
 
         activity_action = menu.addAction("Activity…")
         activity_action.triggered.connect(self.open_activity_dialog)
+
+        # Pet needs submenu (only for interactive chars with pet_needs enabled)
+        if self.char_pack is not None and getattr(self, "_pet_needs", None) is not None:
+            menu.addSeparator()
+            needs_menu = menu.addMenu("Pet Needs")
+            feed_action = needs_menu.addAction("Feed")
+            feed_action.triggered.connect(self._satisfy_hunger)
+            water_action = needs_menu.addAction("Give Water")
+            water_action.triggered.connect(self._satisfy_thirst)
+            play_action = needs_menu.addAction("Play")
+            play_action.triggered.connect(self._satisfy_play)
+            pet_action = needs_menu.addAction("Pet")
+            pet_action.triggered.connect(self._satisfy_cuddle)
 
         # Shop temporarily hidden from the menu (work in progress). The dialog
         # and its handler stay in the codebase; re-enable by uncommenting:
@@ -1505,7 +1643,7 @@ class PixelCatWindow(QtWidgets.QWidget):
             self._schedule_next_animation()
 
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        """Paint the current pixmap (+ tracking pupils for interactive chars)."""
+        """Paint the current pixmap (+ tracking pupils, speech bubble, starvation effect)."""
         mode = getattr(self, "_pack_mode", None) if self.char_pack is not None else None
 
         # Centre the pixmap in the widget.
@@ -1524,10 +1662,93 @@ class PixelCatWindow(QtWidgets.QWidget):
 
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+
+        # Starvation squeeze: gradually compress the cat horizontally when
+        # hunger has been unmet long past its threshold.
+        needs = getattr(self, "_pet_needs", None)
+        squeeze = 1.0
+        if needs is not None and self.char_pack is not None:
+            now = self._pack_now()
+            squeeze = needs.starvation_scale(now)
+
+        if squeeze < 1.0:
+            cx = x + pixmap_rect.width() / 2
+            cy = y + pixmap_rect.height() / 2
+            transform = QtGui.QTransform()
+            transform.translate(cx, cy)
+            transform.scale(squeeze, 1.0)
+            transform.translate(-cx, -cy)
+            painter.setTransform(transform)
+
         painter.drawPixmap(x, y, self.current_pixmap)
         if mode == "open":
             self._draw_pupils(painter, x, y)
+
+        if squeeze < 1.0:
+            painter.resetTransform()
+
+        # Speech bubble: show the cat's most urgent need as a small label.
+        bubble_text = self._need_bubble_text() if self.char_pack is not None else None
+        if bubble_text:
+            self._draw_need_bubble(painter, bubble_text, x, y, pixmap_rect)
+
         painter.end()
+
+    def _draw_need_bubble(
+        self,
+        painter: QtGui.QPainter,
+        text: str,
+        px: int,
+        py: int,
+        pixmap_rect: QtCore.QRect,
+    ) -> None:
+        """Draw a speech-bubble label above the cat sprite."""
+        font = QtGui.QFont("Sans Serif", 9, QtGui.QFont.Weight.Bold)
+        painter.setFont(font)
+        fm = QtGui.QFontMetrics(font)
+        text_w = fm.horizontalAdvance(text)
+        text_h = fm.height()
+        padding = 6
+        bubble_w = text_w + padding * 2
+        bubble_h = text_h + padding * 2
+        tail_h = 6
+
+        # Position: centred above the sprite
+        bx = px + (pixmap_rect.width() - bubble_w) // 2
+        by = py - bubble_h - tail_h - 4
+        if by < 0:
+            by = 0
+
+        bubble_rect = QtCore.QRect(bx, by, bubble_w, bubble_h)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+
+        # Bubble background
+        painter.setBrush(QtGui.QColor(255, 255, 220, 220))
+        painter.setPen(QtGui.QPen(QtGui.QColor(80, 60, 0, 180), 1.5))
+        painter.drawRoundedRect(bubble_rect, 8, 8)
+
+        # Tail triangle pointing down
+        mid_x = bx + bubble_w // 2
+        tail_top = by + bubble_h
+        tail_pts = QtGui.QPolygon([
+            QtCore.QPoint(mid_x - 5, tail_top),
+            QtCore.QPoint(mid_x + 5, tail_top),
+            QtCore.QPoint(mid_x, tail_top + tail_h),
+        ])
+        painter.setBrush(QtGui.QColor(255, 255, 220, 220))
+        painter.setPen(QtCore.Qt.PenStyle.NoPen)
+        painter.drawPolygon(tail_pts)
+        painter.setPen(QtGui.QPen(QtGui.QColor(80, 60, 0, 180), 1.5))
+        painter.drawLine(mid_x - 5, tail_top, mid_x, tail_top + tail_h)
+        painter.drawLine(mid_x + 5, tail_top, mid_x, tail_top + tail_h)
+
+        # Text
+        painter.setPen(QtGui.QColor(50, 30, 0))
+        painter.drawText(
+            QtCore.QRect(bx + padding, by + padding, text_w, text_h),
+            QtCore.Qt.AlignmentFlag.AlignCenter,
+            text,
+        )
 
     def refresh_shape_mask(self, x: int, y: int) -> None:
         """Clip the window to the current pixmap's alpha silhouette (no-compositor path).
