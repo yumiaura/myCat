@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Fixed
+- **"Update…" no longer poses as up-to-date when the check fails.** The version check catches *every* error (offline, or GitHub's unauthenticated API rate-limiting the IP) and used to fall through to "You're on the latest version" — so a failed check looked like good news and real updates were never offered. It now tells apart three outcomes: a reached-and-newer release (offer/notify), reached-and-current ("you're up to date"), and couldn't-reach ("Couldn't check for updates right now — try again in a bit"). (branch `fix/update-check-honest-message`)
+
 ## [0.1.15] - 2026-07-07
 
 ### Changed
