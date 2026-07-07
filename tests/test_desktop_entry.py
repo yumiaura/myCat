@@ -23,5 +23,7 @@ def test_install_desktop_entry_creates_files(tmp_path, monkeypatch):
     assert desktop.is_file()
     text = desktop.read_text(encoding="utf-8")
     assert "Name=myCat" in text
-    assert "Icon=mycat" in text
-    assert (tmp_path / ".local" / "share" / "icons" / "hicolor" / "256x256" / "apps" / "mycat.png").is_file()
+    # Icon= must be an absolute path that actually points at a copied file.
+    icon_line = next(line for line in text.splitlines() if line.startswith("Icon="))
+    icon_path = Path(icon_line.split("=", 1)[1])
+    assert icon_path.is_absolute() and icon_path.is_file()

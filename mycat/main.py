@@ -1928,10 +1928,14 @@ def install_desktop_entry() -> None:
     source_icon = Path(__file__).resolve().parent / "assets" / "icon.png"
     if not source_icon.is_file():
         return
-    icon_dir = share / "icons" / "hicolor" / "256x256" / "apps"
+    # Copy the icon to a stable path and reference it ABSOLUTELY in Icon= — the
+    # themed `Icon=mycat` form needs the user icon dir to be a full hicolor theme
+    # (index.theme + right size folder) and a refreshed cache, which often isn't
+    # there; an absolute path just works.
+    icon_target = share / "mycat" / "icon.png"
     try:
-        icon_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source_icon, icon_dir / "mycat.png")
+        icon_target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_icon, icon_target)
         user_desktop.parent.mkdir(parents=True, exist_ok=True)
         user_desktop.write_text(
             "[Desktop Entry]\n"
@@ -1940,19 +1944,17 @@ def install_desktop_entry() -> None:
             "GenericName=Desktop pet\n"
             "Comment=A tiny animated desktop pet cat\n"
             f"Exec={desktop_exec_command()}\n"
-            "Icon=mycat\n"
+            f"Icon={icon_target}\n"
             "Terminal=false\n"
             "Categories=Utility;Amusement;\n"
             "Keywords=cat;pet;desktop;\n",
             encoding="utf-8",
         )
         logger.info("Installed application-menu entry: %s", user_desktop)
-        for tool, target in (
-            ("update-desktop-database", str(user_desktop.parent)),
-            ("gtk-update-icon-cache", str(share / "icons" / "hicolor")),
-        ):
-            if shutil.which(tool):
-                subprocess.run([tool, target], check=False, capture_output=True)  # noqa: S603
+        if shutil.which("update-desktop-database"):
+            subprocess.run(  # noqa: S603
+                ["update-desktop-database", str(user_desktop.parent)], check=False, capture_output=True
+            )
     except OSError as exc:
         logger.debug("Could not install the application-menu entry: %s", exc)
 
