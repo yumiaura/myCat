@@ -48,13 +48,18 @@ def install_kind() -> str:
 
 
 def can_self_update(kind: str) -> bool:
-    """True for the frozen kinds we can actually replace + relaunch."""
-    return kind in ("appimage", "deb", "macos", "windows")
+    """Kinds that download + swap + relaunch on their own. Only the Windows exe
+    and macOS .app; pip/deb/AppImage installs are only *told* an update exists
+    (their package manager / a fresh download should apply it)."""
+    return kind in ("macos", "windows")
 
 
-def source_update_command() -> str:
-    """How to update a non-frozen install: ``git pull`` from a git checkout,
-    else ``pip install --upgrade mycat``."""
+def update_hint(kind: str) -> str:
+    """A one-line 'how to update' for the kinds that don't self-update."""
+    if kind == "deb":
+        return "Download the new .deb from the releases page and install it."
+    if kind == "appimage":
+        return "Download the new AppImage from the releases page."
     if (Path(__file__).resolve().parent.parent / ".git").is_dir():
         return "git pull"
     return "pip install --upgrade mycat"
@@ -105,51 +110,19 @@ def download(url: str, dest: str, progress=None) -> None:
 
 
 def staging_path(kind: str) -> str:
-    """Where to download the new build before swapping it in.
-
-    For the AppImage we stage next to the running file so the final swap is an
-    atomic same-filesystem rename; everything else stages in the temp dir.
-    """
-    if kind == "appimage":
-        current = os.environ["APPIMAGE"]
-        return os.path.join(os.path.dirname(current), ".mycat-update.AppImage")
+    """Where to download the new build before swapping it in (temp dir)."""
     return os.path.join(tempfile.gettempdir(), asset_name(kind))
 
 
 def apply_and_relaunch(kind: str, downloaded: str) -> None:
     """Swap in ``downloaded`` and spawn the new build. The caller must quit the
     app immediately afterwards so the old process exits."""
-    if kind == "appimage":
-        apply_appimage(downloaded)
-    elif kind == "deb":
-        apply_deb(downloaded)
-    elif kind == "macos":
+    if kind == "macos":
         apply_macos(downloaded)
     elif kind == "windows":
         apply_windows(downloaded)
     else:
         raise ValueError(f"cannot self-update install kind {kind!r}")
-
-
-def apply_appimage(downloaded: str) -> None:
-    target = os.environ["APPIMAGE"]
-    make_executable(downloaded)
-    # Same directory as the running file -> atomic replace; the running mount
-    # keeps the old inode until this process exits.
-    os.replace(downloaded, target)
-    subprocess.Popen([target], close_fds=True, start_new_session=True)  # noqa: S603
-    logger.info("AppImage updated in place: %s", target)
-
-
-def apply_deb(downloaded: str) -> None:
-    # /usr/bin/mycat is root-owned: install through polkit. apt replaces the
-    # file in place; the running process keeps its old inode until it exits.
-    subprocess.run(  # noqa: S603
-        ["pkexec", "apt-get", "install", "-y", "--only-upgrade", "--allow-downgrades", downloaded],
-        check=True,
-    )
-    subprocess.Popen([sys.executable], close_fds=True, start_new_session=True)  # noqa: S603
-    logger.info("deb installed via pkexec; relaunching %s", sys.executable)
 
 
 def apply_macos(zip_path: str) -> None:
@@ -180,29 +153,35 @@ def apply_windows(downloaded: str) -> None:
     pid = os.getpid()
     log = os.path.join(tempfile.gettempdir(), "mycat-update.log")
     script = os.path.join(tempfile.gettempdir(), "mycat-update.bat")
-    # Wait for this process to exit, then KEEP RETRYING the overwrite: a onefile
-    # build stays locked by its bootloader for a moment after the app PID is
-    # gone, so a single `move` right away fails and nothing relaunches. Retry for
-    # ~15 s, then start the (now updated) exe. Delayed expansion for the counter.
+    # Wait for this process (and its bootloader) to exit and release the exe, then
+    # KEEP RETRYING the overwrite: a onefile build stays locked for a moment after
+    # the app PID is gone, so a single `move` right away fails and nothing
+    # relaunches. Delays use `ping`, not `timeout`: this swapper runs detached with
+    # no console, and `timeout` errors out ("input redirection is not supported")
+    # without one — which was breaking the wait/retry loops entirely.
     body = (
         "@echo off\r\n"
         "setlocal enabledelayedexpansion\r\n"
         f'set "LOG={log}"\r\n'
-        'echo update swapper started > "%LOG%"\r\n'
+        f'set "NEW={downloaded}"\r\n'
+        f'set "EXE={exe}"\r\n'
+        'echo swapper started %DATE% %TIME% > "%LOG%"\r\n'
         ":wait\r\n"
         f'tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul\r\n'
-        "if not errorlevel 1 ( timeout /t 1 /nobreak >nul & goto wait )\r\n"
-        f'echo pid {pid} gone, swapping >> "%LOG%"\r\n'
+        "if not errorlevel 1 ( ping -n 2 127.0.0.1 >nul & goto wait )\r\n"
+        'echo app exited >> "%LOG%"\r\n'
         "set /a TRIES=0\r\n"
         ":swap\r\n"
-        f'move /Y "{downloaded}" "{exe}" >nul 2>>"%LOG%"\r\n'
-        "if not errorlevel 1 goto start\r\n"
+        'move /Y "%NEW%" "%EXE%" >nul 2>>"%LOG%"\r\n'
+        "if not errorlevel 1 goto launch\r\n"
         "set /a TRIES+=1\r\n"
-        "if !TRIES! LSS 15 ( timeout /t 1 /nobreak >nul & goto swap )\r\n"
-        'echo move failed after retries >> "%LOG%"\r\n'
-        ":start\r\n"
-        f'echo starting >> "%LOG%"\r\n'
-        f'start "" "{exe}"\r\n'
+        'echo move attempt !TRIES! failed >> "%LOG%"\r\n'
+        "if !TRIES! LSS 30 ( ping -n 2 127.0.0.1 >nul & goto swap )\r\n"
+        'echo gave up swapping after !TRIES! tries >> "%LOG%"\r\n'
+        ":launch\r\n"
+        'echo launching "%EXE%" >> "%LOG%"\r\n'
+        'start "" "%EXE%"\r\n'
+        'echo done >> "%LOG%"\r\n'
         'del "%~f0"\r\n'
     )
     with open(script, "w", encoding="utf-8") as handle:
@@ -217,6 +196,7 @@ def apply_windows(downloaded: str) -> None:
 __all__ = [
     "install_kind",
     "can_self_update",
+    "update_hint",
     "asset_name",
     "asset_url",
     "download",

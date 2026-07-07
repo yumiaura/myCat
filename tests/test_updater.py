@@ -9,11 +9,18 @@ def test_install_kind_is_source_when_not_frozen():
 
 
 def test_can_self_update():
-    assert updater.can_self_update("appimage")
-    assert updater.can_self_update("deb")
+    # Only Windows/macOS download + relaunch; the rest just get notified.
     assert updater.can_self_update("macos")
     assert updater.can_self_update("windows")
+    assert not updater.can_self_update("appimage")
+    assert not updater.can_self_update("deb")
     assert not updater.can_self_update("source")
+
+
+def test_update_hint():
+    assert updater.update_hint("deb").lower().startswith("download")
+    assert "AppImage" in updater.update_hint("appimage")
+    assert updater.update_hint("source") in ("git pull", "pip install --upgrade mycat")
 
 
 def test_asset_names():
@@ -35,6 +42,6 @@ def test_staging_path_for_temp_kinds():
     assert updater.staging_path("deb").endswith("mycat-linux-amd64.deb")
 
 
-def test_source_update_command_is_git_pull_in_checkout():
+def test_update_hint_is_git_pull_in_checkout():
     # The test suite runs from the git checkout, so it should suggest git pull.
-    assert updater.source_update_command() == "git pull"
+    assert updater.update_hint("source") == "git pull"

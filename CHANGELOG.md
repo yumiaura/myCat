@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Changed
+- **Only Windows/macOS self-update; pip / `.deb` / AppImage are just notified.** "Update…" downloads and restarts automatically only on the Windows `.exe` and macOS `.app`. On pip, source, `.deb` and AppImage it now just says an update is available with how to get it (`pip install --upgrade mycat`, `git pull`, or "download the new .deb/AppImage") plus an **Open releases** link. The "you're up to date" message also links to the releases page (branch `fix/windows-update-relaunch`).
+
+### Fixed
+- **Windows self-update relaunch (again).** The swap script runs in a detached, console-less process, where `timeout` errors out — so the wait/retry delays never actually happened and the app closed without reopening. It now uses `ping` for the delays (works with no console) and retries the swap up to 30×, with a step-by-step `%TEMP%\mycat-update.log`. Since an update runs the *currently installed* version's code, this takes effect for updates **from 0.1.15 onward** (branch `fix/windows-update-relaunch`).
+
 ## [0.1.14] - 2026-07-07
 
 ### Added
