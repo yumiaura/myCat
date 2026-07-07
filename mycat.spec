@@ -57,6 +57,12 @@ if assets_dir.is_dir():
     if planes_dir.is_dir():
         for sprite in sorted(planes_dir.glob("*.png")):
             datas.append((str(sprite), "mycat/assets/planes"))
+    # Bundled emoji fallback font (used only where the system has no emoji font).
+    fonts_dir = assets_dir / "fonts"
+    if fonts_dir.is_dir():
+        for font in sorted(fonts_dir.iterdir()):
+            if font.is_file():
+                datas.append((str(font), "mycat/assets/fonts"))
 
 
 a = Analysis(

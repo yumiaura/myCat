@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Fixed
+- **Emoji no longer show as tofu boxes where the system has no emoji font.** On a minimal `pip install` (typically Linux without `fonts-noto-color-emoji`), the Activity dialog's 🍅 / ⌨ / 🖱 and other emoji rendered as empty squares. mycat now ships a monochrome NotoEmoji and registers it as a fallback **only when no system emoji font is present** — systems that already have one keep their colour emoji, bare ones get monochrome glyphs instead of boxes (branch `feat/bundled-emoji-fallback`).
+
 ## [0.1.12] - 2026-07-06
 
 ### Added
