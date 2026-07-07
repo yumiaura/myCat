@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## [0.1.13] - 2026-07-07
 
 ### Changed
 - **Tray menu: a single Open/Close toggle, and Quit lives only in the tray.** The cat's right-click "Hide" is renamed **Close** (still tucks it into the tray). The tray entry now flips with state: **Open** when the cat is hidden, **Close** when it's on screen. **Quit** is only in the tray menu now (branch `feat/tray-open-close-menu`).
