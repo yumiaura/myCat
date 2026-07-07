@@ -20,6 +20,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import warnings
 import zipfile
 from pathlib import Path
@@ -40,6 +41,7 @@ if __package__:
         reminder,
         secret_store,
         update_check,
+        updater,
     )
 else:
     import importlib
@@ -59,6 +61,7 @@ else:
     activity = importlib.import_module("mycat.activity")
     digest = importlib.import_module("mycat.digest")
     update_check = importlib.import_module("mycat.update_check")
+    updater = importlib.import_module("mycat.updater")
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -496,6 +499,15 @@ def harden_pixmap(pixmap: QtGui.QPixmap, threshold: int = 128) -> QtGui.QPixmap:
     hardened = QtGui.QImage(pil.tobytes("raw", "RGBA"), width, height,
                             QtGui.QImage.Format.Format_RGBA8888)
     return QtGui.QPixmap.fromImage(hardened.copy())
+
+
+class UpdateSignals(QtCore.QObject):
+    """Marshals the self-update worker threads back onto the GUI thread."""
+
+    checked = QtCore.Signal(str)          # latest tag if newer, else ""
+    progress = QtCore.Signal(int, int)    # bytes done, total (0 = unknown)
+    applied = QtCore.Signal()             # new build swapped in + spawned
+    failed = QtCore.Signal(str)           # error message
 
 
 class PixelCatWindow(QtWidgets.QWidget):
@@ -1181,6 +1193,9 @@ class PixelCatWindow(QtWidgets.QWidget):
         reset_action = menu.addAction("Reset")
         reset_action.triggered.connect(self._reset_position)
 
+        update_action = menu.addAction("Update…")
+        update_action.triggered.connect(self.open_update)
+
         if autostart.is_supported():
             login_action = menu.addAction("Autostart")
             login_action.setCheckable(True)
@@ -1306,6 +1321,97 @@ class PixelCatWindow(QtWidgets.QWidget):
         controller = getattr(self, "reminder_controller", None)
         if controller is not None:
             controller.open_dialog()
+
+    def open_update(self) -> None:
+        """Check the latest release; for a frozen build, offer to self-update."""
+        kind = updater.install_kind()
+        current = update_check.current_version()
+        signals = UpdateSignals(self)
+        self.update_signals = signals  # keep alive while the flow runs
+        signals.checked.connect(lambda latest: self.on_update_checked(kind, current, latest))
+        signals.failed.connect(self.on_update_failed)
+
+        def check() -> None:
+            try:
+                signals.checked.emit(update_check.newer_release(current) or "")
+            except Exception as exc:  # noqa: BLE001 - surfaced to the user
+                signals.failed.emit(str(exc))
+
+        threading.Thread(target=check, name="mycat-update-check", daemon=True).start()
+
+    def on_update_checked(self, kind: str, current: str, latest: str) -> None:
+        if not latest:
+            QtWidgets.QMessageBox.information(
+                self, "mycat", f"You're on the latest version ({current})."
+            )
+            return
+        if not updater.can_self_update(kind):
+            box = QtWidgets.QMessageBox(self)
+            box.setWindowTitle("mycat")
+            box.setText(f"mycat {latest} is available (you have {current}).")
+            box.setInformativeText(
+                "You're running from source — update with git/pip, or grab a prebuilt build."
+            )
+            open_button = box.addButton("Open releases", QtWidgets.QMessageBox.ButtonRole.AcceptRole)
+            box.addButton(QtWidgets.QMessageBox.StandardButton.Close)
+            box.exec()
+            if box.clickedButton() is open_button:
+                QtGui.QDesktopServices.openUrl(QtCore.QUrl(updater.RELEASES_PAGE))
+            return
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            "Update mycat",
+            f"Update to {latest}? mycat will download the new build and restart.",
+        )
+        if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+            self.download_update(kind)
+
+    def download_update(self, kind: str) -> None:
+        signals = self.update_signals
+        dialog = QtWidgets.QProgressDialog("Downloading update…", "Cancel", 0, 100, self)
+        dialog.setWindowTitle("Updating mycat")
+        dialog.setMinimumDuration(0)
+        dialog.setAutoClose(False)
+        dialog.setAutoReset(False)
+        dialog.setValue(0)
+        cancelled = threading.Event()
+        dialog.canceled.connect(cancelled.set)
+
+        signals.progress.connect(
+            lambda done, total: dialog.setValue(int(done * 100 / total) if total else 0)
+        )
+        signals.applied.connect(lambda: (dialog.setLabelText("Restarting…"), self.finish_update()))
+        signals.failed.connect(lambda message: (dialog.close(), self.on_update_failed(message)))
+
+        def worker() -> None:
+            try:
+                dest = updater.staging_path(kind)
+
+                def progress(done: int, total: int) -> None:
+                    if cancelled.is_set():
+                        raise RuntimeError("cancelled")
+                    signals.progress.emit(done, total)
+
+                updater.download(updater.asset_url(kind), dest, progress)
+                if cancelled.is_set():
+                    return
+                updater.apply_and_relaunch(kind, dest)
+                signals.applied.emit()
+            except Exception as exc:  # noqa: BLE001 - surfaced to the user
+                if not cancelled.is_set():
+                    signals.failed.emit(str(exc))
+
+        threading.Thread(target=worker, name="mycat-update", daemon=True).start()
+        dialog.exec()
+
+    def finish_update(self) -> None:
+        """New build spawned — quit so the old process exits (and frees the file)."""
+        flush_activity_on_quit(self)
+        QtWidgets.QApplication.quit()
+
+    def on_update_failed(self, message: str) -> None:
+        logger.warning("Update failed: %s", message)
+        QtWidgets.QMessageBox.warning(self, "Update failed", f"Couldn't update: {message}")
 
     def _on_char_installed(self, _char_id: str) -> None:
         self.available_images = char_catalog.scan_all()
@@ -1723,6 +1829,7 @@ def setup_tray(app, window, icon_pixmap):
     # Focus is fully automatic now (earned from activity) — no tray toggle.
 
     menu.addAction("Reset", window._reset_position)
+    menu.addAction("Update…", window.open_update)
     if autostart.is_supported():
         menu.addSeparator()
         login_action = menu.addAction("Autostart")
