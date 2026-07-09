@@ -1187,6 +1187,17 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.available_images = char_catalog.scan_all()
         if len(self.available_images) > 0:
             images_menu = menu.addMenu("Chars")
+            create_action = images_menu.addAction("Create custom with AI…")
+            create_action.triggered.connect(self.open_ai_char)
+            generated_chars = char_catalog.ai_generated_chars()
+            if generated_chars:
+                delete_menu = images_menu.addMenu("Delete custom")
+                for custom_id in generated_chars:
+                    delete_action = delete_menu.addAction(custom_id)
+                    delete_action.triggered.connect(
+                        lambda checked=False, name=custom_id: self.delete_ai_char(name)
+                    )
+            images_menu.addSeparator()
             for img_name in self.available_images:
                 action = images_menu.addAction(img_name)
                 if img_name == self.file_name:
@@ -1218,6 +1229,41 @@ class PixelCatWindow(QtWidgets.QWidget):
             quit_action = menu.addAction("Quit")
             quit_action.triggered.connect(QtWidgets.QApplication.quit)
         menu.exec(self.mapToGlobal(pos))
+
+    def open_ai_char(self) -> None:
+        """Open the reference-photo generator and select its saved result."""
+        try:
+            if __package__:
+                from .ai_char_ui import AICharDialog
+            else:
+                import importlib
+
+                AICharDialog = importlib.import_module("mycat.ai_char_ui").AICharDialog
+            dialog = AICharDialog(self)
+            dialog.character_created.connect(self._load_image)
+            dialog.exec()
+        except Exception as exc:  # noqa: BLE001 - keep the desktop companion alive
+            logger.exception("Failed to open AI character generator")
+            QtWidgets.QMessageBox.warning(self, "AI character", str(exc))
+
+    def delete_ai_char(self, char_id: str) -> None:
+        """Delete a generated pack locally; this never makes an API request."""
+        answer = QtWidgets.QMessageBox.question(
+            self,
+            "Delete custom character?",
+            f'Delete "{char_id}" from this computer? This cannot be undone.',
+        )
+        if answer != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        was_active = self.file_name == char_id
+        if not char_catalog.remove_installed(char_id):
+            QtWidgets.QMessageBox.warning(self, "Delete custom character", "The character could not be deleted.")
+            return
+        self.available_images = char_catalog.scan_all()
+        if was_active:
+            fallback = "cat" if char_catalog.find_char("cat") else next(iter(self.available_images), "")
+            if fallback:
+                self._load_image(fallback)
 
     def open_llm_settings(self) -> None:
         """Open the LLM vendor settings dialog (vendor, model, test, save)."""
