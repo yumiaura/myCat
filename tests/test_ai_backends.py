@@ -60,8 +60,9 @@ def test_make_backend_passes_prompts():
     )
     assert b.prompt == "P"
     assert b.negative == "N"
-    o = ai_backends.make_backend({"backend": "openai", "openai_prompt": "hello cat"}, "key")
+    o = ai_backends.make_backend({"backend": "openai", "openai_prompt": "hello cat", "openai_negative": "dogs"}, "key")
     assert o.prompt == "hello cat"
+    assert o.negative == "dogs"
 
 
 def test_backends_fall_back_to_default_prompts():
@@ -137,6 +138,30 @@ def test_openai_txt2img_sends_prompt(monkeypatch):
     out = ai_backends.OpenAIBackend("key", mode="txt2img", prompt="a hat cat").generate([])
     assert out == image
     assert captured["body"]["prompt"] == "a hat cat"
+
+
+def test_combine_prompt_folds_negative():
+    assert ai_backends.combine_prompt("a cat", "") == "a cat"
+    out = ai_backends.combine_prompt("a cat", "dogs, text")
+    assert "a cat" in out
+    assert "must not contain" in out.lower()
+    assert "dogs, text" in out
+
+
+def test_openai_txt2img_folds_negative_into_prompt(monkeypatch):
+    image = png_bytes()
+    captured = {}
+    payload = {"data": [{"b64_json": base64.b64encode(image).decode()}]}
+
+    def fake_urlopen(req, timeout):
+        captured["body"] = json.loads(req.data)
+        return JsonResponse(payload)
+
+    monkeypatch.setattr(ai_backends.urllib.request, "urlopen", fake_urlopen)
+    ai_backends.OpenAIBackend("key", mode="txt2img", prompt="a cat", negative="dogs").generate([])
+    assert "a cat" in captured["body"]["prompt"]
+    assert "dogs" in captured["body"]["prompt"]
+    assert "must not contain" in captured["body"]["prompt"].lower()
 
 
 def test_openai_img2img_delegates_to_request_image(monkeypatch):

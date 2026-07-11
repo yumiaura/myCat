@@ -163,6 +163,10 @@ class AICharDialog(QtWidgets.QDialog):
         self.negative_label = QtWidgets.QLabel("Negative prompt")
         self.negative_edit = QtWidgets.QPlainTextEdit()
         self.negative_edit.setMaximumHeight(70)
+        self.negative_edit.setToolTip(
+            "Things to avoid. OpenAI has no negative field, so it's folded into the "
+            "prompt as 'the image must not contain: …'."
+        )
         self.reset_prompt_btn = QtWidgets.QPushButton("Reset to default")
         self.reset_prompt_btn.clicked.connect(self.reset_prompts)
 
@@ -251,20 +255,17 @@ class AICharDialog(QtWidgets.QDialog):
     def load_prompt_fields(self, kind: str) -> None:
         style = self.style_of(kind)
         self.prompt_edit.setPlainText(self.settings.get(f"{style}_prompt", ""))
-        if style == "selfhosted":
-            self.negative_edit.setPlainText(self.settings.get("selfhosted_negative", ""))
+        self.negative_edit.setPlainText(self.settings.get(f"{style}_negative", ""))
 
     def stash_prompt_fields(self, kind: str) -> None:
         style = self.style_of(kind)
         self.settings[f"{style}_prompt"] = self.prompt_edit.toPlainText()
-        if style == "selfhosted":
-            self.settings["selfhosted_negative"] = self.negative_edit.toPlainText()
+        self.settings[f"{style}_negative"] = self.negative_edit.toPlainText()
 
     def reset_prompts(self) -> None:
         style = self.style_of(self.backend_combo.currentData())
         self.prompt_edit.setPlainText(ai_backends.GENERATION_DEFAULTS[f"{style}_prompt"])
-        if style == "selfhosted":
-            self.negative_edit.setPlainText(ai_backends.GENERATION_DEFAULTS["selfhosted_negative"])
+        self.negative_edit.setPlainText(ai_backends.GENERATION_DEFAULTS[f"{style}_negative"])
 
     def load_local_fields(self, kind: str) -> None:
         if kind in ("a1111", "comfyui"):
@@ -290,11 +291,8 @@ class AICharDialog(QtWidgets.QDialog):
 
     def update_visibility(self) -> None:
         kind = self.backend_combo.currentData()
-        selfhosted = kind in ("a1111", "comfyui")
         self.openai_group.setVisible(kind == "openai")
-        self.local_group.setVisible(selfhosted)
-        self.negative_label.setVisible(selfhosted)
-        self.negative_edit.setVisible(selfhosted)
+        self.local_group.setVisible(kind in ("a1111", "comfyui"))
 
     def collect_settings(self) -> dict:
         self.stash_local_fields(self.current_kind)

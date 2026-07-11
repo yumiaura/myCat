@@ -73,9 +73,22 @@ LOCAL_NEGATIVE = (
 )
 
 
-# OpenAI keeps its prose default. All three of these are just the *initial* text —
-# the dialog lets the user edit each and persists their own version.
+# OpenAI keeps its prose default; these are just the *initial* text — the dialog
+# lets the user edit each and persists their own version.
 OPENAI_DEFAULT_PROMPT = ai_char.PROMPT
+OPENAI_DEFAULT_NEGATIVE = (
+    "nudity, sexual content, extra limbs, deformed hands, watermark, signature, unwanted text"
+)
+
+
+def combine_prompt(prompt: str, negative: str) -> str:
+    """OpenAI's image API has no negative field, so fold the negative into the
+    prompt as an explicit 'must not contain' instruction."""
+    prompt = prompt.strip()
+    negative = negative.strip()
+    if negative:
+        return f"{prompt}\n\nThe image must not contain: {negative}."
+    return prompt
 
 
 def http_json(url: str, payload=None, *, timeout: float = HTTP_TIMEOUT, method: str | None = None):
@@ -143,26 +156,28 @@ class OpenAIBackend:
 
     def __init__(
         self, api_key: str, *, model: str = OPENAI_MODELS[0], quality: str = "low",
-        mode: str = "img2img", prompt: str = "",
+        mode: str = "img2img", prompt: str = "", negative: str = "",
     ):
         self.api_key = (api_key or "").strip()
         self.model = model
         self.quality = quality
         self.mode = mode
         self.prompt = prompt or OPENAI_DEFAULT_PROMPT
+        self.negative = negative
 
     def generate(self, references: list[tuple[str, bytes]]) -> bytes:
         if not self.api_key:
             raise AICharError("Enter an OpenAI API key or set OPENAI_API_KEY.")
+        prompt = combine_prompt(self.prompt, self.negative)
         if self.mode == "img2img":
             if not references:
                 raise AICharError("Choose at least one reference photo for img2img.")
             return ai_char.request_image(
-                self.api_key, references, quality=self.quality, model=self.model, prompt=self.prompt
+                self.api_key, references, quality=self.quality, model=self.model, prompt=prompt
             )
         payload = {
             "model": self.model,
-            "prompt": self.prompt,
+            "prompt": prompt,
             "size": "1024x1536",
             "quality": self.quality,
             "background": "transparent",
@@ -345,6 +360,7 @@ GENERATION_DEFAULTS = {
     "comfyui_checkpoint": "sd15.safetensors",
     "steps": str(LOCAL_STEPS),
     "openai_prompt": OPENAI_DEFAULT_PROMPT,
+    "openai_negative": OPENAI_DEFAULT_NEGATIVE,
     "selfhosted_prompt": LOCAL_PROMPT,
     "selfhosted_negative": LOCAL_NEGATIVE,
 }
@@ -392,7 +408,7 @@ def make_backend(settings: dict, api_key: str = "") -> OpenAIBackend | A1111Back
         return OpenAIBackend(
             api_key, model=settings.get("openai_model", OPENAI_MODELS[0]),
             quality=settings.get("quality", "low"), mode=mode,
-            prompt=settings.get("openai_prompt", ""),
+            prompt=settings.get("openai_prompt", ""), negative=settings.get("openai_negative", ""),
         )
     selfhosted_prompt = settings.get("selfhosted_prompt", "")
     selfhosted_negative = settings.get("selfhosted_negative", "")
@@ -413,8 +429,8 @@ def make_backend(settings: dict, api_key: str = "") -> OpenAIBackend | A1111Back
 
 __all__ = [
     "BACKENDS", "MODES", "OPENAI_MODELS", "GENERATION_DEFAULTS",
-    "LOCAL_PROMPT", "LOCAL_NEGATIVE", "OPENAI_DEFAULT_PROMPT",
+    "LOCAL_PROMPT", "LOCAL_NEGATIVE", "OPENAI_DEFAULT_PROMPT", "OPENAI_DEFAULT_NEGATIVE",
     "OpenAIBackend", "A1111Backend", "ComfyUIBackend",
-    "list_models", "make_backend",
+    "list_models", "make_backend", "combine_prompt",
     "load_generation_settings", "save_generation_settings",
 ]
