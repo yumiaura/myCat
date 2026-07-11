@@ -73,6 +73,19 @@ jobs:
       - name: Build with PyInstaller
         run: pyinstaller --noconfirm mycat.spec
 
+      - name: Stamp the app version into Info.plist
+        run: |
+          # The spec ships a 0.0.0 placeholder; write the real version so macOS
+          # sees a new version on each update and refreshes the app icon/metadata
+          # (a stale bundle version makes LaunchServices keep the cached icon).
+          VERSION=$(python -c "import importlib.metadata as m; print(m.version('mycat'))")
+          PLIST=dist/mycat.app/Contents/Info.plist
+          for key in CFBundleShortVersionString CFBundleVersion; do
+            /usr/libexec/PlistBuddy -c "Set :$key $VERSION" "$PLIST" \
+              || /usr/libexec/PlistBuddy -c "Add :$key string $VERSION" "$PLIST"
+          done
+          echo "Stamped mycat.app version = $VERSION"
+
       - name: Zip .app bundle
         run: |
           cd dist
@@ -110,6 +123,19 @@ jobs:
 
       - name: Build with PyInstaller
         run: pyinstaller --noconfirm mycat.spec
+
+      - name: Stamp the app version into Info.plist
+        run: |
+          # The spec ships a 0.0.0 placeholder; write the real version so macOS
+          # sees a new version on each update and refreshes the app icon/metadata
+          # (a stale bundle version makes LaunchServices keep the cached icon).
+          VERSION=$(python -c "import importlib.metadata as m; print(m.version('mycat'))")
+          PLIST=dist/mycat.app/Contents/Info.plist
+          for key in CFBundleShortVersionString CFBundleVersion; do
+            /usr/libexec/PlistBuddy -c "Set :$key $VERSION" "$PLIST" \
+              || /usr/libexec/PlistBuddy -c "Add :$key string $VERSION" "$PLIST"
+          done
+          echo "Stamped mycat.app version = $VERSION"
 
       - name: Zip .app bundle
         run: |
