@@ -62,9 +62,9 @@ IMG2IMG_DENOISE = 0.62           # keep some of the photo, but become a cat
 # better than OpenAI's prose, plus a strong SFW negative (many local checkpoints
 # lean NSFW).
 LOCAL_PROMPT = (
-    "chibi kitten girl, cat ears, cat paws, cat tail, whiskers, cute, big eyes, "
-    "full body, standing, centered, simple plain background, soft shading, "
-    "masterpiece, best quality"
+    "masterpiece, best quality, anime, chibi, kawaii chibi kitten girl, cat ears, "
+    "cat paws, cat tail, whiskers, cute big eyes, full body, standing, centered, "
+    "simple plain background, soft shading"
 )
 LOCAL_NEGATIVE = (
     "nsfw, nude, nipples, revealing clothing, sexual, lowres, bad anatomy, "

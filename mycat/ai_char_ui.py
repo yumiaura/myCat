@@ -87,7 +87,7 @@ class AICharDialog(QtWidgets.QDialog):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Create a custom cat with AI")
+        self.setWindowTitle("Generate a custom cat with AI")
         self.setMinimumWidth(540)
         self.setStyleSheet(LIGHT_QSS)
         self.pool = QtCore.QThreadPool(self)
