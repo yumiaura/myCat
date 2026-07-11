@@ -2,7 +2,10 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [0.1.17] - 2026-07-11
+
+### Added
+- **Create a custom cat with AI, from your own photos.** Right-click → *Chars → Create custom with AI…*, pick 1–3 reference photos of the same person plus optional visual details (glasses, colours, a bit of lettering), and OpenAI's image model turns them into a chibi cat character saved as an ordinary local char you can reuse or delete. Opt-in and privacy-conscious: no request until you click *Generate and save*, reference photos are resized in memory and never stored, and your OpenAI key can live in the OS keyring (never in the generated pack). No new required dependency — the request uses the standard library (feature by @sts19813, #89).
 
 ### Fixed
 - **Windows self-update no longer hangs on a black window.** After downloading the new build, the app called `QApplication.quit()` from inside the progress dialog's modal event loop — which doesn't break it, so the process never exited, and the update swapper waited forever for the old PID to vanish (the visible `find "<pid>"` console). The app now hard-exits after launching the swapper, so the swap + relaunch always completes. The swapper also runs with a hidden console (`CREATE_NO_WINDOW`) instead of `DETACHED_PROCESS`, so no black window flashes up or lingers (branch `fix/windows-update-hang`).

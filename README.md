@@ -25,6 +25,21 @@ If you like it, maybe I'll share an [AnimeGirl](https://github.com/yumiaura/myca
 <img width="280" height="200" alt="image" src="https://github.com/user-attachments/assets/0a1d078e-77f4-4f16-a09f-a94c5deff086" />
 <img width="280" height="200" alt="image" src="https://github.com/user-attachments/assets/d9f4cce9-bf3c-4d64-a28e-1cac7d050a8c" />
 
+### Create your own cat with AI 🎨
+
+Turn a few photos into your own cat. Right-click → **Chars → Create custom with AI…**,
+add 1–3 photos of the same person plus any optional details (glasses, colours, a bit of
+lettering), and OpenAI turns them into a chibi cat character. It's saved as an ordinary
+local char you can reuse or delete anytime — the reference photos are resized in memory
+and **never stored** by myCat. Bring your own OpenAI API key; each generation is a single
+image request.
+
+<img width="270" alt="Create custom cat with AI — dialog" src="https://github.com/user-attachments/assets/f94c141f-d339-4827-a476-a5725e27c9be" />
+<img width="270" alt="AI character — options" src="https://github.com/user-attachments/assets/6a67eb02-8ec0-4da9-a93c-0a16543f3679" />
+<br />
+<img width="270" alt="Generated cat on the desktop" src="https://github.com/user-attachments/assets/848ff041-55b0-417c-aaf7-2759cc6a6c9a" />
+<img width="220" alt="Generated cat" src="https://github.com/user-attachments/assets/1bec007a-eb5c-469a-a732-a1cd37c6cf27" />
+
 
 
 ## 🚀 Quick start
@@ -89,6 +104,7 @@ mycat                 # or, without installing:  python3 mycat/main.py
 - **Animated overlay** 🐱 - a frameless, always-on-top, draggable cat. Right-click for the menu (switch char, quit).
 - **Reminder** 🛩️ - set a message and a time (one-shot or daily) and the cat flies a little banner plane across the top of your screen. Right-click → *Reminder…* to set the message, direction, plane and color.
 - **Chat (Ollama)** 💬 - talk to the cat through a **local [Ollama](https://ollama.com) model**, no account or API key needed (see below).
+- **Create with AI** 🎨 - turn 1–3 photos into a custom chibi cat character with your own OpenAI key (right-click → *Chars → Create custom with AI…*). Reference photos are never stored; the result is an ordinary local char you can reuse or delete.
 
 ## 💬 Chat with the cat (Ollama)
 
