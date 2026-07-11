@@ -10,14 +10,14 @@ Backends:
 - **openai** — the hosted image model. ``img2img`` edits the reference photos
   (identity-preserving), ``txt2img`` generates from the prompt alone. Returns a
   transparent PNG.
-- **a1111** — a local AUTOMATIC1111 Stable Diffusion WebUI (``/sdapi/v1``).
+- **a1111** — a self-hosted AUTOMATIC1111 Stable Diffusion WebUI (``/sdapi/v1``).
   ``txt2img`` / ``img2img``. Opaque output (the WebUI has no background remover).
-- **comfyui** — a local ComfyUI server. A small built-in workflow does
+- **comfyui** — a self-hosted ComfyUI server. A small built-in workflow does
   ``txt2img`` / ``img2img`` with core nodes only, so it works on any ComfyUI.
   Opaque output.
 
-Both modes are offered for every backend, and the local backends can list their
-checkpoints so the settings dialog can show a model picker.
+Both modes are offered for every backend, and the self-hosted backends can list
+their checkpoints so the settings dialog can show a model picker.
 """
 
 from __future__ import annotations
@@ -99,6 +99,9 @@ def service_error(prefix: str, exc: Exception) -> AICharError:
         except Exception:  # noqa: BLE001 - best-effort detail extraction
             pass
         return AICharError(f"{prefix} ({exc.code}): {body[:300] or exc.reason}")
+    reason = getattr(exc, "reason", None)
+    if isinstance(exc, TimeoutError) or isinstance(reason, TimeoutError) or "timed out" in str(reason or exc).lower():
+        return AICharError(f"{prefix}: the server didn't respond in time — it may be loading a model or out of memory.")
     if isinstance(exc, urllib.error.URLError):
         return AICharError(f"{prefix}: could not reach the server ({exc.reason}).")
     return AICharError(f"{prefix}: {exc}")
@@ -179,7 +182,7 @@ class OpenAIBackend:
 
 
 class A1111Backend:
-    """A local AUTOMATIC1111 Stable Diffusion WebUI. Opaque output."""
+    """A self-hosted AUTOMATIC1111 Stable Diffusion WebUI. Opaque output."""
 
     kind = "a1111"
 
@@ -221,8 +224,8 @@ class A1111Backend:
 
 
 class ComfyUIBackend:
-    """A local ComfyUI server driven by a small built-in workflow (core nodes
-    only, so it runs on any ComfyUI). Opaque output."""
+    """A self-hosted ComfyUI server driven by a small built-in workflow (core
+    nodes only, so it runs on any ComfyUI). Opaque output."""
 
     kind = "comfyui"
 
@@ -318,7 +321,7 @@ class ComfyUIBackend:
                     raise AICharError("ComfyUI reported an error while generating (check the server).")
             time.sleep(2)
             waited += 2
-        raise AICharError("ComfyUI timed out while generating.")
+        raise AICharError("ComfyUI didn't finish in time — the server may be busy or loading a model.")
 
 
 GENERATION_DEFAULTS = {

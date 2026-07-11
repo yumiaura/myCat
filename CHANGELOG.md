@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
-- **Choose how AI characters are generated — OpenAI, or a local Stable Diffusion (AUTOMATIC1111) / ComfyUI server.** The *Create custom with AI…* dialog gained a backend picker and a **txt2img / img2img** toggle: img2img turns your reference photos into the cat (identity-preserving on OpenAI), txt2img generates from the prompt alone. For the local backends you enter the server address and pick a checkpoint from a live model list; OpenAI adds a model choice (`gpt-image-1.5` / `gpt-image-1`). Everything talks HTTP over the standard library — no new dependency — and the choice persists in `config.ini`. OpenAI output is transparent; the local backends render on your own GPU (opaque) (branch `feat/generation-backends`).
+- **Choose how AI characters are generated — OpenAI, or a self-hosted Stable Diffusion (AUTOMATIC1111) / ComfyUI server.** The *Create custom with AI…* dialog gained a backend picker and a **txt2img / img2img** toggle: img2img turns your reference photos into the cat (identity-preserving on OpenAI), txt2img generates from the prompt alone. For the self-hosted backends you enter the server address and pick a checkpoint from a live model list; OpenAI adds a model choice (`gpt-image-1.5` / `gpt-image-1`). Everything talks HTTP over the standard library — no new dependency — and the choice persists in `config.ini`. OpenAI output is transparent; the self-hosted backends render on your own GPU (opaque) (branch `feat/generation-backends`).
 
 ## [0.1.17] - 2026-07-11
 
