@@ -36,13 +36,12 @@ class GenerationSignals(QtCore.QObject):
 
 
 class GenerationWorker(QtCore.QRunnable):
-    def __init__(self, name: str, paths: list[Path], settings: dict, api_key: str, details: str) -> None:
+    def __init__(self, name: str, paths: list[Path], settings: dict, api_key: str) -> None:
         super().__init__()
         self.name = name
         self.paths = paths
         self.settings = settings
         self.api_key = api_key
-        self.details = details
         self.signals = GenerationSignals()
 
     def run(self) -> None:
@@ -52,7 +51,7 @@ class GenerationWorker(QtCore.QRunnable):
         try:
             references = ai_char.prepare_references(self.paths) if self.paths else []
             backend = ai_backends.make_backend(self.settings, self.api_key)
-            image = backend.generate(references, self.details)
+            image = backend.generate(references)
             char_id, path = ai_char.install_character(self.name, image)
         except Exception as exc:  # noqa: BLE001 - error is shown in the dialog
             logger.warning("Character generation failed (backend=%s, mode=%s): %s", kind, mode, exc)
@@ -158,9 +157,17 @@ class AICharDialog(QtWidgets.QDialog):
         self.local_group = QtWidgets.QGroupBox("Self-hosted server")
         self.local_group.setLayout(local_form)
 
-        self.details_edit = QtWidgets.QPlainTextEdit()
-        self.details_edit.setPlaceholderText('Optional. Example: "Add round glasses and a red hoodie."')
-        self.details_edit.setMaximumHeight(70)
+        # Editable prompt (per backend style) + negative (self-hosted only).
+        self.prompt_edit = QtWidgets.QPlainTextEdit()
+        self.prompt_edit.setMaximumHeight(90)
+        self.negative_label = QtWidgets.QLabel("Negative prompt")
+        self.negative_edit = QtWidgets.QPlainTextEdit()
+        self.negative_edit.setMaximumHeight(70)
+        self.reset_prompt_btn = QtWidgets.QPushButton("Reset to default")
+        self.reset_prompt_btn.clicked.connect(self.reset_prompts)
+        reset_row = QtWidgets.QHBoxLayout()
+        reset_row.addStretch(1)
+        reset_row.addWidget(self.reset_prompt_btn)
 
         self.reference_list = QtWidgets.QListWidget()
         self.reference_list.setIconSize(QtCore.QSize(56, 56))
@@ -195,8 +202,11 @@ class AICharDialog(QtWidgets.QDialog):
         layout.addLayout(top_form)
         layout.addWidget(self.openai_group)
         layout.addWidget(self.local_group)
-        layout.addWidget(QtWidgets.QLabel("Additional details"))
-        layout.addWidget(self.details_edit)
+        layout.addWidget(QtWidgets.QLabel("Prompt"))
+        layout.addWidget(self.prompt_edit)
+        layout.addWidget(self.negative_label)
+        layout.addWidget(self.negative_edit)
+        layout.addLayout(reset_row)
         layout.addWidget(QtWidgets.QLabel("Reference photos (maximum 3)"))
         layout.addWidget(self.reference_list)
         layout.addLayout(photo_buttons)
@@ -219,7 +229,30 @@ class AICharDialog(QtWidgets.QDialog):
         self.combo_select(self.model_combo, self.settings.get("openai_model", ai_backends.OPENAI_MODELS[0]))
         self.combo_select(self.quality_combo, self.settings.get("quality", "low"))
         self.load_local_fields(self.current_kind)
+        self.load_prompt_fields(self.current_kind)
         self.update_visibility()
+
+    def style_of(self, kind: str) -> str:
+        """Prompt style key: OpenAI has its own; the self-hosted backends share one."""
+        return "openai" if kind == "openai" else "selfhosted"
+
+    def load_prompt_fields(self, kind: str) -> None:
+        style = self.style_of(kind)
+        self.prompt_edit.setPlainText(self.settings.get(f"{style}_prompt", ""))
+        if style == "selfhosted":
+            self.negative_edit.setPlainText(self.settings.get("selfhosted_negative", ""))
+
+    def stash_prompt_fields(self, kind: str) -> None:
+        style = self.style_of(kind)
+        self.settings[f"{style}_prompt"] = self.prompt_edit.toPlainText()
+        if style == "selfhosted":
+            self.settings["selfhosted_negative"] = self.negative_edit.toPlainText()
+
+    def reset_prompts(self) -> None:
+        style = self.style_of(self.backend_combo.currentData())
+        self.prompt_edit.setPlainText(ai_backends.GENERATION_DEFAULTS[f"{style}_prompt"])
+        if style == "selfhosted":
+            self.negative_edit.setPlainText(ai_backends.GENERATION_DEFAULTS["selfhosted_negative"])
 
     def load_local_fields(self, kind: str) -> None:
         if kind in ("a1111", "comfyui"):
@@ -237,17 +270,23 @@ class AICharDialog(QtWidgets.QDialog):
 
     def on_backend_changed(self) -> None:
         self.stash_local_fields(self.current_kind)
+        self.stash_prompt_fields(self.current_kind)
         self.current_kind = self.backend_combo.currentData()
         self.load_local_fields(self.current_kind)
+        self.load_prompt_fields(self.current_kind)
         self.update_visibility()
 
     def update_visibility(self) -> None:
         kind = self.backend_combo.currentData()
+        selfhosted = kind in ("a1111", "comfyui")
         self.openai_group.setVisible(kind == "openai")
-        self.local_group.setVisible(kind in ("a1111", "comfyui"))
+        self.local_group.setVisible(selfhosted)
+        self.negative_label.setVisible(selfhosted)
+        self.negative_edit.setVisible(selfhosted)
 
     def collect_settings(self) -> dict:
         self.stash_local_fields(self.current_kind)
+        self.stash_prompt_fields(self.current_kind)
         settings = dict(self.settings)
         settings["backend"] = self.backend_combo.currentData()
         settings["mode"] = self.mode_combo.currentData()
@@ -338,10 +377,8 @@ class AICharDialog(QtWidgets.QDialog):
         if kind in ("a1111", "comfyui") and not self.url_edit.text().strip():
             self.set_status("Enter the self-hosted server address.", error=True)
             return
-        try:
-            ai_char.build_prompt(self.details_edit.toPlainText())
-        except ai_char.AICharError as exc:
-            self.set_status(str(exc), error=True)
+        if not self.prompt_edit.toPlainText().strip():
+            self.set_status("Enter a prompt.", error=True)
             return
         if char_catalog.find_char(char_id) is not None:
             answer = QtWidgets.QMessageBox.question(
@@ -362,9 +399,7 @@ class AICharDialog(QtWidgets.QDialog):
         self.generate_btn.setEnabled(False)
         note = " One API request will be charged." if kind == "openai" else ""
         self.set_status("Generating… this can take a bit." + note)
-        worker = GenerationWorker(
-            name, list(self.reference_paths), settings, key, self.details_edit.toPlainText().strip()
-        )
+        worker = GenerationWorker(name, list(self.reference_paths), settings, key)
         worker.signals.completed.connect(self.on_completed)
         worker.signals.failed.connect(self.on_failed)
         self.pool.start(worker)

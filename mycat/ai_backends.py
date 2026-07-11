@@ -73,10 +73,9 @@ LOCAL_NEGATIVE = (
 )
 
 
-def local_prompt(additional_instructions: str = "") -> str:
-    """Base mascot prompt plus the user's optional visual details."""
-    details = additional_instructions.strip()
-    return f"{LOCAL_PROMPT}, {details}" if details else LOCAL_PROMPT
+# OpenAI keeps its prose default. All three of these are just the *initial* text —
+# the dialog lets the user edit each and persists their own version.
+OPENAI_DEFAULT_PROMPT = ai_char.PROMPT
 
 
 def http_json(url: str, payload=None, *, timeout: float = HTTP_TIMEOUT, method: str | None = None):
@@ -142,25 +141,28 @@ class OpenAIBackend:
 
     kind = "openai"
 
-    def __init__(self, api_key: str, *, model: str = OPENAI_MODELS[0], quality: str = "low", mode: str = "img2img"):
+    def __init__(
+        self, api_key: str, *, model: str = OPENAI_MODELS[0], quality: str = "low",
+        mode: str = "img2img", prompt: str = "",
+    ):
         self.api_key = (api_key or "").strip()
         self.model = model
         self.quality = quality
         self.mode = mode
+        self.prompt = prompt or OPENAI_DEFAULT_PROMPT
 
-    def generate(self, references: list[tuple[str, bytes]], additional_instructions: str = "") -> bytes:
+    def generate(self, references: list[tuple[str, bytes]]) -> bytes:
         if not self.api_key:
             raise AICharError("Enter an OpenAI API key or set OPENAI_API_KEY.")
-        prompt = ai_char.build_prompt(additional_instructions)
         if self.mode == "img2img":
             if not references:
                 raise AICharError("Choose at least one reference photo for img2img.")
             return ai_char.request_image(
-                self.api_key, references, quality=self.quality, model=self.model, prompt=prompt
+                self.api_key, references, quality=self.quality, model=self.model, prompt=self.prompt
             )
         payload = {
             "model": self.model,
-            "prompt": prompt,
+            "prompt": self.prompt,
             "size": "1024x1536",
             "quality": self.quality,
             "background": "transparent",
@@ -186,18 +188,23 @@ class A1111Backend:
 
     kind = "a1111"
 
-    def __init__(self, url: str, *, checkpoint: str = "", mode: str = "txt2img", steps: int = LOCAL_STEPS):
+    def __init__(
+        self, url: str, *, checkpoint: str = "", mode: str = "txt2img", steps: int = LOCAL_STEPS,
+        prompt: str = "", negative: str = "",
+    ):
         self.url = (url or "").rstrip("/")
         self.checkpoint = checkpoint
         self.mode = mode
         self.steps = int(steps)
+        self.prompt = prompt or LOCAL_PROMPT
+        self.negative = negative or LOCAL_NEGATIVE
 
-    def generate(self, references: list[tuple[str, bytes]], additional_instructions: str = "") -> bytes:
+    def generate(self, references: list[tuple[str, bytes]]) -> bytes:
         if not self.url:
             raise AICharError("Set the Stable Diffusion server address.")
         payload = {
-            "prompt": local_prompt(additional_instructions),
-            "negative_prompt": LOCAL_NEGATIVE,
+            "prompt": self.prompt,
+            "negative_prompt": self.negative,
             "steps": self.steps,
             "width": LOCAL_SIZE[0],
             "height": LOCAL_SIZE[1],
@@ -230,12 +237,15 @@ class ComfyUIBackend:
     kind = "comfyui"
 
     def __init__(
-        self, url: str, *, checkpoint: str = "sd15.safetensors", mode: str = "txt2img", steps: int = LOCAL_STEPS
+        self, url: str, *, checkpoint: str = "sd15.safetensors", mode: str = "txt2img",
+        steps: int = LOCAL_STEPS, prompt: str = "", negative: str = "",
     ):
         self.url = (url or "").rstrip("/")
         self.checkpoint = checkpoint
         self.mode = mode
         self.steps = int(steps)
+        self.prompt = prompt or LOCAL_PROMPT
+        self.negative = negative or LOCAL_NEGATIVE
 
     def upload_image(self, image_bytes: bytes) -> str:
         """POST a reference photo to ComfyUI's input folder; return its name."""
@@ -256,12 +266,12 @@ class ComfyUIBackend:
             info = json.load(response)
         return info["name"] if not info.get("subfolder") else f"{info['subfolder']}/{info['name']}"
 
-    def build_graph(self, prompt: str, reference_name: str | None) -> dict:
+    def build_graph(self, reference_name: str | None) -> dict:
         seed = random.randint(0, 2**31 - 1)
         graph = {
             "ckpt": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": self.checkpoint}},
-            "pos": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["ckpt", 1]}},
-            "neg": {"class_type": "CLIPTextEncode", "inputs": {"text": LOCAL_NEGATIVE, "clip": ["ckpt", 1]}},
+            "pos": {"class_type": "CLIPTextEncode", "inputs": {"text": self.prompt, "clip": ["ckpt", 1]}},
+            "neg": {"class_type": "CLIPTextEncode", "inputs": {"text": self.negative, "clip": ["ckpt", 1]}},
             "sampler": {
                 "class_type": "KSampler",
                 "inputs": {
@@ -284,7 +294,7 @@ class ComfyUIBackend:
             }
         return graph
 
-    def generate(self, references: list[tuple[str, bytes]], additional_instructions: str = "") -> bytes:
+    def generate(self, references: list[tuple[str, bytes]]) -> bytes:
         if not self.url:
             raise AICharError("Set the ComfyUI server address.")
         reference_name = None
@@ -293,7 +303,7 @@ class ComfyUIBackend:
                 if not references:
                     raise AICharError("Choose at least one reference photo for img2img.")
                 reference_name = self.upload_image(references[0][1])
-            graph = self.build_graph(local_prompt(additional_instructions), reference_name)
+            graph = self.build_graph(reference_name)
             prompt_id = http_json(f"{self.url}/prompt", {"prompt": graph, "client_id": uuid.uuid4().hex})["prompt_id"]
             image = self.await_image(prompt_id)
             query = urllib.parse.urlencode(
@@ -334,6 +344,9 @@ GENERATION_DEFAULTS = {
     "comfyui_url": "",
     "comfyui_checkpoint": "sd15.safetensors",
     "steps": str(LOCAL_STEPS),
+    "openai_prompt": OPENAI_DEFAULT_PROMPT,
+    "selfhosted_prompt": LOCAL_PROMPT,
+    "selfhosted_negative": LOCAL_NEGATIVE,
 }
 
 
@@ -379,23 +392,29 @@ def make_backend(settings: dict, api_key: str = "") -> OpenAIBackend | A1111Back
         return OpenAIBackend(
             api_key, model=settings.get("openai_model", OPENAI_MODELS[0]),
             quality=settings.get("quality", "low"), mode=mode,
+            prompt=settings.get("openai_prompt", ""),
         )
+    selfhosted_prompt = settings.get("selfhosted_prompt", "")
+    selfhosted_negative = settings.get("selfhosted_negative", "")
     if kind == "a1111":
         return A1111Backend(
             settings.get("a1111_url", ""), checkpoint=settings.get("a1111_checkpoint", ""),
             mode=mode, steps=int(settings.get("steps", LOCAL_STEPS)),
+            prompt=selfhosted_prompt, negative=selfhosted_negative,
         )
     if kind == "comfyui":
         return ComfyUIBackend(
             settings.get("comfyui_url", ""), checkpoint=settings.get("comfyui_checkpoint", "sd15.safetensors"),
             mode=mode, steps=int(settings.get("steps", LOCAL_STEPS)),
+            prompt=selfhosted_prompt, negative=selfhosted_negative,
         )
     raise AICharError(f"Unknown backend {kind!r}.")
 
 
 __all__ = [
     "BACKENDS", "MODES", "OPENAI_MODELS", "GENERATION_DEFAULTS",
+    "LOCAL_PROMPT", "LOCAL_NEGATIVE", "OPENAI_DEFAULT_PROMPT",
     "OpenAIBackend", "A1111Backend", "ComfyUIBackend",
-    "list_models", "make_backend", "local_prompt",
+    "list_models", "make_backend",
     "load_generation_settings", "save_generation_settings",
 ]

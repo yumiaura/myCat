@@ -54,9 +54,20 @@ def test_make_backend_kinds():
         ai_backends.make_backend({"backend": "nope"})
 
 
-def test_local_prompt_appends_details():
-    assert "chibi" in ai_backends.local_prompt("")
-    assert "round glasses" in ai_backends.local_prompt("round glasses")
+def test_make_backend_passes_prompts():
+    b = ai_backends.make_backend(
+        {"backend": "a1111", "a1111_url": "http://x", "selfhosted_prompt": "P", "selfhosted_negative": "N"}
+    )
+    assert b.prompt == "P"
+    assert b.negative == "N"
+    o = ai_backends.make_backend({"backend": "openai", "openai_prompt": "hello cat"}, "key")
+    assert o.prompt == "hello cat"
+
+
+def test_backends_fall_back_to_default_prompts():
+    assert ai_backends.A1111Backend("http://x").prompt == ai_backends.LOCAL_PROMPT
+    assert ai_backends.A1111Backend("http://x").negative == ai_backends.LOCAL_NEGATIVE
+    assert ai_backends.OpenAIBackend("k").prompt == ai_backends.OPENAI_DEFAULT_PROMPT
 
 
 def test_list_models_openai_is_static():
@@ -74,7 +85,7 @@ def test_list_models_comfyui(monkeypatch):
     assert ai_backends.list_models("comfyui", "http://x") == ["m1.safetensors", "m2.safetensors"]
 
 
-def test_a1111_txt2img_shapes_request(monkeypatch):
+def test_a1111_txt2img_uses_prompt_and_negative(monkeypatch):
     captured = {}
     image = png_bytes()
 
@@ -83,17 +94,20 @@ def test_a1111_txt2img_shapes_request(monkeypatch):
         return {"images": [base64.b64encode(image).decode()]}
 
     monkeypatch.setattr(ai_backends, "http_json", fake)
-    out = ai_backends.A1111Backend("http://sd", checkpoint="ck", mode="txt2img", steps=15).generate([], "red hoodie")
-    assert out == image
+    backend = ai_backends.A1111Backend(
+        "http://sd", checkpoint="ck", mode="txt2img", steps=15, prompt="a red cat", negative="no dogs"
+    )
+    assert backend.generate([]) == image
     assert captured["url"].endswith("/sdapi/v1/txt2img")
     assert captured["payload"]["steps"] == 15
+    assert captured["payload"]["prompt"] == "a red cat"
+    assert captured["payload"]["negative_prompt"] == "no dogs"
     assert captured["payload"]["override_settings"]["sd_model_checkpoint"] == "ck"
-    assert "red hoodie" in captured["payload"]["prompt"]
 
 
 def test_a1111_img2img_requires_a_photo():
     with pytest.raises(ai_char.AICharError):
-        ai_backends.A1111Backend("http://sd", mode="img2img").generate([], "x")
+        ai_backends.A1111Backend("http://sd", mode="img2img").generate([])
 
 
 def test_a1111_img2img_sends_init_image(monkeypatch):
@@ -105,16 +119,24 @@ def test_a1111_img2img_sends_init_image(monkeypatch):
         return {"images": [base64.b64encode(image).decode()]}
 
     monkeypatch.setattr(ai_backends, "http_json", fake)
-    ai_backends.A1111Backend("http://sd", mode="img2img").generate([("r.png", png_bytes())], "x")
+    ai_backends.A1111Backend("http://sd", mode="img2img").generate([("r.png", png_bytes())])
     assert captured["url"].endswith("/sdapi/v1/img2img")
     assert captured["payload"]["init_images"]
 
 
-def test_openai_txt2img_calls_generations(monkeypatch):
+def test_openai_txt2img_sends_prompt(monkeypatch):
     image = png_bytes()
+    captured = {}
     payload = {"data": [{"b64_json": base64.b64encode(image).decode()}]}
-    monkeypatch.setattr(ai_backends.urllib.request, "urlopen", lambda req, timeout: JsonResponse(payload))
-    assert ai_backends.OpenAIBackend("key", mode="txt2img").generate([], "hat") == image
+
+    def fake_urlopen(req, timeout):
+        captured["body"] = json.loads(req.data)
+        return JsonResponse(payload)
+
+    monkeypatch.setattr(ai_backends.urllib.request, "urlopen", fake_urlopen)
+    out = ai_backends.OpenAIBackend("key", mode="txt2img", prompt="a hat cat").generate([])
+    assert out == image
+    assert captured["body"]["prompt"] == "a hat cat"
 
 
 def test_openai_img2img_delegates_to_request_image(monkeypatch):
@@ -126,21 +148,26 @@ def test_openai_img2img_delegates_to_request_image(monkeypatch):
         return image
 
     monkeypatch.setattr(ai_char, "request_image", fake_request_image)
-    out = ai_backends.OpenAIBackend("key", model="gpt-image-1", mode="img2img").generate([("r.png", png_bytes())], "x")
+    out = ai_backends.OpenAIBackend("key", model="gpt-image-1", mode="img2img", prompt="P").generate(
+        [("r.png", png_bytes())]
+    )
     assert out == image
     assert seen["model"] == "gpt-image-1"
+    assert seen["prompt"] == "P"
 
 
 def test_openai_txt2img_needs_key():
     with pytest.raises(ai_char.AICharError):
-        ai_backends.OpenAIBackend("", mode="txt2img").generate([], "x")
+        ai_backends.OpenAIBackend("", mode="txt2img").generate([])
 
 
-def test_comfyui_txt2img_submits_and_fetches(monkeypatch):
+def test_comfyui_uses_prompt_and_negative(monkeypatch):
     image = png_bytes()
+    submitted = {}
 
     def fake_http(url, payload=None, **kwargs):
         if url.endswith("/prompt"):
+            submitted["graph"] = payload["prompt"]
             return {"prompt_id": "pid"}
         if "/history/" in url:
             return {"pid": {"status": {"status_str": "success"},
@@ -149,15 +176,22 @@ def test_comfyui_txt2img_submits_and_fetches(monkeypatch):
 
     monkeypatch.setattr(ai_backends, "http_json", fake_http)
     monkeypatch.setattr(ai_backends.urllib.request, "urlopen", lambda url, timeout: RawResponse(image))
-    assert ai_backends.ComfyUIBackend("http://cu", mode="txt2img").generate([], "x") == image
+    out = ai_backends.ComfyUIBackend("http://cu", mode="txt2img", prompt="POS", negative="NEG").generate([])
+    assert out == image
+    assert submitted["graph"]["pos"]["inputs"]["text"] == "POS"
+    assert submitted["graph"]["neg"]["inputs"]["text"] == "NEG"
 
 
-def test_settings_roundtrip(tmp_path, monkeypatch):
+def test_settings_roundtrip_with_prompts(tmp_path, monkeypatch):
     monkeypatch.setattr(ai_backends, "CFG_DIR", tmp_path)
     monkeypatch.setattr(ai_backends, "CFG_FILE", tmp_path / "config.ini")
-    settings = dict(ai_backends.GENERATION_DEFAULTS)
-    settings.update(backend="comfyui", comfyui_url="http://c", comfyui_checkpoint="sd15.safetensors")
+    settings = dict(ai_backends.GENERATION_DEFAULTS)  # includes the multi-line OpenAI default prompt
+    settings.update(backend="comfyui", comfyui_url="http://c")
+    settings.update(selfhosted_prompt="my prompt", selfhosted_negative="my neg")
     ai_backends.save_generation_settings(settings)
     loaded = ai_backends.load_generation_settings()
     assert loaded["backend"] == "comfyui"
     assert loaded["comfyui_url"] == "http://c"
+    assert loaded["selfhosted_prompt"] == "my prompt"
+    assert loaded["selfhosted_negative"] == "my neg"
+    assert loaded["openai_prompt"] == ai_backends.OPENAI_DEFAULT_PROMPT  # multi-line value round-trips

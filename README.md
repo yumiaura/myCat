@@ -28,9 +28,10 @@ If you like it, maybe I'll share an [AnimeGirl](https://github.com/yumiaura/myca
 ### 🎨 Create your own cat with AI 
 
 Turn a few photos into your own cat. Right-click → **Chars → Create custom with AI…**,
-add 1–3 photos of the same person plus any optional details (glasses, colours, a bit of
-lettering), pick **txt2img** (from the prompt) or **img2img** (from your photos), and
-generate with **OpenAI** or your own self-hosted **Stable Diffusion (AUTOMATIC1111)** or
+add 1–3 photos of the same person, **edit the prompt** (and a negative prompt for the
+self-hosted backends) to shape the character, pick **txt2img** (from the prompt) or
+**img2img** (from your photos), and generate with **OpenAI** or your own self-hosted
+**Stable Diffusion (AUTOMATIC1111)** or
 **ComfyUI** server — set its address in the dialog and pick the checkpoint from the live
 model list. It's saved as an ordinary local char you can reuse or delete anytime; reference
 photos are resized in memory and **never stored** by myCat. OpenAI needs your own API key
