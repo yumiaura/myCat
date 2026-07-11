@@ -156,6 +156,15 @@ def is_user_installed(char_id: str) -> bool:
     return (user_chars_dir() / f"{char_id}.zip").exists()
 
 
+def ai_generated_chars() -> list[str]:
+    """Ids of locally generated characters, based on installed metadata."""
+    return sorted(
+        entry["id"]
+        for entry in load_installed_metadata().get("characters", [])
+        if entry.get("source") == "openai:image" and entry.get("id") and is_user_installed(entry["id"])
+    )
+
+
 __all__ = [
     "INSTALLED_JSON_NAME",
     "bundled_chars_dir",
@@ -169,4 +178,5 @@ __all__ = [
     "record_installed",
     "remove_installed",
     "is_user_installed",
+    "ai_generated_chars",
 ]

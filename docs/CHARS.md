@@ -1,5 +1,28 @@
 # Make your own mycat char
 
+## Generate a custom chibi cat with OpenAI
+
+Right-click the desktop cat and choose **Chars → Create custom with AI…**. Add
+one to three reference photos of the same person, enter a character name and an
+OpenAI API key, then generate. myCat sends resized copies of the references in
+one Image API request and stores only the resulting character pack locally;
+selecting the saved character later does not call the API again.
+
+Use **Additional details** for optional visual direction such as glasses,
+accessories, colors, poses, or requested lettering on clothing. These details
+are included in the same generation request, so they do not create an extra API
+call.
+
+Generated characters appear beside the bundled characters. Remove one with
+**Chars → Delete custom**. Deleting is local and does not make an API request.
+The key can be remembered in the operating-system keyring when the optional
+`mycat[secure]` dependency and a supported keyring backend are available;
+otherwise use `OPENAI_API_KEY` or enter it for each generation.
+
+The generator uses `gpt-image-1.5` because these packs need a transparent PNG
+background. Reference photos are resized in memory to reduce image-input usage
+and are not copied to the myCat data directory.
+
 A char is a single `<name>.zip`. The simplest is one animated **GIF** - see the
 Quick start below. The full format turns the cat into a small **state machine**:
 a base "awake" pose whose pupils follow the cursor, plus optional expressions and
