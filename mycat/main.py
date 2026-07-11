@@ -1187,11 +1187,11 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.available_images = char_catalog.scan_all()
         if len(self.available_images) > 0:
             images_menu = menu.addMenu("Chars")
-            create_action = images_menu.addAction("Create custom with AI…")
+            create_action = images_menu.addAction("Generate…")
             create_action.triggered.connect(self.open_ai_char)
             generated_chars = char_catalog.ai_generated_chars()
             if generated_chars:
-                delete_menu = images_menu.addMenu("Delete custom")
+                delete_menu = images_menu.addMenu("Delete…")
                 for custom_id in generated_chars:
                     delete_action = delete_menu.addAction(custom_id)
                     delete_action.triggered.connect(

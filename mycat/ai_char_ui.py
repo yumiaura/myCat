@@ -172,7 +172,7 @@ class AICharDialog(QtWidgets.QDialog):
 
         self.reference_list = QtWidgets.QListWidget()
         self.reference_list.setIconSize(QtCore.QSize(56, 56))
-        self.reference_list.setMinimumHeight(96)
+        self.reference_list.setFixedHeight(110)
         add_btn = QtWidgets.QPushButton("Add photos…")
         remove_btn = QtWidgets.QPushButton("Remove selected")
         add_btn.clicked.connect(self.add_references)
@@ -199,37 +199,31 @@ class AICharDialog(QtWidgets.QDialog):
         buttons.addWidget(self.generate_btn)
         buttons.addWidget(close_btn)
 
-        # The form lives in a scroll area with a fixed window size, so switching
-        # backends (which shows/hides sections) never resizes the window or clips
-        # the fields — extra content just scrolls. The buttons stay pinned below.
-        content = QtWidgets.QWidget()
-        content_layout = QtWidgets.QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.addWidget(intro)
-        content_layout.addLayout(top_form)
-        content_layout.addWidget(self.openai_group)
-        content_layout.addWidget(self.local_group)
-        content_layout.addWidget(QtWidgets.QLabel("Prompt"))
-        content_layout.addWidget(self.prompt_edit)
-        content_layout.addWidget(self.negative_label)
-        content_layout.addWidget(self.negative_edit)
-        content_layout.addWidget(QtWidgets.QLabel("Reference photos (maximum 3)"))
-        content_layout.addWidget(self.reference_list)
-        content_layout.addLayout(photo_buttons)
-        content_layout.addWidget(self.status_label)
-        content_layout.addStretch(1)
-
-        scroll = QtWidgets.QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-        scroll.setWidget(content)
-
         layout = QtWidgets.QVBoxLayout(self)
-        layout.addWidget(scroll)
+        layout.addWidget(intro)
+        layout.addLayout(top_form)
+        layout.addWidget(self.openai_group)
+        layout.addWidget(self.local_group)
+        layout.addWidget(QtWidgets.QLabel("Prompt"))
+        layout.addWidget(self.prompt_edit)
+        layout.addWidget(self.negative_label)
+        layout.addWidget(self.negative_edit)
+        layout.addWidget(QtWidgets.QLabel("Reference photos (maximum 3)"))
+        layout.addWidget(self.reference_list)
+        layout.addLayout(photo_buttons)
+        layout.addWidget(self.status_label)
+        layout.addStretch(1)
         layout.addLayout(buttons)
-        self.resize(560, 680)
 
+        # Fix the height to the tallest (self-hosted) layout up front, so switching
+        # backends never resizes the window or clips fields — and no scroll area,
+        # which would show the system (not the theme's) background.
+        self.combo_select(self.backend_combo, "comfyui")
+        self.update_visibility()
+        tall = self.sizeHint().height()
         self.apply_settings()
+        self.setMinimumHeight(tall)
+        self.resize(560, tall)
         self.backend_combo.currentIndexChanged.connect(self.on_backend_changed)
 
     # --- settings <-> widgets -------------------------------------------------
