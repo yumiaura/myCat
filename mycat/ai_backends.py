@@ -59,26 +59,20 @@ LOCAL_CFG = 6.0
 IMG2IMG_DENOISE = 0.62           # keep some of the photo, but become a cat
 
 # A compact, tag-style base prompt that Stable-Diffusion checkpoints follow
-# better than OpenAI's prose, plus a strong SFW negative (many local checkpoints
-# lean NSFW).
+# better than OpenAI's prose. The negatives default to empty — the user fills
+# them in the dialog if they want.
 LOCAL_PROMPT = (
     "masterpiece, best quality, anime, chibi, kawaii chibi kitten girl, cat ears, "
     "cat paws, cat tail, whiskers, cute big eyes, full body, standing, centered, "
     "simple plain background, soft shading"
 )
-LOCAL_NEGATIVE = (
-    "nsfw, nude, nipples, revealing clothing, sexual, lowres, bad anatomy, "
-    "bad hands, extra limbs, deformed, blurry, watermark, signature, text, "
-    "cropped, out of frame"
-)
+LOCAL_NEGATIVE = ""
 
 
 # OpenAI keeps its prose default; these are just the *initial* text — the dialog
 # lets the user edit each and persists their own version.
 OPENAI_DEFAULT_PROMPT = ai_char.PROMPT
-OPENAI_DEFAULT_NEGATIVE = (
-    "nudity, sexual content, extra limbs, deformed hands, watermark, signature, unwanted text"
-)
+OPENAI_DEFAULT_NEGATIVE = ""
 
 
 def combine_prompt(prompt: str, negative: str) -> str:
