@@ -115,6 +115,8 @@ def request_image(
     references: list[tuple[str, bytes]],
     *,
     quality: str = "low",
+    model: str = MODEL,
+    prompt: str | None = None,
     additional_instructions: str = "",
 ) -> bytes:
     if not api_key.strip():
@@ -123,8 +125,8 @@ def request_image(
         raise AICharError("Unsupported image quality.")
     body, content_type = _multipart(
         {
-            "model": MODEL,
-            "prompt": build_prompt(additional_instructions),
+            "model": model,
+            "prompt": prompt if prompt is not None else build_prompt(additional_instructions),
             "size": "1024x1536",
             "quality": quality,
             "background": "transparent",

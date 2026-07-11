@@ -29,10 +29,13 @@ If you like it, maybe I'll share an [AnimeGirl](https://github.com/yumiaura/myca
 
 Turn a few photos into your own cat. Right-click → **Chars → Create custom with AI…**,
 add 1–3 photos of the same person plus any optional details (glasses, colours, a bit of
-lettering), and OpenAI turns them into a chibi cat character. It's saved as an ordinary
-local char you can reuse or delete anytime — the reference photos are resized in memory
-and **never stored** by myCat. Bring your own OpenAI API key; each generation is a single
-image request.
+lettering), pick **txt2img** (from the prompt) or **img2img** (from your photos), and
+generate with **OpenAI** or your own local **Stable Diffusion (AUTOMATIC1111)** or
+**ComfyUI** server — set its address in the dialog and pick the checkpoint from the live
+model list. It's saved as an ordinary local char you can reuse or delete anytime; reference
+photos are resized in memory and **never stored** by myCat. OpenAI needs your own API key
+(one request per generation) and returns a transparent cat; the local backends run on your
+own GPU.
 
 <img width="270" alt="Create custom cat with AI — dialog" src="https://github.com/user-attachments/assets/f94c141f-d339-4827-a476-a5725e27c9be" />
 <img width="220" alt="Generated cat" src="https://github.com/user-attachments/assets/1bec007a-eb5c-469a-a732-a1cd37c6cf27" />
