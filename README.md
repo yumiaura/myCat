@@ -25,7 +25,7 @@ If you like it, maybe I'll share an [AnimeGirl](https://github.com/yumiaura/myca
 <img width="280" height="200" alt="image" src="https://github.com/user-attachments/assets/0a1d078e-77f4-4f16-a09f-a94c5deff086" />
 <img width="280" height="200" alt="image" src="https://github.com/user-attachments/assets/d9f4cce9-bf3c-4d64-a28e-1cac7d050a8c" />
 
-### Create your own cat with AI 🎨
+### 🎨 Create your own cat with AI 
 
 Turn a few photos into your own cat. Right-click → **Chars → Create custom with AI…**,
 add 1–3 photos of the same person plus any optional details (glasses, colours, a bit of
@@ -39,8 +39,6 @@ image request.
 <br />
 <img width="270" alt="Generated cat on the desktop" src="https://github.com/user-attachments/assets/848ff041-55b0-417c-aaf7-2759cc6a6c9a" />
 <img width="220" alt="Generated cat" src="https://github.com/user-attachments/assets/1bec007a-eb5c-469a-a732-a1cd37c6cf27" />
-
-
 
 ## 🚀 Quick start
 
