@@ -11,10 +11,12 @@ Backends:
   (identity-preserving), ``txt2img`` generates from the prompt alone. Returns a
   transparent PNG.
 - **a1111** — a self-hosted AUTOMATIC1111 Stable Diffusion WebUI (``/sdapi/v1``).
-  ``txt2img`` / ``img2img``. Opaque output (the WebUI has no background remover).
+  ``txt2img`` / ``img2img``. Its opaque output can optionally be post-processed
+  to remove a simple corner-connected background.
 - **comfyui** — a self-hosted ComfyUI server. A small built-in workflow does
   ``txt2img`` / ``img2img`` with core nodes only, so it works on any ComfyUI.
-  Opaque output.
+  Its opaque output can optionally be post-processed to remove a simple
+  corner-connected background.
 
 Both modes are offered for every backend, and the self-hosted backends can list
 their checkpoints so the settings dialog can show a model picker.
@@ -353,6 +355,7 @@ GENERATION_DEFAULTS = {
     "comfyui_url": "",
     "comfyui_checkpoint": "sd15.safetensors",
     "steps": str(LOCAL_STEPS),
+    "remove_background": "false",
     "openai_prompt": OPENAI_DEFAULT_PROMPT,
     "openai_negative": OPENAI_DEFAULT_NEGATIVE,
     "selfhosted_prompt": LOCAL_PROMPT,
