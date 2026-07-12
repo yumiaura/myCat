@@ -26,18 +26,38 @@ MIN_GAP_SECONDS = 4.0
 SKY_STALE_SECONDS = 180.0
 
 
+def _reminder_plane_defaults() -> tuple[str, str, int]:
+    """Plane look defaults — always from Reminder, the single settings source."""
+    try:
+        if __package__:
+            from .reminder import Reminder
+        else:
+            from mycat.reminder import Reminder
+
+        r = Reminder()
+        return r.plane_color, r.plane, r.plane_width
+    except Exception:  # noqa: BLE001
+        return "white", "plane1", 160
+
+
+_DEFAULT_PLANE_COLOR, _DEFAULT_PLANE, _DEFAULT_PLANE_WIDTH = _reminder_plane_defaults()
+
+
 @dataclass
 class Announcement:
-    """One queued message. Duck-types the fields FlybyWindow reads."""
+    """One queued message. Duck-types the fields FlybyWindow reads.
+
+    Plane look is owned by Reminder settings; Announcer fills these from
+    ``default_cosmetics()`` so Activity/digest/GitHub match Reminder flybys.
+    """
 
     text: str
     url: str = ""  # opened on double-click when non-empty
     direction: str = "ltr"
     speed: float = 1.0
-    # Keep in sync with Reminder defaults (0.1.9 switched pink → white).
-    plane_color: str = "white"
-    plane_width: int = 160
-    plane: str = "plane1"
+    plane_color: str = _DEFAULT_PLANE_COLOR
+    plane_width: int = _DEFAULT_PLANE_WIDTH
+    plane: str = _DEFAULT_PLANE
 
     def normalized_direction(self) -> str:
         return "rtl" if self.direction == "rtl" else "ltr"
@@ -71,12 +91,11 @@ class Announcer(QtCore.QObject):
     # -- public API -----------------------------------------------------------
 
     def default_cosmetics(self) -> dict:
-        """Plane look from the saved Reminder settings, so every banner —
-        reminders, GitHub, digest — flies the same customized plane.
+        """Plane look from Reminder — the only place the user picks it.
 
-        When no ``[reminder]`` section is saved yet, fall back to Reminder()
-        defaults (white plane) — not the empty dict, which would leave Activity
-        flybys on a stale pink Announcement default.
+        Saved ``[reminder]`` wins (including a disabled stub after Reset).
+        If nothing is on disk yet, use ``Reminder()`` defaults so Activity,
+        digest, and GitHub flybys match what the Reminder dialog shows.
         """
         try:
             if __package__:
@@ -87,17 +106,14 @@ class Announcer(QtCore.QObject):
                 reminder_mod = importlib.import_module("mycat.reminder")
             saved = reminder_mod.load_reminder()
             source = saved if saved is not None else reminder_mod.Reminder()
-        except Exception:  # noqa: BLE001 - cosmetics must never break announcing
             return {
-                "plane_color": Announcement.plane_color,
-                "plane": Announcement.plane,
-                "plane_width": Announcement.plane_width,
+                "plane_color": source.plane_color,
+                "plane": source.plane,
+                "plane_width": source.plane_width,
             }
-        return {
-            "plane_color": source.plane_color,
-            "plane": source.plane,
-            "plane_width": source.plane_width,
-        }
+        except Exception:  # noqa: BLE001 - cosmetics must never break announcing
+            color, plane, width = _reminder_plane_defaults()
+            return {"plane_color": color, "plane": plane, "plane_width": width}
 
     def announce(self, text: str, url: str = "", **cosmetics) -> Announcement:
         """Queue a message. Every message is shown; the queue only paces them."""
