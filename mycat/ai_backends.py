@@ -355,7 +355,7 @@ GENERATION_DEFAULTS = {
     "comfyui_url": "",
     "comfyui_checkpoint": "sd15.safetensors",
     "steps": str(LOCAL_STEPS),
-    "remove_background": "false",
+    "background_removal": "none",
     "openai_prompt": OPENAI_DEFAULT_PROMPT,
     "openai_negative": OPENAI_DEFAULT_NEGATIVE,
     "selfhosted_prompt": LOCAL_PROMPT,
@@ -365,8 +365,11 @@ GENERATION_DEFAULTS = {
 
 def load_generation_settings() -> dict:
     """Read the [generation] section of config.ini, filled in with defaults."""
+    from . import ai_char
+
     settings = dict(GENERATION_DEFAULTS)
     parser = configparser.ConfigParser()
+    legacy_remove_background = None
     if CFG_FILE.exists():
         try:
             parser.read(CFG_FILE)
@@ -376,6 +379,12 @@ def load_generation_settings() -> dict:
             for key in GENERATION_DEFAULTS:
                 if parser.has_option(CFG_SECTION, key):
                     settings[key] = parser.get(CFG_SECTION, key)
+            if parser.has_option(CFG_SECTION, "remove_background"):
+                legacy_remove_background = parser.get(CFG_SECTION, "remove_background")
+    settings["background_removal"] = ai_char.normalize_background_removal(
+        settings.get("background_removal"),
+        legacy_remove_background=legacy_remove_background,
+    )
     return settings
 
 

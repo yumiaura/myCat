@@ -7,6 +7,7 @@ resized in memory before upload and are never copied into myCat's data folder.
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Callable
 import base64
 import hashlib
 import io
@@ -223,6 +224,44 @@ def remove_plain_background(image_bytes: bytes, *, tolerance: int = 48) -> bytes
     return output.getvalue()
 
 
+BackgroundRemovalFn = Callable[[bytes], bytes]
+
+BACKGROUND_REMOVAL_NONE = "none"
+BACKGROUND_REMOVAL_PLAIN = "plain"
+DEFAULT_BACKGROUND_REMOVAL = BACKGROUND_REMOVAL_NONE
+
+
+def _background_removal_none(image_bytes: bytes) -> bytes:
+    return image_bytes
+
+
+BACKGROUND_REMOVAL_METHODS: dict[str, tuple[str, BackgroundRemovalFn]] = {
+    BACKGROUND_REMOVAL_NONE: ("True", _background_removal_none),
+    BACKGROUND_REMOVAL_PLAIN: ("Remove", remove_plain_background),
+}
+
+
+def background_removal_choices() -> list[tuple[str, str]]:
+    """Return (label, method id) pairs for UI selectors."""
+    return [(label, method_id) for method_id, (label, _) in BACKGROUND_REMOVAL_METHODS.items()]
+
+
+def normalize_background_removal(value: str | None, *, legacy_remove_background: str | None = None) -> str:
+    """Resolve a persisted or legacy setting to a known background-removal method id."""
+    if value and value in BACKGROUND_REMOVAL_METHODS:
+        return value
+    if legacy_remove_background and legacy_remove_background.lower() == "true":
+        return BACKGROUND_REMOVAL_PLAIN
+    return DEFAULT_BACKGROUND_REMOVAL
+
+
+def apply_background_removal(image_bytes: bytes, method: str) -> bytes:
+    """Run the selected post-processing method, if any."""
+    normalized = normalize_background_removal(method)
+    _, remover = BACKGROUND_REMOVAL_METHODS[normalized]
+    return remover(image_bytes)
+
+
 def install_character(display_name: str, image_bytes: bytes) -> tuple[str, Path]:
     char_id = slugify(display_name)
     destination = char_catalog.ensure_user_chars_dir() / f"{char_id}.zip"
@@ -281,7 +320,14 @@ __all__ = [
     "build_prompt",
     "install_character",
     "prepare_references",
+    "apply_background_removal",
+    "background_removal_choices",
+    "normalize_background_removal",
     "remove_plain_background",
+    "BACKGROUND_REMOVAL_METHODS",
+    "BACKGROUND_REMOVAL_NONE",
+    "BACKGROUND_REMOVAL_PLAIN",
+    "DEFAULT_BACKGROUND_REMOVAL",
     "request_image",
     "slugify",
 ]
