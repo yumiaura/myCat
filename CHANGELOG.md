@@ -2,10 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [0.1.18] - 2026-07-11
 
 ### Added
-- **Choose how AI characters are generated — OpenAI, or a self-hosted Stable Diffusion (AUTOMATIC1111) / ComfyUI server.** The *Create custom with AI…* dialog gained a backend picker and a **txt2img / img2img** toggle: img2img turns your reference photos into the cat (identity-preserving on OpenAI), txt2img generates from the prompt alone. For the self-hosted backends you enter the server address and pick a checkpoint from a live model list; OpenAI adds a model choice (`gpt-image-1.5` / `gpt-image-1`). The **prompt and a negative prompt are editable** right in the dialog for every backend (with a **Reset to default** button); since OpenAI's image API has no negative field, its negative is folded into the prompt as a "the image must not contain: …" instruction. Every choice persists in `config.ini`. Everything talks HTTP over the standard library — no new dependency. OpenAI output is transparent; the self-hosted backends render on your own GPU (opaque) (branch `feat/generation-backends`).
+- **Choose how AI characters are generated — OpenAI, or a self-hosted Stable Diffusion (AUTOMATIC1111) / ComfyUI server.** The *Generate…* dialog (right-click → *Chars → Generate…*) gained a backend picker and a **txt2img / img2img** toggle: img2img turns your reference photos into the character (identity-preserving on OpenAI), txt2img generates from the prompt alone. For the self-hosted backends you enter the server address and pick a checkpoint from a live model list; OpenAI adds a model choice (`gpt-image-1.5` / `gpt-image-1`). The **prompt and a negative prompt are editable** right in the dialog for every backend (with a **Reset to default** button); since OpenAI's image API has no negative field, its negative is folded into the prompt as a "the image must not contain: …" instruction. Every choice persists in `config.ini`. Everything talks HTTP over the standard library — no new dependency. OpenAI output is transparent; the self-hosted backends render on your own GPU (opaque) (branch `feat/generation-backends`).
+
+### Fixed
+- **The macOS app carries its real version now, and refreshes its icon on update.** The `.app` shipped with a `0.0.0` `CFBundleShortVersionString` placeholder that CI never overwrote — so macOS kept the cached (old) app icon across updates and showed `0.0.0` in *About*. CI now stamps the real version into `Info.plist` (Apple Silicon + Intel) after the build (branch `fix/gen-and-macos-version`).
 
 ## [0.1.17] - 2026-07-11
 
