@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.19] - 2026-07-11
+
+### Fixed
+- **The macOS app starts fast now.** It was built as a PyInstaller *onefile* `.app`, which re-extracted its whole ~50 MB archive to a temp dir on every launch (and Gatekeeper rescanned it) — so startup took ~30 s. The macOS build is now *onedir*: the files live in `Contents/` and it starts near-instantly (Windows/Linux stay onefile) (branch `fix/macos-startup-restore`).
+- **A cat hidden with Close can be brought back on macOS.** macOS re-launches don't start a second process — LaunchServices just activates the running app — so the "second launch raises the cat" safety net never fired there. The cat now reappears when the app is reactivated (Dock icon / Cmd-Tab), and the tray's toggle shows its correct **Open** / **Close** label (branch `fix/macos-startup-restore`).
+
 ## [0.1.18] - 2026-07-11
 
 ### Added
