@@ -34,7 +34,8 @@ class Announcement:
     url: str = ""  # opened on double-click when non-empty
     direction: str = "ltr"
     speed: float = 1.0
-    plane_color: str = "pink"
+    # Keep in sync with Reminder defaults (0.1.9 switched pink → white).
+    plane_color: str = "white"
     plane_width: int = 160
     plane: str = "plane1"
 
@@ -71,7 +72,12 @@ class Announcer(QtCore.QObject):
 
     def default_cosmetics(self) -> dict:
         """Plane look from the saved Reminder settings, so every banner —
-        reminders, GitHub, digest — flies the same customized plane."""
+        reminders, GitHub, digest — flies the same customized plane.
+
+        When no ``[reminder]`` section is saved yet, fall back to Reminder()
+        defaults (white plane) — not the empty dict, which would leave Activity
+        flybys on a stale pink Announcement default.
+        """
         try:
             if __package__:
                 from . import reminder as reminder_mod
@@ -80,14 +86,17 @@ class Announcer(QtCore.QObject):
 
                 reminder_mod = importlib.import_module("mycat.reminder")
             saved = reminder_mod.load_reminder()
+            source = saved if saved is not None else reminder_mod.Reminder()
         except Exception:  # noqa: BLE001 - cosmetics must never break announcing
-            return {}
-        if saved is None:
-            return {}
+            return {
+                "plane_color": Announcement.plane_color,
+                "plane": Announcement.plane,
+                "plane_width": Announcement.plane_width,
+            }
         return {
-            "plane_color": saved.plane_color,
-            "plane": saved.plane,
-            "plane_width": saved.plane_width,
+            "plane_color": source.plane_color,
+            "plane": source.plane,
+            "plane_width": source.plane_width,
         }
 
     def announce(self, text: str, url: str = "", **cosmetics) -> Announcement:

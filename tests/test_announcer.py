@@ -1,6 +1,7 @@
 """Announcer queue: pacing, one-at-a-time, FIFO order (nothing is suppressed)."""
 
-from mycat.announcer import MIN_GAP_SECONDS, SKY_STALE_SECONDS, Announcer
+from mycat.announcer import MIN_GAP_SECONDS, SKY_STALE_SECONDS, Announcement, Announcer
+from mycat import reminder
 
 
 class FakeClock:
@@ -109,3 +110,31 @@ def test_headless_launch_returns_none_keeps_pacing(qapp):
     clock.advance(MIN_GAP_SECONDS + 0.1)
     ann.pump()
     assert launched == ["a", "b"]
+
+
+def test_announcement_default_plane_color_matches_reminder():
+    # 0.1.9 made Reminder white; Activity/digest flybys must match even before
+    # the user saves a [reminder] section.
+    assert Announcement.plane_color == reminder.Reminder.plane_color == "white"
+
+
+def test_default_cosmetics_white_when_no_saved_reminder(monkeypatch, tmp_path, qapp):
+    monkeypatch.setattr(reminder, "CFG_DIR", tmp_path)
+    monkeypatch.setattr(reminder, "CFG_FILE", tmp_path / "config.ini")
+    ann, sky, _clock = make_announcer(qapp)
+    assert ann.default_cosmetics()["plane_color"] == "white"
+    item = ann.announce("🍅 earned — time to rest")
+    assert item.plane_color == "white"
+    assert sky.launched[0].plane_color == "white"
+
+
+def test_default_cosmetics_uses_saved_plane_color(monkeypatch, tmp_path, qapp):
+    monkeypatch.setattr(reminder, "CFG_DIR", tmp_path)
+    monkeypatch.setattr(reminder, "CFG_FILE", tmp_path / "config.ini")
+    reminder.save_reminder(reminder.Reminder(plane_color="blue", plane="plane2", plane_width=200))
+    ann, sky, _clock = make_announcer(qapp)
+    item = ann.announce("digest")
+    assert item.plane_color == "blue"
+    assert item.plane == "plane2"
+    assert item.plane_width == 200
+    assert sky.launched[0].plane_color == "blue"
