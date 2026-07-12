@@ -25,7 +25,7 @@ BACKEND_LABELS = [
     ("ComfyUI — self-hosted", "comfyui"),
 ]
 MODE_LABELS = [
-    ("img2img — turn my photos into a cat", "img2img"),
+    ("img2img — turn my photos into a char", "img2img"),
     ("txt2img — from the prompt only", "txt2img"),
 ]
 
@@ -87,7 +87,7 @@ class AICharDialog(QtWidgets.QDialog):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Generate a custom cat with AI")
+        self.setWindowTitle("Generate a custom char with AI")
         self.setMinimumWidth(540)
         self.setStyleSheet(LIGHT_QSS)
         self.pool = QtCore.QThreadPool(self)
@@ -96,13 +96,13 @@ class AICharDialog(QtWidgets.QDialog):
         self.current_kind = self.settings.get("backend", "openai")
 
         intro = QtWidgets.QLabel(
-            "Turn 1–3 photos of the same person into a cute chibi cat, or generate one "
+            "Turn 1–3 photos of the same person into a custom char, or generate one "
             "from the prompt. Reference photos are not stored by myCat."
         )
         intro.setWordWrap(True)
 
         self.name_edit = QtWidgets.QLineEdit()
-        self.name_edit.setPlaceholderText("Example: Mina chibi cat")
+        self.name_edit.setPlaceholderText("Example: Mina chibi char")
 
         self.backend_combo = QtWidgets.QComboBox()
         for label, data in BACKEND_LABELS:
