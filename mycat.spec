@@ -108,31 +108,39 @@ if icon_png.is_file():
         print(f"mycat.spec: could not build the app icon ({icon_error})")
         app_icon = None
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    [],
-    name='mycat',
-    icon=app_icon if sys.platform == 'win32' else None,  # .ico; macOS uses BUNDLE
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=False,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=False,                # no console window — pure GUI
-    disable_windowed_traceback=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-)
-
 if sys.platform == 'darwin':
-    app = BUNDLE(
+    # macOS: onedir -> .app. A onefile .app re-extracts its whole ~50 MB archive
+    # to a temp dir on EVERY launch (and Gatekeeper rescans the extracted dylibs),
+    # which made startup take ~30 s. A onedir bundle keeps the files in Contents/
+    # and starts near-instantly.
+    exe = EXE(
+        pyz,
+        a.scripts,
+        [],
+        exclude_binaries=True,
+        name='mycat',
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,
+        console=False,
+        disable_windowed_traceback=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
+    )
+    coll = COLLECT(
         exe,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        strip=False,
+        upx=False,
+        upx_exclude=[],
+        name='mycat',
+    )
+    app = BUNDLE(
+        coll,
         name='mycat.app',
         icon=app_icon,
         bundle_identifier='app.mycat',
@@ -141,4 +149,28 @@ if sys.platform == 'darwin':
             'CFBundleShortVersionString': '0.0.0',  # overwritten by CI at build time
             'NSHumanReadableCopyright': '© yumiaura',
         },
+    )
+else:
+    # Windows / Linux: onefile -> a single self-contained executable (the .exe,
+    # and the binary the .deb / AppImage wrap).
+    exe = EXE(
+        pyz,
+        a.scripts,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        [],
+        name='mycat',
+        icon=app_icon if sys.platform == 'win32' else None,  # .ico
+        debug=False,
+        bootloader_ignore_signals=False,
+        strip=False,
+        upx=False,
+        upx_exclude=[],
+        runtime_tmpdir=None,
+        console=False,                # no console window — pure GUI
+        disable_windowed_traceback=False,
+        target_arch=None,
+        codesign_identity=None,
+        entitlements_file=None,
     )

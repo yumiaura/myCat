@@ -1906,6 +1906,22 @@ def start_activation_server(name: str, window):
     return server
 
 
+def install_macos_reopen(app, window):
+    """Bring a tray-hidden cat back when the app is reactivated on macOS.
+
+    macOS re-launches don't start a second process — LaunchServices just
+    activates the already-running app — so the single-instance socket never
+    fires there and clicking the Dock icon otherwise does nothing. Show the
+    window again whenever the app becomes active while hidden.
+    """
+    def on_state(state) -> None:
+        if state == QtCore.Qt.ApplicationState.ApplicationActive and not window.isVisible():
+            window.show()
+            window.raise_()
+
+    app.applicationStateChanged.connect(on_state)
+
+
 def ensure_emoji_font(app) -> None:
     """Give emoji glyphs a fallback so they don't render as tofu boxes on systems
     with no emoji font (common on minimal Linux `pip install`s).
@@ -2105,10 +2121,13 @@ def setup_tray(app, window):
         login_action.setChecked(autostart.is_enabled())
         login_action.toggled.connect(autostart.set_enabled)
     menu.addSeparator()
-    # Dynamic label: "Open" when the cat is hidden, "Close" when it's on screen.
     toggle_action = menu.addAction("Close")
     toggle_action.triggered.connect(toggle_window)
     menu.addAction("Quit", QtWidgets.QApplication.quit)
+    # Dynamic label: "Open" when the cat is hidden, "Close" when it's on screen.
+    menu.aboutToShow.connect(
+        lambda: toggle_action.setText("Open" if not window.isVisible() else "Close")
+    )
     tray.setContextMenu(menu)
 
     def sync_toggle_label():
@@ -2254,6 +2273,8 @@ def main() -> None:
         # Safety net: let a second launch raise this window, so a cat hidden to a
         # tray the panel doesn't render can always be brought back with `mycat`.
         window.activation_server = start_activation_server(SINGLE_INSTANCE_NAME, window)
+        if sys.platform == "darwin" and window.tray_icon is not None:
+            install_macos_reopen(app, window)
         # Live in the tray: hiding/closing windows no longer quits the app —
         # only the explicit Quit action does. With no tray to quit from, keep
         # the old behaviour so the user is never stuck with an invisible process.
