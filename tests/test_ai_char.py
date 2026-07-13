@@ -95,3 +95,28 @@ def test_install_and_delete_generated_character(monkeypatch, tmp_path):
     assert char_catalog.remove_installed(char_id) is True
     assert not path.exists()
     assert char_catalog.ai_generated_chars() == []
+
+
+def test_remove_plain_background_keeps_the_character_opaque():
+    image = Image.new("RGBA", (7, 7), "white")
+    image.putpixel((3, 3), (220, 20, 60, 255))
+    output = io.BytesIO()
+    image.save(output, "PNG")
+
+    with Image.open(io.BytesIO(ai_char.remove_plain_background(output.getvalue()))) as result:
+        assert result.getpixel((0, 0))[3] == 0
+        assert result.getpixel((3, 3)) == (220, 20, 60, 255)
+
+
+def test_background_removal_registry_and_legacy_migration():
+    assert ai_char.background_removal_choices() == [
+        ("Keep", "none"),
+        ("Remove", "plain"),
+    ]
+    assert ai_char.normalize_background_removal("plain") == "plain"
+    assert ai_char.normalize_background_removal("unknown") == "none"
+    assert ai_char.normalize_background_removal(None, legacy_remove_background="true") == "plain"
+    assert ai_char.normalize_background_removal("none", legacy_remove_background="true") == "none"
+
+    image = png_bytes()
+    assert ai_char.apply_background_removal(image, "none") == image

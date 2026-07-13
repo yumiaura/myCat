@@ -52,6 +52,11 @@ class GenerationWorker(QtCore.QRunnable):
             references = ai_char.prepare_references(self.paths) if self.paths else []
             backend = ai_backends.make_backend(self.settings, self.api_key)
             image = backend.generate(references)
+            method = ai_char.normalize_background_removal(
+                self.settings.get("background_removal"),
+                legacy_remove_background=self.settings.get("remove_background"),
+            )
+            image = ai_char.apply_background_removal(image, method)
             char_id, path = ai_char.install_character(self.name, image)
         except Exception as exc:  # noqa: BLE001 - error is shown in the dialog
             logger.warning("Character generation failed (backend=%s, mode=%s): %s", kind, mode, exc)
@@ -150,10 +155,17 @@ class AICharDialog(QtWidgets.QDialog):
         self.steps_spin = QtWidgets.QSpinBox()
         self.steps_spin.setRange(1, 80)
         self.steps_spin.setValue(int(self.settings.get("steps", ai_backends.LOCAL_STEPS)))
+        self.background_combo = QtWidgets.QComboBox()
+        for label, method_id in ai_char.background_removal_choices():
+            self.background_combo.addItem(label, method_id)
+        self.background_combo.setToolTip(
+            "Keep leaves the opaque image as generated. Remove clears a corner-connected, near-uniform background."
+        )
         local_form = QtWidgets.QFormLayout()
         local_form.addRow("Server address", url_row)
         local_form.addRow("Checkpoint", self.checkpoint_combo)
         local_form.addRow("Steps", self.steps_spin)
+        local_form.addRow("Background", self.background_combo)
         self.local_group = QtWidgets.QGroupBox("Self-hosted server")
         self.local_group.setLayout(local_form)
 
@@ -239,6 +251,13 @@ class AICharDialog(QtWidgets.QDialog):
         self.combo_select(self.model_combo, self.settings.get("openai_model", ai_backends.OPENAI_MODELS[0]))
         self.combo_select(self.quality_combo, self.settings.get("quality", "low"))
         self.load_local_fields(self.current_kind)
+        self.combo_select(
+            self.background_combo,
+            ai_char.normalize_background_removal(
+                self.settings.get("background_removal"),
+                legacy_remove_background=self.settings.get("remove_background"),
+            ),
+        )
         self.load_prompt_fields(self.current_kind)
         self.update_visibility()
 
@@ -297,6 +316,7 @@ class AICharDialog(QtWidgets.QDialog):
         settings["openai_model"] = self.model_combo.currentData()
         settings["quality"] = self.quality_combo.currentData()
         settings["steps"] = str(self.steps_spin.value())
+        settings["background_removal"] = self.background_combo.currentData()
         return settings
 
     # --- model list -----------------------------------------------------------

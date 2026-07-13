@@ -6,6 +6,8 @@ resized in memory before upload and are never copied into myCat's data folder.
 
 from __future__ import annotations
 
+from collections import deque
+from collections.abc import Callable
 import base64
 import hashlib
 import io
@@ -180,6 +182,87 @@ def _normalized_character_png(image_bytes: bytes) -> bytes:
     return output.getvalue()
 
 
+def remove_plain_background(image_bytes: bytes, *, tolerance: int = 48) -> bytes:
+    """Make a corner-connected, near-uniform background transparent.
+
+    This conservative post-processing option is for locally generated mascots
+    on a simple background. Only pixels connected to an image corner and close
+    to that corner's colour are removed; interior detail is left untouched.
+    """
+    try:
+        with Image.open(io.BytesIO(image_bytes)) as source:
+            image = source.convert("RGBA")
+    except (OSError, UnidentifiedImageError) as exc:
+        raise AICharError("Cannot remove the background from an invalid image.") from exc
+
+    width, height = image.size
+    if not width or not height:
+        return image_bytes
+    pixels = image.load()
+    visited: set[tuple[int, int]] = set()
+    queue: deque[tuple[int, int, tuple[int, int, int]]] = deque()
+    for x, y in ((0, 0), (width - 1, 0), (0, height - 1), (width - 1, height - 1)):
+        if (x, y) not in visited:
+            visited.add((x, y))
+            queue.append((x, y, pixels[x, y][:3]))
+
+    limit = tolerance * tolerance * 3
+    while queue:
+        x, y, background = queue.popleft()
+        red, green, blue, alpha = pixels[x, y]
+        distance = sum((value - reference) ** 2 for value, reference in zip((red, green, blue), background))
+        if alpha == 0 or distance > limit:
+            continue
+        pixels[x, y] = (red, green, blue, 0)
+        for next_x, next_y in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+            if 0 <= next_x < width and 0 <= next_y < height and (next_x, next_y) not in visited:
+                visited.add((next_x, next_y))
+                queue.append((next_x, next_y, background))
+
+    output = io.BytesIO()
+    image.save(output, "PNG", optimize=True)
+    return output.getvalue()
+
+
+BackgroundRemovalFn = Callable[[bytes], bytes]
+
+BACKGROUND_REMOVAL_NONE = "none"
+BACKGROUND_REMOVAL_PLAIN = "plain"
+DEFAULT_BACKGROUND_REMOVAL = BACKGROUND_REMOVAL_NONE
+
+
+def keep_background(image_bytes: bytes) -> bytes:
+    """Leave opaque self-hosted output unchanged."""
+    return image_bytes
+
+
+BACKGROUND_REMOVAL_METHODS: dict[str, tuple[str, BackgroundRemovalFn]] = {
+    BACKGROUND_REMOVAL_NONE: ("Keep", keep_background),
+    BACKGROUND_REMOVAL_PLAIN: ("Remove", remove_plain_background),
+}
+
+
+def background_removal_choices() -> list[tuple[str, str]]:
+    """Return (label, method id) pairs for UI selectors."""
+    return [(label, method_id) for method_id, (label, _) in BACKGROUND_REMOVAL_METHODS.items()]
+
+
+def normalize_background_removal(value: str | None, *, legacy_remove_background: str | None = None) -> str:
+    """Resolve a persisted or legacy setting to a known background-removal method id."""
+    if value and value in BACKGROUND_REMOVAL_METHODS:
+        return value
+    if legacy_remove_background and legacy_remove_background.lower() == "true":
+        return BACKGROUND_REMOVAL_PLAIN
+    return DEFAULT_BACKGROUND_REMOVAL
+
+
+def apply_background_removal(image_bytes: bytes, method: str) -> bytes:
+    """Run the selected post-processing method, if any."""
+    normalized = normalize_background_removal(method)
+    _, remover = BACKGROUND_REMOVAL_METHODS[normalized]
+    return remover(image_bytes)
+
+
 def install_character(display_name: str, image_bytes: bytes) -> tuple[str, Path]:
     char_id = slugify(display_name)
     destination = char_catalog.ensure_user_chars_dir() / f"{char_id}.zip"
@@ -238,6 +321,15 @@ __all__ = [
     "build_prompt",
     "install_character",
     "prepare_references",
+    "apply_background_removal",
+    "background_removal_choices",
+    "keep_background",
+    "normalize_background_removal",
+    "remove_plain_background",
+    "BACKGROUND_REMOVAL_METHODS",
+    "BACKGROUND_REMOVAL_NONE",
+    "BACKGROUND_REMOVAL_PLAIN",
+    "DEFAULT_BACKGROUND_REMOVAL",
     "request_image",
     "slugify",
 ]

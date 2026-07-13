@@ -11,10 +11,12 @@ Backends:
   (identity-preserving), ``txt2img`` generates from the prompt alone. Returns a
   transparent PNG.
 - **a1111** — a self-hosted AUTOMATIC1111 Stable Diffusion WebUI (``/sdapi/v1``).
-  ``txt2img`` / ``img2img``. Opaque output (the WebUI has no background remover).
+  ``txt2img`` / ``img2img``. Its opaque output can optionally be post-processed
+  to remove a simple corner-connected background.
 - **comfyui** — a self-hosted ComfyUI server. A small built-in workflow does
   ``txt2img`` / ``img2img`` with core nodes only, so it works on any ComfyUI.
-  Opaque output.
+  Its opaque output can optionally be post-processed to remove a simple
+  corner-connected background.
 
 Both modes are offered for every backend, and the self-hosted backends can list
 their checkpoints so the settings dialog can show a model picker.
@@ -353,6 +355,7 @@ GENERATION_DEFAULTS = {
     "comfyui_url": "",
     "comfyui_checkpoint": "sd15.safetensors",
     "steps": str(LOCAL_STEPS),
+    "background_removal": "none",
     "openai_prompt": OPENAI_DEFAULT_PROMPT,
     "openai_negative": OPENAI_DEFAULT_NEGATIVE,
     "selfhosted_prompt": LOCAL_PROMPT,
@@ -364,6 +367,7 @@ def load_generation_settings() -> dict:
     """Read the [generation] section of config.ini, filled in with defaults."""
     settings = dict(GENERATION_DEFAULTS)
     parser = configparser.ConfigParser()
+    legacy_remove_background = None
     if CFG_FILE.exists():
         try:
             parser.read(CFG_FILE)
@@ -373,6 +377,12 @@ def load_generation_settings() -> dict:
             for key in GENERATION_DEFAULTS:
                 if parser.has_option(CFG_SECTION, key):
                     settings[key] = parser.get(CFG_SECTION, key)
+            if parser.has_option(CFG_SECTION, "remove_background"):
+                legacy_remove_background = parser.get(CFG_SECTION, "remove_background")
+    settings["background_removal"] = ai_char.normalize_background_removal(
+        settings.get("background_removal"),
+        legacy_remove_background=legacy_remove_background,
+    )
     return settings
 
 
