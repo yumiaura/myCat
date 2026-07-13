@@ -110,7 +110,7 @@ def test_remove_plain_background_keeps_the_character_opaque():
 
 def test_background_removal_registry_and_legacy_migration():
     assert ai_char.background_removal_choices() == [
-        ("True", "none"),
+        ("Keep", "none"),
         ("Remove", "plain"),
     ]
     assert ai_char.normalize_background_removal("plain") == "plain"

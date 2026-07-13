@@ -231,12 +231,13 @@ BACKGROUND_REMOVAL_PLAIN = "plain"
 DEFAULT_BACKGROUND_REMOVAL = BACKGROUND_REMOVAL_NONE
 
 
-def _background_removal_none(image_bytes: bytes) -> bytes:
+def keep_background(image_bytes: bytes) -> bytes:
+    """Leave opaque self-hosted output unchanged."""
     return image_bytes
 
 
 BACKGROUND_REMOVAL_METHODS: dict[str, tuple[str, BackgroundRemovalFn]] = {
-    BACKGROUND_REMOVAL_NONE: ("True", _background_removal_none),
+    BACKGROUND_REMOVAL_NONE: ("Keep", keep_background),
     BACKGROUND_REMOVAL_PLAIN: ("Remove", remove_plain_background),
 }
 
@@ -322,6 +323,7 @@ __all__ = [
     "prepare_references",
     "apply_background_removal",
     "background_removal_choices",
+    "keep_background",
     "normalize_background_removal",
     "remove_plain_background",
     "BACKGROUND_REMOVAL_METHODS",

@@ -365,8 +365,6 @@ GENERATION_DEFAULTS = {
 
 def load_generation_settings() -> dict:
     """Read the [generation] section of config.ini, filled in with defaults."""
-    from . import ai_char
-
     settings = dict(GENERATION_DEFAULTS)
     parser = configparser.ConfigParser()
     legacy_remove_background = None

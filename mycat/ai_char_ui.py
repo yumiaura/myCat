@@ -159,7 +159,7 @@ class AICharDialog(QtWidgets.QDialog):
         for label, method_id in ai_char.background_removal_choices():
             self.background_combo.addItem(label, method_id)
         self.background_combo.setToolTip(
-            "True keeps the opaque image as generated. Remove clears a corner-connected, near-uniform background."
+            "Keep leaves the opaque image as generated. Remove clears a corner-connected, near-uniform background."
         )
         local_form = QtWidgets.QFormLayout()
         local_form.addRow("Server address", url_row)
