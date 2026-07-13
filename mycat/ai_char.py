@@ -6,8 +6,6 @@ resized in memory before upload and are never copied into myCat's data folder.
 
 from __future__ import annotations
 
-from collections import deque
-from collections.abc import Callable
 import base64
 import hashlib
 import io
@@ -19,6 +17,8 @@ import urllib.error
 import urllib.request
 import uuid
 import zipfile
+from collections import deque
+from collections.abc import Callable
 from pathlib import Path
 
 from PIL import Image, ImageOps, UnidentifiedImageError
