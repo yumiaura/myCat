@@ -2180,6 +2180,18 @@ def main() -> None:
     # other python apps launched the same way.
     os.environ.setdefault("RESOURCE_NAME", "mycat")
 
+    # Windows taskbar identity. Without an explicit AppUserModelID a frozen
+    # PySide6 app is treated as its host process, so the taskbar shows a generic
+    # icon instead of ours — setWindowIcon() alone does not fix this. Set it
+    # before the QApplication builds any window; mirrors the macOS bundle id.
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("app.mycat")
+        except Exception as app_id_error:
+            logger.debug("Could not set the Windows AppUserModelID: %s", app_id_error)
+
     # Initialize Qt application with error handling
     try:
         app = QtWidgets.QApplication(sys.argv)
