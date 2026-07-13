@@ -1,7 +1,7 @@
 """GitHub notification settings dialog behaviour."""
 
 from mycat.github_notify import GitHubSettings
-from mycat.github_ui import GitHubDialog, INBOX_CHOICES
+from mycat.github_ui import INBOX_CHOICES, GitHubDialog
 
 
 class _Notifier:
