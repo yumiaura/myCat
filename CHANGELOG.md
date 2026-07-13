@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.20] - 2026-07-13
+
+### Fixed
+- **GitHub private-notification options unlock as soon as a token is present.** The private inbox categories used to enable only after a successful *Test*; a saved, typed, or environment token is now enough to pick them, and a rejected token no longer re-locks them while a token value remains. The status line tells apart verified / not-verified / no-token (by @ancaferro, #104).
+
 ## [0.1.19] - 2026-07-11
 
 ### Fixed
