@@ -8,6 +8,7 @@ until the token is entered and verified with "Test".
 """
 
 import logging
+import os
 
 from PySide6 import QtCore, QtWidgets
 
@@ -39,6 +40,7 @@ class GitHubDialog(QtWidgets.QDialog):
 
         settings = notifier.settings
         self.token_verified = bool(settings.token_verified and settings.resolve_token())
+        self.has_token = bool(settings.resolve_token())
         layout = QtWidgets.QVBoxLayout(self)
 
         self.enabled_box = QtWidgets.QCheckBox("Enabled — announces GitHub activity")
@@ -75,11 +77,11 @@ class GitHubDialog(QtWidgets.QDialog):
             self.category_boxes[key] = box
             inbox_layout.addWidget(box)
         self.inbox_box.setToolTip(
-            "Enter a token above and press Test to unlock these. They are served only with a\n"
+            "Enter a token to configure these options; Test verifies it. They are served only with a\n"
             "token (read-only Notifications scope is enough); requests go straight to api.github.com."
         )
         layout.addWidget(self.inbox_box)
-        self.set_inbox_enabled(self.token_verified)
+        self.set_inbox_enabled(self.has_token)
 
         self.status_label = QtWidgets.QLabel("")
         self.status_label.setWordWrap(True)
@@ -107,9 +109,11 @@ class GitHubDialog(QtWidgets.QDialog):
             self.category_boxes[key].setEnabled(enabled)
 
     def on_token_changed(self, text: str) -> None:
-        # Editing the token invalidates any prior verification.
+        # Editing the token invalidates verification, but users can still choose
+        # their private categories before running the optional connection test.
         self.token_verified = False
-        self.set_inbox_enabled(False)
+        self.has_token = bool(text.strip()) or bool(os.getenv(self.notifier.settings.token_env))
+        self.set_inbox_enabled(self.has_token)
 
     def set_status(self, text: str, ok: bool | None = None) -> None:
         """Status line: green when ok, red when not, neutral otherwise."""
@@ -142,7 +146,9 @@ class GitHubDialog(QtWidgets.QDialog):
         private_on = sum(1 for key, label in INBOX_CHOICES if self.category_boxes[key].isChecked())
         state = "on" if settings.enabled else "off"
         who = settings.me_login or "no username"
-        token_note = "token verified" if self.token_verified else "no token"
+        token_note = "token verified" if self.token_verified else (
+            "token not verified" if settings.resolve_token() else "no token"
+        )
         self.set_status(
             f"Saved ({state}): {who} · {public_on} public + {private_on} private options · {token_note}.",
             ok=True,
@@ -186,7 +192,7 @@ class GitHubDialog(QtWidgets.QDialog):
         if mode == "verify":
             if result.get("error") or int(result.get("status", 0)) != 200:
                 self.token_verified = False
-                self.set_inbox_enabled(False)
+                self.set_inbox_enabled(bool(self.collect_settings().resolve_token()))
                 self.set_status("Token rejected — check the PAT (read-only Notifications scope).", ok=False)
                 return
             login = str(result.get("login", ""))
