@@ -827,33 +827,39 @@ class ReminderDialog(QtWidgets.QDialog):
         self._direction.setCurrentIndex(max(0, idx))
         form.addRow("Direction", self._direction)
 
-        # Plane look is shared: Reminder, Activity rest nudges, digest, GitHub,
-        # and calendar banners all fly whatever is chosen (and Saved) here.
         self.plane_combo = QtWidgets.QComboBox()
         self.plane_combo.setIconSize(QtCore.QSize(48, 24))
-        self.plane_combo.setToolTip("Used for every banner plane, not only reminders")
         for name in available_planes():
-            self.plane_combo.addItem(name.capitalize(), name)
+            sprite = QtGui.QPixmap(str(plane_sprite_path(name)))
+            icon = (
+                QtGui.QIcon(
+                    sprite.scaled(
+                        48,
+                        24,
+                        QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                        QtCore.Qt.TransformationMode.SmoothTransformation,
+                    )
+                )
+                if not sprite.isNull()
+                else QtGui.QIcon()
+            )
+            self.plane_combo.addItem(icon, name.capitalize(), name)
         idx = self.plane_combo.findData(existing.plane)
         self.plane_combo.setCurrentIndex(max(0, idx))
         form.addRow("Plane", self.plane_combo)
 
         self._color = QtWidgets.QComboBox()
-        self._color.setToolTip("Used for every banner plane, not only reminders")
         for name, qcolor in PLANE_COLORS.items():
             swatch = QtGui.QPixmap(20, 20)
             swatch.fill(qcolor)
             self._color.addItem(QtGui.QIcon(swatch), name.capitalize(), name)
         idx = self._color.findData(existing.plane_color)
         self._color.setCurrentIndex(max(0, idx))
-        self._color.currentIndexChanged.connect(self._refresh_plane_icons)
         form.addRow("Plane color", self._color)
-        self._refresh_plane_icons()
 
         self._plane_width_spin = QtWidgets.QSpinBox()
         self._plane_width_spin.setRange(120, 500)
         self._plane_width_spin.setSuffix(" px")
-        self._plane_width_spin.setToolTip("Used for every banner plane, not only reminders")
         # Height follows the sprite's aspect ratio — only the width is user-set.
         self._plane_width_spin.setValue(max(120, int(existing.plane_width)))
         form.addRow("Plane width", self._plane_width_spin)
@@ -931,24 +937,6 @@ class ReminderDialog(QtWidgets.QDialog):
         self._refresh_pending()
         if self.status_label.text():
             self._countdown.start()
-
-    def _refresh_plane_icons(self) -> None:
-        """Retint Plane-combo icons to match the selected Plane color."""
-        color_name = self._color.currentData() or "white"
-        tint = _resolve_plane_color(color_name)
-        for i in range(self.plane_combo.count()):
-            name = self.plane_combo.itemData(i)
-            sprite = QtGui.QPixmap(str(plane_sprite_path(name)))
-            if sprite.isNull():
-                self.plane_combo.setItemIcon(i, QtGui.QIcon())
-                continue
-            tinted = _tinted_pixmap(sprite, tint).scaled(
-                48,
-                24,
-                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                QtCore.Qt.TransformationMode.SmoothTransformation,
-            )
-            self.plane_combo.setItemIcon(i, QtGui.QIcon(tinted))
 
     def _refresh_pending(self) -> None:
         """Show the pending reminder as a short 'Reminder in N min. (HH:MM)' line."""

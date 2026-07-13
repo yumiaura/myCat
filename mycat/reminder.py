@@ -131,14 +131,18 @@ def save_reminder(reminder: Reminder) -> None:
 
 
 def clear_reminder() -> None:
-    """Turn off the schedule but keep plane cosmetics on disk.
-
-    Activity / digest / GitHub banners read plane look from ``[reminder]``.
-    Dropping the section entirely used to leave them on a different default
-    than the Reminder dialog — so Reset writes a disabled stub with the
-    shared Reminder() plane defaults instead.
-    """
-    save_reminder(Reminder(enabled=False, fire_at=None))
+    """Disable the reminder (drop the whole ``[reminder]`` section)."""
+    try:
+        if not CFG_FILE.exists():
+            return
+        config = configparser.ConfigParser()
+        config.read(CFG_FILE)
+        if config.remove_section("reminder"):
+            with open(CFG_FILE, "w") as fh:
+                config.write(fh)
+            secret_store.secure_file(CFG_FILE)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Failed to clear reminder in config: %s", exc)
 
 
 def next_future_occurrence(fire_at: datetime, now: datetime | None = None) -> datetime:
@@ -185,10 +189,9 @@ class ReminderController(QtCore.QObject):
         logger.info("Reminder set: %r at %s (%s)", reminder.text, when, reminder.normalized_direction())
 
     def clear(self) -> None:
-        stub = Reminder(enabled=False, fire_at=None)
-        self._reminder = stub
+        self._reminder = None
         clear_reminder()
-        logger.info("Reminder cleared (schedule off; plane cosmetics kept)")
+        logger.info("Reminder cleared")
 
     def test(self, reminder: Reminder) -> None:
         """Show the flyby right now without changing the schedule."""

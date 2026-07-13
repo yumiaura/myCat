@@ -138,19 +138,3 @@ def test_default_cosmetics_uses_saved_plane_color(monkeypatch, tmp_path, qapp):
     assert item.plane == "plane2"
     assert item.plane_width == 200
     assert sky.launched[0].plane_color == "blue"
-
-
-def test_clear_reminder_keeps_plane_cosmetics_for_announcer(monkeypatch, tmp_path, qapp):
-    # Reset must not leave Activity on a different plane than Reminder defaults.
-    monkeypatch.setattr(reminder, "CFG_DIR", tmp_path)
-    monkeypatch.setattr(reminder, "CFG_FILE", tmp_path / "config.ini")
-    reminder.save_reminder(reminder.Reminder(plane_color="pink", enabled=True))
-    reminder.clear_reminder()
-    saved = reminder.load_reminder()
-    assert saved is not None
-    assert saved.enabled is False
-    assert saved.plane_color == "white"
-    ann, sky, _clock = make_announcer(qapp)
-    item = ann.announce("🍅 earned — time to rest")
-    assert item.plane_color == "white"
-    assert sky.launched[0].plane_color == "white"
