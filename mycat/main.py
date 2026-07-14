@@ -546,7 +546,7 @@ class PixelCatWindow(QtWidgets.QWidget):
 
         # Setup transparency
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        self.setWindowTitle("mycat")
+        self.setWindowTitle("myCat")
         self.setWindowIcon(make_app_icon())
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
 
