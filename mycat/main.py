@@ -1984,32 +1984,6 @@ def make_app_icon() -> QtGui.QIcon:
     return QtGui.QIcon(pixmap)
 
 
-def is_dark_theme(app) -> bool:
-    """True when the desktop uses a dark colour scheme (so the tray wants the
-    light icon). Prefers Qt's colorScheme(), falls back to palette lightness."""
-    try:
-        scheme = app.styleHints().colorScheme()
-        if scheme == QtCore.Qt.ColorScheme.Dark:
-            return True
-        if scheme == QtCore.Qt.ColorScheme.Light:
-            return False
-    except (AttributeError, TypeError):
-        pass
-    return app.palette().color(QtGui.QPalette.ColorRole.Window).lightness() < 128
-
-
-def make_tray_icon(app) -> QtGui.QIcon:
-    """Theme-adaptive tray icon: the light silhouette (icon-w) on a dark panel,
-    the dark one (icon-b) on a light panel; falls back to the app icon."""
-    assets = assets_dir()
-    path = assets / ("icon-w.png" if is_dark_theme(app) else "icon-b.png")
-    if path.is_file():
-        icon = QtGui.QIcon(str(path))
-        if not icon.isNull():
-            return icon
-    return make_app_icon()
-
-
 def desktop_exec_command() -> str:
     """The command a menu launcher should run to start mycat, for this install."""
     if getattr(sys, "frozen", False):
@@ -2096,14 +2070,9 @@ def setup_tray(app, window):
     if not QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
         logger.warning("System tray not available — the cat can't be sent to a tray")
         return None
-    # Theme-adaptive monochrome icon (light on dark panels, dark on light ones);
-    # a full char frame would shrink to a near-invisible speck at tray size.
-    tray = QtWidgets.QSystemTrayIcon(make_tray_icon(app), app)
-    # Re-pick the icon if the desktop switches between light and dark.
-    hints = app.styleHints()
-    if hasattr(hints, "colorSchemeChanged"):
-        hints.colorSchemeChanged.connect(lambda _=None: tray.setIcon(make_tray_icon(app)))
-    tray.setToolTip("mycat 🐱")
+    # The full-colour app icon, same as the window and taskbar.
+    tray = QtWidgets.QSystemTrayIcon(make_app_icon(), app)
+    tray.setToolTip("myCat")
 
     def show_window():
         window.show()
