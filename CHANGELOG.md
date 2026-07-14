@@ -10,7 +10,7 @@ All notable changes to this project are documented in this file.
 ### Fixed
 - **GitHub private-notification options unlock as soon as a token is present.** The private inbox categories used to enable only after a successful *Test*; a saved, typed, or environment token is now enough to pick them, and a rejected token no longer re-locks them while a token value remains. The status line tells apart verified / not-verified / no-token (by @ancaferro, #104).
 - **Activity 🍅 and digest flybys now use the white plane by default, like Reminder.** Before any `[reminder]` was saved they could fall back to a stale pink plane; the announcer now takes its plane look from the Reminder defaults so every banner matches (by @ancaferro, #99).
-- **Windows taskbar shows the real myCat icon.** The frozen app now sets an explicit Windows AppUserModelID at startup, so the taskbar uses our icon instead of a generic host-process one (`setWindowIcon` alone wasn't enough for a PyInstaller build).
+- **Windows taskbar shows the real myCat icon instead of a 😽 placeholder.** In the frozen exe the icon was loaded from `main.py`'s entry-script path, which drops the `mycat/` prefix, so `icon.png` was never found and the window fell back to a drawn 😽. Bundled assets are now resolved from the package root so the real icon loads; the app also sets an explicit Windows AppUserModelID for correct taskbar identity and grouping.
 
 ## [0.1.19] - 2026-07-11
 

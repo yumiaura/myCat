@@ -1948,10 +1948,26 @@ def ensure_emoji_font(app) -> None:
     logger.info("No system emoji font — using the bundled %s fallback", bundled[0])
 
 
+def assets_dir() -> Path:
+    """The bundled ``mycat/assets`` directory.
+
+    main.py is the frozen entry script, so in a PyInstaller onefile its own
+    ``__file__`` drops the ``mycat/`` prefix (it points at ``<_MEIPASS>/main.py``)
+    and a ``__file__``-relative lookup misses the bundled assets — which is why
+    the app icon fell back to a drawn 😽 in the Windows exe while skins and plane
+    sprites, resolved from their own package modules, kept working. Resolve from
+    the PyInstaller extraction root when frozen; from this file's directory
+    otherwise.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS) / "mycat" / "assets"
+    return Path(__file__).resolve().parent / "assets"
+
+
 def make_app_icon() -> QtGui.QIcon:
     """The app icon (tray, window, splash): mycat/assets/icon.png, falling back
     to a drawn 😽 if the file is missing."""
-    icon_path = Path(__file__).resolve().parent / "assets" / "icon.png"
+    icon_path = assets_dir() / "icon.png"
     if icon_path.is_file():
         icon = QtGui.QIcon(str(icon_path))
         if not icon.isNull():
@@ -1985,7 +2001,7 @@ def is_dark_theme(app) -> bool:
 def make_tray_icon(app) -> QtGui.QIcon:
     """Theme-adaptive tray icon: the light silhouette (icon-w) on a dark panel,
     the dark one (icon-b) on a light panel; falls back to the app icon."""
-    assets = Path(__file__).resolve().parent / "assets"
+    assets = assets_dir()
     path = assets / ("icon-w.png" if is_dark_theme(app) else "icon-b.png")
     if path.is_file():
         icon = QtGui.QIcon(str(path))
@@ -2036,7 +2052,7 @@ def install_desktop_entry() -> None:
     best = desktop_version(user_desktop) or desktop_version(system_desktop)
     if best is not None and update_check.parse_version(current) < update_check.parse_version(best):
         return
-    source_icon = Path(__file__).resolve().parent / "assets" / "icon.png"
+    source_icon = assets_dir() / "icon.png"
     if not source_icon.is_file():
         return
     # Copy the icon to a stable path and reference it ABSOLUTELY in Icon= — the
