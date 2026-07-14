@@ -244,7 +244,7 @@ class ShopDialog(QtWidgets.QDialog):
         config_path: Path | None = None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Mycat Shop")
+        self.setWindowTitle("myCat Shop")
         self.resize(760, 540)
         self.setMinimumSize(560, 380)
         self.setModal(False)
@@ -276,7 +276,7 @@ class ShopDialog(QtWidgets.QDialog):
 
         header = QtWidgets.QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
-        self.title_label = QtWidgets.QLabel("<b>Mycat Shop</b>")
+        self.title_label = QtWidgets.QLabel("<b>myCat Shop</b>")
         header.addWidget(self.title_label)
         header.addStretch(1)
         self.refresh_button = QtWidgets.QPushButton("Refresh")

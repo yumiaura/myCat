@@ -8,7 +8,7 @@ All notable changes to this project are documented in this file.
 - **Optional background removal for self-hosted characters.** Output from a self-hosted a1111 / ComfyUI server is opaque; the *Generate…* dialog's self-hosted section now has a **Keep / Remove** selector that can make a corner-connected, near-uniform background transparent, leaving the character's interior detail untouched (by @ancaferro, #105).
 
 ### Changed
-- **Cleaner "myCat" branding.** The system-tray icon is now the full-colour cat (was a monochrome silhouette), and both its hover tooltip and the window title read simply "myCat" (the tooltip was "mycat 🐱").
+- **Cleaner, consistent "myCat" branding.** The system-tray icon is now the full-colour cat (was a monochrome silhouette), and the visible name reads "myCat" everywhere it is shown — the tray tooltip (was "mycat 🐱"), the window title, the update dialog, and the shop window.
 
 ### Fixed
 - **GitHub private-notification options unlock as soon as a token is present.** The private inbox categories used to enable only after a successful *Test*; a saved, typed, or environment token is now enough to pick them, and a rejected token no longer re-locks them while a token value remains. The status line tells apart verified / not-verified / no-token (by @ancaferro, #104).

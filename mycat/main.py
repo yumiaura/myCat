@@ -1445,7 +1445,7 @@ class PixelCatWindow(QtWidgets.QWidget):
     def download_update(self, kind: str) -> None:
         signals = self.update_signals
         dialog = QtWidgets.QProgressDialog("Downloading update…", "Cancel", 0, 100, self)
-        dialog.setWindowTitle("Updating mycat")
+        dialog.setWindowTitle("Updating myCat")
         dialog.setMinimumDuration(0)
         dialog.setAutoClose(False)
         dialog.setAutoReset(False)
