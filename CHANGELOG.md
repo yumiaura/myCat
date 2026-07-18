@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.21] - Unreleased
+
+### Changed
+- **CONTRIBUTING documents the real test suite and lint.** The guide still said there were no automated tests; it now describes the `pytest` suite in `tests/` (headless via the offscreen Qt platform, so no display is needed) and the `ruff check .` lint that CI enforces on Python 3.10 / 3.12 (by @iderex, #106, branch `docs/contributing-tests-ruff`).
+
+### Fixed
+- **Autostart no longer breaks when the install path contains a space.** `launch_command()` returned the `shutil.which("mycat")` path unquoted, and the XDG `.desktop` `Exec=` line word-splits on spaces — so a script under a path like `/home/anna maria/.local/bin/mycat`, or a Windows profile such as `C:\Users\Anna Maria\…` in the Run key, made the entry fail to load and autostart silently did nothing. The path is now always quoted (harmless without spaces), matching the `python -m` fallback (by @iderex, #107, branch `fix/autostart-quote-path`).
+
 ## [0.1.20] - 2026-07-13
 
 ### Added
