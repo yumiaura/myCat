@@ -49,19 +49,25 @@ Thank you for considering contributing to this cute desktop pet project! 🐱
 ## Code Style
 
 - Follow PEP 8 for Python code style
+- Lint with [ruff](https://docs.astral.sh/ruff/): `ruff check .` (CI fails on findings)
 - Use type hints where possible (already implemented in most places)
 - Add docstrings to all public functions and classes
 - Keep functions focused and not too long
 
 ## Testing
 
-Currently there are no automated tests, but contributions in this area are very welcome!
+The test suite lives in `tests/` and runs on pytest. Qt runs headless through
+the offscreen platform (set up in `tests/conftest.py`), so no display is
+needed:
 
-Consider adding tests for:
-- Sprite loading and parsing
-- Configuration save/load
-- Window behavior (position, transparency)
-- Command-line argument parsing
+```bash
+pip install ruff pytest
+python -m pytest -q
+```
+
+CI runs `ruff check .` and the test suite on Python 3.10 and 3.12 for every
+pull request — please run both locally before opening one, and add tests for
+new features and bug fixes.
 
 ## Documentation
 
