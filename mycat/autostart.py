@@ -18,10 +18,17 @@ WIN_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 
 def launch_command() -> str:
-    """Command that starts mycat — the installed console script, else python -m."""
+    """Command that starts mycat — the installed console script, else python -m.
+
+    The path is always quoted: the .desktop Exec line is word-split on
+    spaces, so an unquoted script path with a space in it (e.g. a home
+    directory like ``/home/anna maria``) breaks the autostart entry. The
+    same string goes into the Windows Run key, where unquoted paths with
+    spaces are ambiguous.
+    """
     exe = shutil.which("mycat")
     if exe:
-        return exe
+        return f'"{exe}"'
     return f'"{sys.executable}" -m mycat'
 
 
