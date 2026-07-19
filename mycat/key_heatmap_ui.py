@@ -93,7 +93,7 @@ class KeyboardHeatmapDialog(QtWidgets.QDialog):
         self.collector = collector
         self.setWindowTitle("Keyboard heatmap")
         self.setModal(False)
-        self.resize(720, 320)
+        self.resize(720, 400)
 
         layout = QtWidgets.QVBoxLayout(self)
 
@@ -113,6 +113,9 @@ class KeyboardHeatmapDialog(QtWidgets.QDialog):
 
         self.board = KeyboardBoard(self)
         layout.addWidget(self.board, 1)
+        # The board fills the vertical stretch, so keep a clear gap before the
+        # buttons — otherwise Close rides up against the bottom-row keys.
+        layout.addSpacing(12)
 
         button_row = QtWidgets.QHBoxLayout()
         button_row.addStretch(1)
