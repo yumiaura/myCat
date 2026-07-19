@@ -118,11 +118,6 @@ class HeatLegend(QtWidgets.QWidget):
         painter.setPen(QtGui.QColor(110, 110, 110))
         labels = QtCore.QRectF(margin, bar.bottom() + 2.0, self.width() - 2 * margin, 16.0)
         painter.drawText(labels, QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter, "1")
-        painter.drawText(
-            labels,
-            QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter,
-            "presses per key",
-        )
         peak_label = f"{self.peak:,}" if self.peak > 0 else "—"
         painter.drawText(labels, QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter, peak_label)
         painter.end()

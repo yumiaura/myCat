@@ -414,7 +414,6 @@ class ActivityDialog(QtWidgets.QDialog):
         button_row.addWidget(self.save_button)
         button_row.addWidget(self.close_button)
         layout.addLayout(button_row)
-        self.keyboard_dialog = None
 
         self.refresh_log()
         self.refresh_now()
@@ -772,15 +771,23 @@ class ActivityDialog(QtWidgets.QDialog):
         self.refresh_log()
 
     def open_keyboard_heatmap(self) -> None:
-        """Open (or re-raise) the live keyboard heatmap window."""
-        if self.keyboard_dialog is None:
-            from .key_heatmap_ui import KeyboardHeatmapDialog
+        """Open (or re-raise) the heatmap window, then close this Activity window.
 
-            self.keyboard_dialog = KeyboardHeatmapDialog(self.collector, parent=self)
-            self.keyboard_dialog.finished.connect(lambda result: setattr(self, "keyboard_dialog", None))
-        self.keyboard_dialog.show()
-        self.keyboard_dialog.raise_()
-        self.keyboard_dialog.activateWindow()
+        The heatmap is parented to the main window (not this dialog) and its
+        single instance is tracked there, so it outlives the Activity window we
+        close right after."""
+        from .key_heatmap_ui import KeyboardHeatmapDialog
+
+        host = self.parent() or self
+        dialog = getattr(host, "keyboard_heatmap_dialog", None)
+        if dialog is None:
+            dialog = KeyboardHeatmapDialog(self.collector, parent=self.parent())
+            host.keyboard_heatmap_dialog = dialog
+            dialog.finished.connect(lambda result, owner=host: setattr(owner, "keyboard_heatmap_dialog", None))
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+        self.close()
 
     def save_settings(self) -> None:
         """Persist + apply, keeping the dialog open (matches GitHub/Calendar)."""
