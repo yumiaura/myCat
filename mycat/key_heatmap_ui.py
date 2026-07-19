@@ -9,14 +9,11 @@ lives right here on the board.
 
 from __future__ import annotations
 
-import logging
-
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from . import activity as activity_mod
 from . import key_heatmap
-
-logger = logging.getLogger(__name__)
+from .ui_theme import LIGHT_QSS
 
 GREY = QtGui.QColor(210, 210, 210)
 GREY_BORDER = QtGui.QColor(170, 170, 170)
@@ -91,12 +88,12 @@ class KeyboardBoard(QtWidgets.QWidget):
 
 
 class HeatLegend(QtWidgets.QWidget):
-    """The colour scale under the board: blue = 1 press, red = the peak count."""
+    """Single-row colour scale: `1` (min) — gradient — peak (max), all inline."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.peak = 0
-        self.setFixedHeight(42)
+        self.setFixedHeight(24)
 
     def set_peak(self, peak: int) -> None:
         self.peak = peak
@@ -105,8 +102,25 @@ class HeatLegend(QtWidgets.QWidget):
     def paintEvent(self, event) -> None:
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-        margin = 8.0
-        bar = QtCore.QRectF(margin, 4.0, self.width() - 2 * margin, 14.0)
+        min_text = "1"
+        max_text = f"{self.peak:,}" if self.peak > 0 else "—"
+        metrics = painter.fontMetrics()
+        min_w = metrics.horizontalAdvance(min_text)
+        max_w = metrics.horizontalAdvance(max_text)
+        h = float(self.height())
+
+        painter.setPen(QtGui.QColor(110, 110, 110))
+        left_cells = QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
+        right_cells = QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter
+        painter.drawText(QtCore.QRectF(0.0, 0.0, min_w, h), left_cells, min_text)
+        painter.drawText(QtCore.QRectF(self.width() - max_w, 0.0, max_w, h), right_cells, max_text)
+
+        pad = 8.0
+        bar_h = 12.0
+        bar = QtCore.QRectF(
+            min_w + pad, (h - bar_h) / 2.0,
+            max(1.0, self.width() - min_w - max_w - 2 * pad), bar_h,
+        )
         gradient = QtGui.QLinearGradient(bar.left(), 0.0, bar.right(), 0.0)
         for step in range(11):
             r, g, b = key_heatmap.heat_rgb(step / 10.0)
@@ -114,12 +128,6 @@ class HeatLegend(QtWidgets.QWidget):
         painter.setPen(QtGui.QPen(QtGui.QColor(150, 150, 150), 1.0))
         painter.setBrush(QtGui.QBrush(gradient))
         painter.drawRoundedRect(bar, 3.0, 3.0)
-
-        painter.setPen(QtGui.QColor(110, 110, 110))
-        labels = QtCore.QRectF(margin, bar.bottom() + 2.0, self.width() - 2 * margin, 16.0)
-        painter.drawText(labels, QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter, "1")
-        peak_label = f"{self.peak:,}" if self.peak > 0 else "—"
-        painter.drawText(labels, QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter, peak_label)
         painter.end()
 
 
@@ -131,7 +139,9 @@ class KeyboardHeatmapDialog(QtWidgets.QDialog):
         self.collector = collector
         self.setWindowTitle("Keyboard heatmap")
         self.setModal(False)
+        self.setMinimumWidth(700)
         self.resize(720, 400)
+        self.setStyleSheet(LIGHT_QSS)
 
         layout = QtWidgets.QVBoxLayout(self)
 
