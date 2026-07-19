@@ -255,30 +255,41 @@ class ActivityDialog(QtWidgets.QDialog):
 
         # Three independent toggles: Tracking drives only the cat's eyes, while
         # Mouse and Keyboard are the diary count tracks. None greys out the others.
-        self.enabled_box = QtWidgets.QCheckBox("Enable Tracking")
+        self.enabled_box = QtWidgets.QCheckBox("Tracking")
         self.enabled_box.setToolTip(
             "The cat's eyes follow your cursor; off, it looks at its own nose.\n"
             "Purely visual — it records nothing."
         )
         self.enabled_box.setChecked(settings.enabled)
-        self.mouse_box = QtWidgets.QCheckBox("Enable Mouse")
+        self.mouse_box = QtWidgets.QCheckBox("Mouse")
         self.mouse_box.setToolTip("Mouse click count in the private diary (never targets).")
         self.mouse_box.setChecked(settings.mouse_enabled)
-        self.keyboard_box = QtWidgets.QCheckBox("Enable Keyboard")
-        self.keyboard_box.setToolTip("Keystroke count (never which keys).")
+        self.keyboard_box = QtWidgets.QCheckBox("Keyboard")
+        self.keyboard_box.setToolTip("Keystroke count in the diary (never which keys).")
         self.keyboard_box.setChecked(settings.keyboard_enabled)
+        # Opt-in per-key heatmap collection (off by default). Session-only,
+        # aggregate counts in memory — feeds the Keyboard heatmap window.
+        self.collect_box = QtWidgets.QCheckBox("Heatmap")
+        self.collect_box.setToolTip(
+            "Count key presses per key for the Heatmap window. Aggregate counts only —\n"
+            "never the order, timing or text — kept in memory and gone on restart."
+        )
+        self.collect_box.setChecked(settings.key_heatmap_enabled)
         # Independent of the tracking tracks: whether hovering the cat shows the
         # live stats tooltip (driven by the FocusController).
-        self.tooltip_box = QtWidgets.QCheckBox("Enable Tooltip")
+        self.tooltip_box = QtWidgets.QCheckBox("Tooltip")
         self.tooltip_box.setToolTip("Show the live focus/activity stats when you hover over the cat.")
         self.tooltip_box.setChecked(self.tooltip_enabled())
-        # Four toggles share the top row; the destructive Delete-all lives in the
-        # bottom bar (next to Export) so this row never runs out of width.
+        # An "Enable:" label leads the four toggles; the destructive Delete-all
+        # lives in the bottom bar (next to Export) so this row never runs out of
+        # width.
         toggles_row = QtWidgets.QHBoxLayout()
+        toggles_row.addWidget(QtWidgets.QLabel("Enable:"))
         toggles_row.addWidget(self.enabled_box)
         toggles_row.addSpacing(16)
         toggles_row.addWidget(self.mouse_box)
         toggles_row.addWidget(self.keyboard_box)
+        toggles_row.addWidget(self.collect_box)
         toggles_row.addWidget(self.tooltip_box)
         toggles_row.addStretch(1)
         layout.addLayout(toggles_row)
@@ -389,6 +400,13 @@ class ActivityDialog(QtWidgets.QDialog):
         self.delete_button.clicked.connect(self.delete_all)
         button_row.addWidget(self.delete_button)
         button_row.addStretch(1)
+        self.keyboard_button = QtWidgets.QPushButton("Heatmap")
+        self.keyboard_button.setToolTip("Open a live keyboard heatmap of key presses this session.")
+        # Only usable once the Heatmap toggle is on — nothing is collected otherwise.
+        self.keyboard_button.setEnabled(self.collect_box.isChecked())
+        self.collect_box.toggled.connect(self.keyboard_button.setEnabled)
+        self.keyboard_button.clicked.connect(self.open_keyboard_heatmap)
+        button_row.addWidget(self.keyboard_button)
         self.save_button = QtWidgets.QPushButton("Save")
         self.close_button = QtWidgets.QPushButton("Close")
         self.save_button.clicked.connect(self.save_settings)
@@ -752,12 +770,32 @@ class ActivityDialog(QtWidgets.QDialog):
             logger.exception("Failed to delete activity history")
         self.refresh_log()
 
+    def open_keyboard_heatmap(self) -> None:
+        """Open (or re-raise) the heatmap window, then close this Activity window.
+
+        The heatmap is parented to the main window (not this dialog) and its
+        single instance is tracked there, so it outlives the Activity window we
+        close right after."""
+        from .key_heatmap_ui import KeyboardHeatmapDialog
+
+        host = self.parent() or self
+        dialog = getattr(host, "keyboard_heatmap_dialog", None)
+        if dialog is None:
+            dialog = KeyboardHeatmapDialog(self.collector, parent=self.parent())
+            host.keyboard_heatmap_dialog = dialog
+            dialog.finished.connect(lambda result, owner=host: setattr(owner, "keyboard_heatmap_dialog", None))
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+        self.close()
+
     def save_settings(self) -> None:
         """Persist + apply, keeping the dialog open (matches GitHub/Calendar)."""
         settings = activity_mod.ActivitySettings(
             enabled=self.enabled_box.isChecked(),
             mouse_enabled=self.mouse_box.isChecked(),
             keyboard_enabled=self.keyboard_box.isChecked(),
+            key_heatmap_enabled=self.collect_box.isChecked(),
             retention_days=self.retention_spin.value(),
             prompted=True,
         )

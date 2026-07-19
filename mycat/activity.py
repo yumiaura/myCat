@@ -3,10 +3,13 @@
 
 Hard rules, in order of importance:
 
-1. **Counters, never content.** The keyboard hook increments an integer and
-   discards the key identity in the same callback; the mouse contributes a
-   travelled distance, never a trajectory. Nothing here can reconstruct what
-   was typed or where the cursor went.
+1. **Counters, never content.** The diary keyboard hook increments an integer
+   and discards the key identity in the same callback; the mouse contributes a
+   travelled distance, never a trajectory. Nothing persisted here can
+   reconstruct what was typed or where the cursor went. The one exception is
+   the opt-in keyboard heatmap (``key_heatmap_enabled``, off by default): it
+   keeps aggregate *per-key* counts — but in memory only, never the order,
+   timing or text, and never on disk (gone on restart).
 2. **Local only.** Everything lands in ``activity.db`` next to the focus
    sessions and participates in no network request of any kind.
 3. **Honest wording.** Minutes without input are "away from the computer",
@@ -29,6 +32,7 @@ the diary is on — the cat's eyes track the cursor anyway — so it has no togg
 
 import configparser
 import logging
+import threading
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -36,12 +40,13 @@ from pathlib import Path
 from PySide6 import QtCore, QtGui
 
 if __package__:
-    from . import activity_store, secret_store
+    from . import activity_store, key_heatmap, secret_store
 else:
     import importlib
 
     activity_store = importlib.import_module("mycat.activity_store")
     secret_store = importlib.import_module("mycat.secret_store")
+    key_heatmap = importlib.import_module("mycat.key_heatmap")
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +83,10 @@ class ActivitySettings:
     # the diary is on — the cat's eyes need the cursor anyway — so it has no toggle.
     mouse_enabled: bool = True
     keyboard_enabled: bool = True
+    # Optional, off by default: an in-memory per-key tally for the keyboard
+    # heatmap window. Separate from keyboard_enabled (the diary count track) and
+    # session-only — the counts are never written to disk.
+    key_heatmap_enabled: bool = False
     retention_days: int = DEFAULT_RETENTION_DAYS
     prompted: bool = False  # kept for config compatibility (prompt removed)
 
@@ -117,6 +126,7 @@ def load_activity_settings(cfg_file: Path = CFG_FILE) -> ActivitySettings:
         settings.enabled = section.getboolean("enabled", fallback=True)
         settings.mouse_enabled = section.getboolean("mouse_enabled", fallback=True)
         settings.keyboard_enabled = section.getboolean("keyboard_enabled", fallback=True)
+        settings.key_heatmap_enabled = section.getboolean("key_heatmap_enabled", fallback=False)
         settings.retention_days = section.getint("retention_days", fallback=DEFAULT_RETENTION_DAYS)
         settings.prompted = section.getboolean("prompted", fallback=False)
     except Exception as exc:  # noqa: BLE001 - never let a bad config crash the app
@@ -136,6 +146,7 @@ def save_activity_settings(settings: ActivitySettings, cfg_file: Path = CFG_FILE
         section["enabled"] = "true" if settings.enabled else "false"
         section["mouse_enabled"] = "true" if settings.mouse_enabled else "false"
         section["keyboard_enabled"] = "true" if settings.keyboard_enabled else "false"
+        section["key_heatmap_enabled"] = "true" if settings.key_heatmap_enabled else "false"
         section["retention_days"] = str(settings.retention_days)
         section["prompted"] = "true" if settings.prompted else "false"
         with open(cfg_file, "w") as fh:
@@ -185,6 +196,10 @@ class ActivityCollector(QtCore.QObject):
         self.key_listener = None
         self.mouse_listener = None
         self.xinput = None  # pure-Python X11 counter, the fallback when pynput is absent
+        # Session-only per-key tally for the heatmap. Touched from listener
+        # threads, so guard it with a lock. Never persisted, cleared on restart.
+        self.key_cell_counts: dict[str, int] = {}
+        self.key_counts_lock = threading.Lock()
         self.purged_today = False
         # Idle-edge detection (auto-pomodoro trigger) + current activity run.
         self.last_input_at = None
@@ -198,6 +213,9 @@ class ActivityCollector(QtCore.QObject):
             self.poll_timer.timeout.connect(self.sample)
             if self.settings.mouse_enabled or self.settings.keyboard_enabled:
                 self.start()
+            elif self.settings.key_heatmap_enabled:
+                # Heatmap-only: no disk diary, just the keyboard hook.
+                self.reconcile_hooks()
 
     # -- lifecycle --------------------------------------------------------------
 
@@ -221,21 +239,36 @@ class ActivityCollector(QtCore.QObject):
         logger.info("Activity collector stopped")
 
     def apply_settings(self, settings: ActivitySettings) -> None:
-        # "Enable Tracking" (settings.enabled) drives only the cat's eyes; the
-        # diary runs whenever either count track is on, independent of it.
+        # "Enable Tracking" (settings.enabled) drives only the cat's eyes. The
+        # disk diary runs whenever a count track is on; the keyboard hook also
+        # runs for the session-only heatmap, independent of the diary.
         was_recording = self.settings.mouse_enabled or self.settings.keyboard_enabled
         self.settings = settings
         recording = settings.mouse_enabled or settings.keyboard_enabled
-        if recording and not was_recording:
-            self.start()
+        active = recording or settings.key_heatmap_enabled
+        if recording and not was_recording and hasattr(self, "poll_timer"):
+            self.poll_timer.start()
         elif not recording and was_recording:
-            self.stop()
-        elif recording:
+            self.stop_recording()
+        if active:
             self.reconcile_hooks()
+        else:
+            self.stop_keyboard_hook()
+            self.stop_mouse_hook()
+            self.stop_xinput()
+
+    def stop_recording(self) -> None:
+        """Stop the disk diary (poll timer + flush) but leave the hooks alone."""
+        if hasattr(self, "poll_timer"):
+            self.poll_timer.stop()
+        self.flush()
 
     def reconcile_hooks(self) -> None:
-        """Start/stop the keyboard and mouse click hooks to match the settings."""
-        if self.settings.keyboard_enabled:
+        """Start/stop the keyboard and mouse click hooks to match the settings.
+
+        The keyboard hook also feeds the session heatmap, so it runs when either
+        the diary keyboard count or the heatmap opt-in is on."""
+        if self.settings.keyboard_enabled or self.settings.key_heatmap_enabled:
             self.start_keyboard_hook()
         else:
             self.stop_keyboard_hook()
@@ -243,6 +276,8 @@ class ActivityCollector(QtCore.QObject):
             self.start_mouse_hook()
         else:
             self.stop_mouse_hook()
+        if self.xinput is not None:
+            self.xinput.resolve_chars = self.settings.key_heatmap_enabled
 
     # -- tier 2: key/click counts — pynput (Windows/macOS) or python-xlib (Linux) --
 
@@ -256,8 +291,15 @@ class ActivityCollector(QtCore.QObject):
             return
 
         def on_press(key) -> None:
-            # The key identity is dropped RIGHT HERE — only the count survives.
-            self.bucket_keys += 1
+            # Diary count track: the key identity is dropped RIGHT HERE — only
+            # the running total survives.
+            if self.settings.keyboard_enabled:
+                self.bucket_keys += 1
+            # Optional session heatmap: bucket the key by its Latin-QWERTY cell,
+            # then discard the key. No order, no timing, no text — and only while
+            # the opt-in is on.
+            if self.settings.key_heatmap_enabled:
+                self.record_key_cell(key_heatmap.cell_for_pynput_key(key))
 
         try:
             self.key_listener = keyboard.Listener(on_press=on_press)
@@ -316,20 +358,37 @@ class ActivityCollector(QtCore.QObject):
             logger.warning("key/click counting off — no X11 RECORD (Wayland?); cursor path still recorded")
             return
         counter = xinput_linux.InputCounter(on_key=self.on_xinput_key, on_click=self.on_xinput_click)
+        counter.resolve_chars = self.settings.key_heatmap_enabled
         if counter.start():
             self.xinput = counter
             logger.info("Key/click counting via python-xlib (X11)")
         else:
             logger.warning("key/click counting off — X11 RECORD unavailable; cursor path still recorded")
 
-    def on_xinput_key(self) -> None:
-        # The key identity never leaves the record thread — only the count survives.
+    def on_xinput_key(self, cell: str | None = None) -> None:
+        # Diary count track: only the running total survives.
         if self.settings.keyboard_enabled:
             self.bucket_keys += 1
+        # Optional session heatmap: the record thread already resolved the key to
+        # its Latin-QWERTY cell (only when the opt-in is on); bucket and forget.
+        if self.settings.key_heatmap_enabled:
+            self.record_key_cell(cell)
 
     def on_xinput_click(self) -> None:
         if self.settings.mouse_enabled:
             self.bucket_clicks += 1
+
+    def record_key_cell(self, cell: str | None) -> None:
+        """Add one to a heatmap cell's session tally (thread-safe, in memory)."""
+        if not cell:
+            return
+        with self.key_counts_lock:
+            self.key_cell_counts[cell] = self.key_cell_counts.get(cell, 0) + 1
+
+    def snapshot_key_cells(self) -> dict[str, int]:
+        """A copy of the current per-cell session counts for the heatmap window."""
+        with self.key_counts_lock:
+            return dict(self.key_cell_counts)
 
     def stop_xinput(self) -> None:
         if self.xinput is not None:

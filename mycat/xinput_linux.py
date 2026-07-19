@@ -2,8 +2,11 @@
 
 This is the Linux counting backend so `pip install mycat` works out of the box:
 pynput would need the `evdev` C extension (no wheels, needs a compiler), while
-`python-xlib` is pure Python with wheels. Like the pynput path, only integers
-survive — the key identity is dropped inside the callback and never stored.
+`python-xlib` is pure Python with wheels. By default only integers survive — the
+key identity is dropped inside the callback and never stored. When the caller
+turns on `resolve_chars` (the opt-in keyboard heatmap), each keycode is mapped
+to its Latin-QWERTY cell for an in-memory tally; still no order, timing or text,
+and nothing on disk.
 
 Unavailable (returns False from `start()`) off X11 (e.g. Wayland) or if the X
 server lacks the RECORD extension; the diary then keeps only the cursor path.
@@ -14,6 +17,8 @@ from __future__ import annotations
 import logging
 import threading
 from collections.abc import Callable
+
+from . import key_heatmap
 
 logger = logging.getLogger(__name__)
 
@@ -36,17 +41,21 @@ def available() -> bool:
 class InputCounter:
     """Count key presses and mouse-button presses globally via X RECORD.
 
-    `on_key` / `on_click` are called (no arguments) once per event; keep them
-    cheap and thread-safe — they run on the record thread.
+    `on_click` is called with no arguments; `on_key` is called with the Latin
+    QWERTY cell id for the keypress (or None) when `resolve_chars` is on, else
+    with None. Keep both cheap and thread-safe — they run on the record thread.
     """
 
     def __init__(
         self,
-        on_key: Callable[[], None] | None = None,
+        on_key: Callable[[str | None], None] | None = None,
         on_click: Callable[[], None] | None = None,
     ) -> None:
         self.on_key = on_key
         self.on_click = on_click
+        # When True, resolve each keycode to its heatmap cell (honouring the
+        # active layout group); when False, the key identity is never looked up.
+        self.resolve_chars = False
         self.thread: threading.Thread | None = None
         self.control_display = None
         self.record_display = None
@@ -117,7 +126,8 @@ class InputCounter:
                 )
                 if event.type == X.KeyPress:
                     if self.on_key is not None:
-                        self.on_key()
+                        cell = self.resolve_cell(event.detail, event.state) if self.resolve_chars else None
+                        self.on_key(cell)
                 elif event.type == X.ButtonPress:
                     if self.on_click is not None:
                         self.on_click()
@@ -131,6 +141,25 @@ class InputCounter:
                 self.record_display.record_free_context(self.context)
             except Exception:
                 pass
+
+    def resolve_cell(self, keycode: int, state: int) -> str | None:
+        """Keycode + modifier state → heatmap cell for the active layout group.
+
+        Uses `control_display` (a separate connection from the record loop) so
+        the keymap lookup doesn't disturb the record stream. Cyrillic and other
+        non-Latin keysyms map to nothing and are dropped."""
+        display = self.control_display
+        if display is None:
+            return None
+        try:
+            group = (state >> 13) & 0x3          # XKB group (active layout) bits
+            shift = 1 if (state & 0x1) else 0     # ShiftMask
+            keysym = display.keycode_to_keysym(keycode, group * 2 + shift)
+            if not keysym:
+                keysym = display.keycode_to_keysym(keycode, 0)
+        except Exception:
+            return None
+        return key_heatmap.cell_for_keysym(keysym)
 
     def stop(self) -> None:
         try:
