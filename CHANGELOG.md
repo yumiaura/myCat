@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.22] - Unreleased
+
+### Added
+- **Opt-in keyboard heatmap in the Activity tab.** A new **Keyboard** button next to *Save* opens an on-screen Latin QWERTY board that colours each key cold-blue (rarely pressed) to hot-red (most pressed) for the current session. Collecting the counts is a separate opt-in that lives in the heatmap window and is **off by default**; only aggregate per-key counts are kept, in memory, never the order/timing/text and never on disk (they reset on restart). Counting is by logical character folded onto the Latin board, so a Cyrillic layout maps to nothing and isn't shown. The Activity toggle row was relabelled to **Enable: Tracking / Mouse / Keyboard / Tooltip** (branch `feat/keyboard-heatmap`).
+
 ## [0.1.21] - Unreleased
 
 ### Changed
