@@ -2,12 +2,12 @@
 
 All notable changes to this project are documented in this file.
 
-## [0.1.22] - Unreleased
+## [0.1.22] - 2026-07-19
 
 ### Added
 - **Opt-in keyboard heatmap in the Activity tab.** A new **Heatmap** button next to *Save* (enabled only while the toggle is on) opens an on-screen Latin QWERTY board that colours each key on a blue→red scale — blue = 1 press, red = the most presses on a single key this session — with a matching gradient legend under the board. Collecting the counts is a separate **Heatmap** toggle in the Activity *Enable:* row, **off by default**; only aggregate per-key counts are kept, in memory, never the order/timing/text and never on disk (they reset on restart). Counting is by logical character folded onto the Latin board, so a Cyrillic layout maps to nothing and isn't shown. The toggle row now reads **Enable: Tracking / Mouse / Keyboard / Heatmap / Tooltip** (branch `feat/keyboard-heatmap`).
 
-## [0.1.21] - Unreleased
+## [0.1.21] - 2026-07-19
 
 ### Changed
 - **CONTRIBUTING documents the real test suite and lint.** The guide still said there were no automated tests; it now describes the `pytest` suite in `tests/` (headless via the offscreen Qt platform, so no display is needed) and the `ruff check .` lint that CI enforces on Python 3.10 / 3.12 (by @iderex, #106, branch `docs/contributing-tests-ruff`).
