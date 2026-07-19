@@ -10,7 +10,6 @@ lives right here on the board.
 from __future__ import annotations
 
 import logging
-from dataclasses import replace
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -38,6 +37,12 @@ class KeyboardBoard(QtWidgets.QWidget):
         self.peak = max(counts.values()) if counts else 0
         self.update()
 
+    def fraction(self, count: int) -> float:
+        """Position on the 1→max scale: 1 press = 0.0 (blue), the peak = 1.0 (red)."""
+        if self.peak <= 1:
+            return 0.0
+        return (count - 1) / (self.peak - 1)
+
     def paintEvent(self, event) -> None:
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
@@ -57,7 +62,7 @@ class KeyboardBoard(QtWidgets.QWidget):
                 rect = QtCore.QRectF(x, y, w, h)
                 count = self.counts.get(cell_id, 0)
                 if count > 0 and self.peak > 0:
-                    r, g, b = key_heatmap.heat_rgb(count / self.peak)
+                    r, g, b = key_heatmap.heat_rgb(self.fraction(count))
                     fill = QtGui.QColor(r, g, b)
                     border = fill.darker(130)
                     text_color = QtGui.QColor(20, 20, 20)
@@ -85,6 +90,44 @@ class KeyboardBoard(QtWidgets.QWidget):
         painter.end()
 
 
+class HeatLegend(QtWidgets.QWidget):
+    """The colour scale under the board: blue = 1 press, red = the peak count."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.peak = 0
+        self.setFixedHeight(42)
+
+    def set_peak(self, peak: int) -> None:
+        self.peak = peak
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        margin = 8.0
+        bar = QtCore.QRectF(margin, 4.0, self.width() - 2 * margin, 14.0)
+        gradient = QtGui.QLinearGradient(bar.left(), 0.0, bar.right(), 0.0)
+        for step in range(11):
+            r, g, b = key_heatmap.heat_rgb(step / 10.0)
+            gradient.setColorAt(step / 10.0, QtGui.QColor(r, g, b))
+        painter.setPen(QtGui.QPen(QtGui.QColor(150, 150, 150), 1.0))
+        painter.setBrush(QtGui.QBrush(gradient))
+        painter.drawRoundedRect(bar, 3.0, 3.0)
+
+        painter.setPen(QtGui.QColor(110, 110, 110))
+        labels = QtCore.QRectF(margin, bar.bottom() + 2.0, self.width() - 2 * margin, 16.0)
+        painter.drawText(labels, QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter, "1")
+        painter.drawText(
+            labels,
+            QtCore.Qt.AlignmentFlag.AlignHCenter | QtCore.Qt.AlignmentFlag.AlignVCenter,
+            "presses per key",
+        )
+        peak_label = f"{self.peak:,}" if self.peak > 0 else "—"
+        painter.drawText(labels, QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter, peak_label)
+        painter.end()
+
+
 class KeyboardHeatmapDialog(QtWidgets.QDialog):
     """A live keyboard heatmap for the current session."""
 
@@ -97,15 +140,6 @@ class KeyboardHeatmapDialog(QtWidgets.QDialog):
 
         layout = QtWidgets.QVBoxLayout(self)
 
-        self.collect_box = QtWidgets.QCheckBox("Collect key heatmap (this session)")
-        self.collect_box.setToolTip(
-            "Count key presses per key while this is ticked. Aggregate counts only —\n"
-            "never the order, timing or text — kept in memory and gone on restart."
-        )
-        self.collect_box.setChecked(bool(collector.settings.key_heatmap_enabled))
-        self.collect_box.toggled.connect(self.on_toggle)
-        layout.addWidget(self.collect_box)
-
         self.note = QtWidgets.QLabel("")
         self.note.setWordWrap(True)
         self.note.setStyleSheet("color: #888888;")
@@ -113,9 +147,13 @@ class KeyboardHeatmapDialog(QtWidgets.QDialog):
 
         self.board = KeyboardBoard(self)
         layout.addWidget(self.board, 1)
-        # The board fills the vertical stretch, so keep a clear gap before the
-        # buttons — otherwise Close rides up against the bottom-row keys.
-        layout.addSpacing(12)
+        layout.addSpacing(8)
+        # The colour scale for the board, at the bottom.
+        self.legend = HeatLegend(self)
+        layout.addWidget(self.legend)
+        # Keep a clear gap before the buttons — otherwise Close rides up against
+        # the legend/board.
+        layout.addSpacing(8)
 
         button_row = QtWidgets.QHBoxLayout()
         button_row.addStretch(1)
@@ -132,14 +170,6 @@ class KeyboardHeatmapDialog(QtWidgets.QDialog):
         self.update_note()
         self.refresh()
 
-    def on_toggle(self, checked: bool) -> None:
-        settings = replace(self.collector.settings, key_heatmap_enabled=checked)
-        activity_mod.save_activity_settings(settings)
-        self.collector.apply_settings(settings)
-        logger.info("Key heatmap collection %s", "on" if checked else "off")
-        self.update_note()
-        self.refresh()
-
     def update_note(self) -> None:
         if not activity_mod.counts_available():
             self.note.setText(
@@ -147,12 +177,14 @@ class KeyboardHeatmapDialog(QtWidgets.QDialog):
                 "permission), so nothing can be collected."
             )
         elif not self.collector.settings.key_heatmap_enabled:
-            self.note.setText("Collection is off — tick the box to build a heatmap for this session.")
+            self.note.setText("Collection is off — tick “Collect keys” in the Activity window and Save.")
         else:
-            self.note.setText("Counting this session · blue = rarely pressed → red = most pressed.")
+            self.note.setText("Counting this session — press keys and the map fills in.")
 
     def refresh(self) -> None:
+        self.update_note()
         self.board.set_data(self.collector.snapshot_key_cells())
+        self.legend.set_peak(self.board.peak)
 
     def closeEvent(self, event) -> None:
         self.timer.stop()

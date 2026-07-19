@@ -267,6 +267,14 @@ class ActivityDialog(QtWidgets.QDialog):
         self.keyboard_box = QtWidgets.QCheckBox("Keyboard")
         self.keyboard_box.setToolTip("Keystroke count in the diary (never which keys).")
         self.keyboard_box.setChecked(settings.keyboard_enabled)
+        # Opt-in per-key heatmap collection (off by default). Session-only,
+        # aggregate counts in memory — feeds the Keyboard heatmap window.
+        self.collect_box = QtWidgets.QCheckBox("Collect keys")
+        self.collect_box.setToolTip(
+            "Count key presses per key for the Keyboard heatmap. Aggregate counts only —\n"
+            "never the order, timing or text — kept in memory and gone on restart."
+        )
+        self.collect_box.setChecked(settings.key_heatmap_enabled)
         # Independent of the tracking tracks: whether hovering the cat shows the
         # live stats tooltip (driven by the FocusController).
         self.tooltip_box = QtWidgets.QCheckBox("Tooltip")
@@ -281,6 +289,7 @@ class ActivityDialog(QtWidgets.QDialog):
         toggles_row.addSpacing(16)
         toggles_row.addWidget(self.mouse_box)
         toggles_row.addWidget(self.keyboard_box)
+        toggles_row.addWidget(self.collect_box)
         toggles_row.addWidget(self.tooltip_box)
         toggles_row.addStretch(1)
         layout.addLayout(toggles_row)
@@ -391,7 +400,7 @@ class ActivityDialog(QtWidgets.QDialog):
         self.delete_button.clicked.connect(self.delete_all)
         button_row.addWidget(self.delete_button)
         button_row.addStretch(1)
-        self.keyboard_button = QtWidgets.QPushButton("Keyboard")
+        self.keyboard_button = QtWidgets.QPushButton("Keyboard heatmap")
         self.keyboard_button.setToolTip("Open a live keyboard heatmap of key presses this session.")
         self.keyboard_button.clicked.connect(self.open_keyboard_heatmap)
         button_row.addWidget(self.keyboard_button)
@@ -776,9 +785,7 @@ class ActivityDialog(QtWidgets.QDialog):
             enabled=self.enabled_box.isChecked(),
             mouse_enabled=self.mouse_box.isChecked(),
             keyboard_enabled=self.keyboard_box.isChecked(),
-            # The heatmap opt-in is toggled from its own window; carry it through
-            # so a Save here never silently turns it off.
-            key_heatmap_enabled=self.collector.settings.key_heatmap_enabled,
+            key_heatmap_enabled=self.collect_box.isChecked(),
             retention_days=self.retention_spin.value(),
             prompted=True,
         )
