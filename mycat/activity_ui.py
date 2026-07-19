@@ -269,9 +269,9 @@ class ActivityDialog(QtWidgets.QDialog):
         self.keyboard_box.setChecked(settings.keyboard_enabled)
         # Opt-in per-key heatmap collection (off by default). Session-only,
         # aggregate counts in memory — feeds the Keyboard heatmap window.
-        self.collect_box = QtWidgets.QCheckBox("Collect keys")
+        self.collect_box = QtWidgets.QCheckBox("Heatmap")
         self.collect_box.setToolTip(
-            "Count key presses per key for the Keyboard heatmap. Aggregate counts only —\n"
+            "Count key presses per key for the Heatmap window. Aggregate counts only —\n"
             "never the order, timing or text — kept in memory and gone on restart."
         )
         self.collect_box.setChecked(settings.key_heatmap_enabled)
@@ -400,8 +400,11 @@ class ActivityDialog(QtWidgets.QDialog):
         self.delete_button.clicked.connect(self.delete_all)
         button_row.addWidget(self.delete_button)
         button_row.addStretch(1)
-        self.keyboard_button = QtWidgets.QPushButton("Keyboard heatmap")
+        self.keyboard_button = QtWidgets.QPushButton("Heatmap")
         self.keyboard_button.setToolTip("Open a live keyboard heatmap of key presses this session.")
+        # Only usable once the Heatmap toggle is on — nothing is collected otherwise.
+        self.keyboard_button.setEnabled(self.collect_box.isChecked())
+        self.collect_box.toggled.connect(self.keyboard_button.setEnabled)
         self.keyboard_button.clicked.connect(self.open_keyboard_heatmap)
         button_row.addWidget(self.keyboard_button)
         self.save_button = QtWidgets.QPushButton("Save")

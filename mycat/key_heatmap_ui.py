@@ -177,9 +177,9 @@ class KeyboardHeatmapDialog(QtWidgets.QDialog):
                 "permission), so nothing can be collected."
             )
         elif not self.collector.settings.key_heatmap_enabled:
-            self.note.setText("Collection is off — tick “Collect keys” in the Activity window and Save.")
+            self.note.setText("Collection is off — tick “Heatmap” in the Activity window and Save.")
         else:
-            self.note.setText("Counting this session — press keys and the map fills in.")
+            self.note.setText("")
 
     def refresh(self) -> None:
         self.update_note()
