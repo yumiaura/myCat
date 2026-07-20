@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.23] - 2026-07-19
+
+### Changed
+- **The update dialog is one consistent set of buttons: Releases · Update · Close.** *Releases* always opens the releases page; *Update* downloads the new build and restarts, and is enabled only when a self-update is actually possible (Windows/macOS with a newer release) — greyed out on pip/git/deb/AppImage installs and whenever there's nothing to update. Replaces the old mix of an "Open releases" box and a separate Yes/No prompt (branch `fix/heatmap-perf-and-update-buttons`).
+
+### Fixed
+- **The Keyboard heatmap window no longer stalls typing.** While collecting, its 500 ms refresh reopened a full X connection every tick on the python-xlib path, blocking the event loop whenever keys were flowing — so typing froze and the cursor stuttered. Availability is now read once when the window opens, and the board repaints only when the tally changes (branch `fix/heatmap-perf-and-update-buttons`).
+
 ## [0.1.22] - 2026-07-19
 
 ### Added

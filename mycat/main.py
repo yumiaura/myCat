@@ -1394,53 +1394,72 @@ class PixelCatWindow(QtWidgets.QWidget):
 
         threading.Thread(target=check, name="mycat-update-check", daemon=True).start()
 
-    def open_releases_box(self, title: str, text: str, informative: str) -> None:
-        """A message box with an 'Open releases' button linking to GitHub."""
+    def update_box(self, title: str, text: str, informative: str, kind: str, can_update: bool) -> None:
+        """The update dialog — always three buttons: Releases · Update · Close.
+
+        Releases always opens the GitHub releases page. Update downloads the new
+        build and restarts, and is enabled only when a self-update is actually
+        possible (Windows/macOS with a newer release); it is greyed out on
+        pip/git/deb/AppImage installs and whenever there's nothing to update."""
         box = QtWidgets.QMessageBox(self)
         box.setWindowTitle(title)
         box.setText(text)
         box.setInformativeText(informative)
         box.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
-        open_button = box.addButton("Open releases", QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        releases_button = box.addButton("Releases", QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        update_button = box.addButton("Update", QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        update_button.setEnabled(can_update)
         box.addButton(QtWidgets.QMessageBox.StandardButton.Close)
         box.exec()
-        if box.clickedButton() is open_button:
+        clicked = box.clickedButton()
+        if clicked is releases_button:
             QtGui.QDesktopServices.openUrl(QtCore.QUrl(updater.RELEASES_PAGE))
+        elif clicked is update_button:
+            self.download_update(kind)
 
     def on_update_checked(self, kind: str, current: str, latest: str) -> None:
+        # One dialog everywhere (Releases · Update · Close). Update is live only
+        # in the last case: a reachable, newer release on a self-updating build.
         if not latest:
             # The check couldn't reach GitHub (offline, or the API rate-limited
-            # this IP). Don't claim we're up to date — say the check failed and
-            # point at the releases page so they can look for themselves.
-            self.open_releases_box(
+            # this IP). Don't claim we're up to date — say the check failed.
+            self.update_box(
                 "Update check",
                 "Couldn't check for updates right now.",
                 "GitHub may be unreachable or rate-limited — try again in a bit, "
                 "or open the releases page to check by hand.",
+                kind,
+                can_update=False,
             )
             return
         if update_check.parse_version(latest) <= update_check.parse_version(current):
-            # Up to date — reassure, and still offer the releases page.
-            self.open_releases_box(
-                "mycat", f"You're on the latest version ({current}). 🐱", "Everything's up to date."
+            # Up to date — nothing to update, so Update stays greyed out.
+            self.update_box(
+                "mycat",
+                f"You're on the latest version ({current}). 🐱",
+                "Everything's up to date.",
+                kind,
+                can_update=False,
             )
             return
         if not updater.can_self_update(kind):
-            # pip / deb / AppImage / source: just tell them, with how-to + a link.
-            self.open_releases_box(
+            # pip / git / deb / AppImage: tell them how, Update stays greyed out.
+            self.update_box(
                 "Update available",
                 f"mycat {latest} is available (you have {current}).",
                 f"Update with:\n\n    {updater.update_hint(kind)}",
+                kind,
+                can_update=False,
             )
             return
-        # Windows / macOS: download the new build and restart.
-        reply = QtWidgets.QMessageBox.question(
-            self,
-            "Update mycat",
-            f"Update to {latest}? mycat will download the new build and restart.",
+        # Windows / macOS with a newer release: Update is enabled.
+        self.update_box(
+            "Update available",
+            f"mycat {latest} is available (you have {current}).",
+            "Click Update to download the new build and restart.",
+            kind,
+            can_update=True,
         )
-        if reply == QtWidgets.QMessageBox.StandardButton.Yes:
-            self.download_update(kind)
 
     def download_update(self, kind: str) -> None:
         signals = self.update_signals

@@ -137,6 +137,11 @@ class KeyboardHeatmapDialog(QtWidgets.QDialog):
     def __init__(self, collector, parent=None) -> None:
         super().__init__(parent)
         self.collector = collector
+        # Computed once — calling counts_available() opens (and closes) a fresh X
+        # connection on the no-pynput path, which would stall the event loop if
+        # done on the refresh timer. It can't change while the window is open.
+        self.counting_available = activity_mod.counts_available()
+        self.last_counts: dict[str, int] | None = None
         self.setWindowTitle("Keyboard heatmap")
         self.setModal(False)
         self.setMinimumWidth(700)
@@ -176,20 +181,27 @@ class KeyboardHeatmapDialog(QtWidgets.QDialog):
         self.refresh()
 
     def update_note(self) -> None:
-        if not activity_mod.counts_available():
-            self.note.setText(
+        if not self.counting_available:
+            text = (
                 "Key counting isn't available here (needs X11, or macOS Input Monitoring "
                 "permission), so nothing can be collected."
             )
         elif not self.collector.settings.key_heatmap_enabled:
-            self.note.setText("Collection is off — tick “Heatmap” in the Activity window and Save.")
+            text = "Collection is off — tick “Heatmap” in the Activity window and Save."
         else:
-            self.note.setText("")
+            text = ""
+        if text != self.note.text():
+            self.note.setText(text)
 
     def refresh(self) -> None:
         self.update_note()
-        self.board.set_data(self.collector.snapshot_key_cells())
-        self.legend.set_peak(self.board.peak)
+        counts = self.collector.snapshot_key_cells()
+        # Only repaint when the tally actually changed — an idle open window then
+        # does no drawing work.
+        if counts != self.last_counts:
+            self.last_counts = counts
+            self.board.set_data(counts)
+            self.legend.set_peak(self.board.peak)
 
     def closeEvent(self, event) -> None:
         self.timer.stop()
