@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.24] - 2026-07-21
+
+### Fixed
+- **The Linux package icon shows the current cat.** The `.deb` / AppImage app icon shipped an old, blank-eyed cat that was clipped flat at the bottom; it's regenerated from `mycat/assets/icon.png` at 256×256 so packages match what the app draws (branch `chore/one-launcher-and-icon`).
+
+### Changed
+- **One launcher script.** `start.sh` was folded into `run.sh` (the documented launcher) and removed; `run.sh` keeps a `PYTHON` interpreter override and now auto-detects `DISPLAY` for launches that don't inherit one (tmux / ssh / detached terminal). Dev-facing (branch `chore/one-launcher-and-icon`).
+
 ## [0.1.23] - 2026-07-19
 
 ### Changed
