@@ -7,6 +7,9 @@ All notable changes to this project are documented in this file.
 ### Added
 - **Click a generation error to copy it.** The red status line in the "Generate a custom char with AI" dialog is now clickable when it shows an error — a click copies the full message to the clipboard (handy for pasting a server's 500 into a bug report).
 
+### Changed
+- **Background defaults to "Remove" for new generations.** A fresh setup now starts with plain-background removal so the char sits transparently on the desktop out of the box; existing saved choices are untouched.
+
 ### Fixed
 - **Self-hosted generation targets SDXL resolution.** The Stable Diffusion / ComfyUI request hard-coded 512×768 (SD1.5), so modern local checkpoints (SDXL, Illustrious, Pony, NoobAI) produced mush or ran out of memory. It now generates at the 832×1216 SDXL portrait bucket (branch `fix/sdxl-size-and-a1111-errors`).
 - **A1111 errors now read cleanly.** AUTOMATIC1111 returns its error as `{"error": "<type>", "errors": "<detail>"}` — a string, not OpenAI's `{"error": {"message"}}` — so the parser threw and fell back to a raw truncated JSON blob. A new `api_error_message()` understands the OpenAI, A1111 and FastAPI/ComfyUI shapes, so a 500 now surfaces the actual reason (e.g. `Stable Diffusion error (500): OutOfMemoryError: CUDA out of memory.`).

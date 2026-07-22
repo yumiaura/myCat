@@ -207,6 +207,13 @@ def test_comfyui_uses_prompt_and_negative(monkeypatch):
     assert submitted["graph"]["neg"]["inputs"]["text"] == "NEG"
 
 
+def test_fresh_config_defaults_background_to_remove(tmp_path, monkeypatch):
+    monkeypatch.setattr(ai_backends, "CFG_DIR", tmp_path)
+    monkeypatch.setattr(ai_backends, "CFG_FILE", tmp_path / "config.ini")  # no file yet
+    loaded = ai_backends.load_generation_settings()
+    assert loaded["background_removal"] == "plain"  # "Remove"
+
+
 def test_api_error_message_a1111_string_error():
     # AUTOMATIC1111: `error` is a short type string, the detail lives in `errors`.
     parsed = {"error": "OutOfMemoryError", "detail": "", "errors": "CUDA out of memory."}

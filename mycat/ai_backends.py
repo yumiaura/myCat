@@ -381,7 +381,7 @@ GENERATION_DEFAULTS = {
     "comfyui_url": "",
     "comfyui_checkpoint": "sd15.safetensors",
     "steps": str(LOCAL_STEPS),
-    "background_removal": "none",
+    "background_removal": ai_char.BACKGROUND_REMOVAL_PLAIN,  # default a new user to "Remove"
     "openai_prompt": OPENAI_DEFAULT_PROMPT,
     "openai_negative": OPENAI_DEFAULT_NEGATIVE,
     "selfhosted_prompt": LOCAL_PROMPT,
