@@ -11,13 +11,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from . import secret_store
+from . import paths, secret_store
 
 logger = logging.getLogger(__name__)
 
-APP_NAME = "mycat"
-CFG_DIR = Path.home() / ".config" / APP_NAME
-CFG_FILE = CFG_DIR / "config.ini"
+APP_NAME = "mycat"  # kept for backward-compat: exported in __all__
+CFG_DIR = paths.config_dir()
+CFG_FILE = paths.config_file()
 HISTORY_FILE = CFG_DIR / "history.txt"
 PROMPT_TEMPLATE_PATH = Path(__file__).resolve().parent / "PROMPT.j2"
 _LEGACY_PROMPT_TEMPLATE_PATH = Path(__file__).resolve().parent / "PROMT.j2"

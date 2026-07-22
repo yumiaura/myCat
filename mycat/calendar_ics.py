@@ -27,16 +27,17 @@ from pathlib import Path
 from PySide6 import QtCore
 
 if __package__:
-    from . import secret_store
+    from . import paths, secret_store
 else:
     import importlib
 
     secret_store = importlib.import_module("mycat.secret_store")
+    paths = importlib.import_module("mycat.paths")
 
 logger = logging.getLogger(__name__)
 
-CFG_DIR = Path.home() / ".config" / "mycat"
-CFG_FILE = CFG_DIR / "config.ini"
+CFG_DIR = paths.config_dir()
+CFG_FILE = paths.config_file()
 
 DEFAULT_REMIND_MINUTES = 10
 DEFAULT_POLL_MINUTES = 10

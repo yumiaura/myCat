@@ -26,19 +26,20 @@ from PySide6 import QtCore
 
 if __package__:
     from . import activity as activity_mod
-    from . import activity_store, secret_store
+    from . import activity_store, paths, secret_store
 else:
     import importlib
 
     activity_mod = importlib.import_module("mycat.activity")
     activity_store = importlib.import_module("mycat.activity_store")
     secret_store = importlib.import_module("mycat.secret_store")
+    paths = importlib.import_module("mycat.paths")
 
 logger = logging.getLogger(__name__)
 
 # Same config file the rest of the app uses (see main.py / reminder.py).
-CFG_DIR = Path.home() / ".config" / "mycat"
-CFG_FILE = CFG_DIR / "config.ini"
+CFG_DIR = paths.config_dir()
+CFG_FILE = paths.config_file()
 
 
 def cursor_km_estimate(mouse_px: int) -> float:

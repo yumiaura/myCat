@@ -40,18 +40,19 @@ from pathlib import Path
 from PySide6 import QtCore, QtGui
 
 if __package__:
-    from . import activity_store, key_heatmap, secret_store
+    from . import activity_store, key_heatmap, paths, secret_store
 else:
     import importlib
 
     activity_store = importlib.import_module("mycat.activity_store")
     secret_store = importlib.import_module("mycat.secret_store")
     key_heatmap = importlib.import_module("mycat.key_heatmap")
+    paths = importlib.import_module("mycat.paths")
 
 logger = logging.getLogger(__name__)
 
-CFG_DIR = Path.home() / ".config" / "mycat"
-CFG_FILE = CFG_DIR / "config.ini"
+CFG_DIR = paths.config_dir()
+CFG_FILE = paths.config_file()
 
 CURSOR_POLL_MS = 100  # 10 Hz — plenty for a distance integral
 # A minute counts as "active" from this much cursor travel (filters out the

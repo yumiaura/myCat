@@ -19,15 +19,17 @@ from PySide6 import QtCore, QtGui
 
 if __package__:
     from . import activity as activity_mod
+    from . import paths
 else:
     import importlib
 
     activity_mod = importlib.import_module("mycat.activity")
+    paths = importlib.import_module("mycat.paths")
 
 logger = logging.getLogger(__name__)
 
-CFG_DIR = Path.home() / ".config" / "mycat"
-CFG_FILE = CFG_DIR / "config.ini"
+CFG_DIR = paths.config_dir()
+CFG_FILE = paths.config_file()
 
 # Before this local hour a "new day" hasn't really started — a 01:00 session
 # is yesterday's late evening, and getting yesterday's paper then feels off.

@@ -39,6 +39,7 @@ if __package__:
         focus,
         github_notify,
         llm,
+        paths,
         reminder,
         secret_store,
         update_check,
@@ -50,6 +51,7 @@ else:
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
     llm = importlib.import_module("mycat.llm")
+    paths = importlib.import_module("mycat.paths")
     char_catalog = importlib.import_module("mycat.char_catalog")
     reminder = importlib.import_module("mycat.reminder")
     secret_store = importlib.import_module("mycat.secret_store")
@@ -86,9 +88,9 @@ logging.basicConfig(**LOGGING)
 logger = logging.getLogger(__name__)
 logger.debug("LLM integration module path: %s", getattr(llm, "__file__", "builtin"))
 
-# Config paths
-CFG_DIR = Path.home() / ".config" / "mycat"
-CFG_FILE = CFG_DIR / "config.ini"
+# Config paths — single source of truth in paths.py (stays ~/.config/mycat).
+CFG_DIR = paths.config_dir()
+CFG_FILE = paths.config_file()
 
 # Per-user local-socket name: a second `mycat` launch uses it to raise the
 # running cat's window (so hiding it to a flaky tray is always recoverable).
