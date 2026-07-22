@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # --- workers ------------------------------------------------------------------
 
 
-class _Signals(QtCore.QObject):
+class Signals(QtCore.QObject):
     catalog_ready = QtCore.Signal(object)               # Catalog
     catalog_failed = QtCore.Signal(str)
     download_progress = QtCore.Signal(str, int, int)    # char_id, done, total
@@ -36,85 +36,85 @@ class _Signals(QtCore.QObject):
     preview_ready = QtCore.Signal(str, str)             # char_id, local_path
 
 
-class _CatalogWorker(QtCore.QRunnable):
-    def __init__(self, client: ShopClient, signals: _Signals, force_refresh: bool = False) -> None:
+class CatalogWorker(QtCore.QRunnable):
+    def __init__(self, client: ShopClient, signals: Signals, force_refresh: bool = False) -> None:
         super().__init__()
-        self._client = client
-        self._signals = signals
-        self._force_refresh = force_refresh
+        self.client = client
+        self.signals = signals
+        self.force_refresh = force_refresh
 
     def run(self) -> None:
         try:
-            catalog = self._client.fetch_catalog(force_refresh=self._force_refresh)
-            self._signals.catalog_ready.emit(catalog)
+            catalog = self.client.fetch_catalog(force_refresh=self.force_refresh)
+            self.signals.catalog_ready.emit(catalog)
         except ShopError as exc:
-            self._signals.catalog_failed.emit(str(exc))
+            self.signals.catalog_failed.emit(str(exc))
         except Exception as exc:
             logger.exception("Unexpected error fetching catalog")
-            self._signals.catalog_failed.emit(f"Unexpected error: {exc}")
+            self.signals.catalog_failed.emit(f"Unexpected error: {exc}")
 
 
-class _DownloadWorker(QtCore.QRunnable):
+class DownloadWorker(QtCore.QRunnable):
     def __init__(
         self,
         client: ShopClient,
-        signals: _Signals,
+        signals: Signals,
         char: CharEntry,
         dest_dir: Path,
         auth_token: str | None = None,
     ) -> None:
         super().__init__()
-        self._client = client
-        self._signals = signals
-        self._char = char
-        self._dest_dir = dest_dir
-        self._auth_token = auth_token
+        self.client = client
+        self.signals = signals
+        self.char = char
+        self.dest_dir = dest_dir
+        self.auth_token = auth_token
 
     def run(self) -> None:
-        char_id = self._char.id
+        char_id = self.char.id
 
         def progress(done: int, total: int) -> None:
-            self._signals.download_progress.emit(char_id, done, total)
+            self.signals.download_progress.emit(char_id, done, total)
 
         try:
-            path = self._client.download_char(
-                self._char,
-                self._dest_dir,
+            path = self.client.download_char(
+                self.char,
+                self.dest_dir,
                 progress_cb=progress,
-                auth_token=self._auth_token,
+                auth_token=self.auth_token,
             )
             char_catalog.record_installed(
                 char_id,
-                version=self._char.version,
-                source=f"server-{self._char.tier}",
-                sha256=self._char.sha256,
-                size_bytes=self._char.size_bytes,
+                version=self.char.version,
+                source=f"server-{self.char.tier}",
+                sha256=self.char.sha256,
+                size_bytes=self.char.size_bytes,
             )
-            self._signals.download_finished.emit(char_id, str(path))
+            self.signals.download_finished.emit(char_id, str(path))
         except ShopError as exc:
-            self._signals.download_failed.emit(char_id, str(exc))
+            self.signals.download_failed.emit(char_id, str(exc))
         except Exception as exc:
             logger.exception("Unexpected error downloading %s", char_id)
-            self._signals.download_failed.emit(char_id, f"Unexpected error: {exc}")
+            self.signals.download_failed.emit(char_id, f"Unexpected error: {exc}")
 
 
-class _PreviewWorker(QtCore.QRunnable):
-    def __init__(self, client: ShopClient, signals: _Signals, char: CharEntry) -> None:
+class PreviewWorker(QtCore.QRunnable):
+    def __init__(self, client: ShopClient, signals: Signals, char: CharEntry) -> None:
         super().__init__()
-        self._client = client
-        self._signals = signals
-        self._char = char
+        self.client = client
+        self.signals = signals
+        self.char = char
 
     def run(self) -> None:
-        path = self._client.fetch_preview(self._char)
+        path = self.client.fetch_preview(self.char)
         if path is not None:
-            self._signals.preview_ready.emit(self._char.id, str(path))
+            self.signals.preview_ready.emit(self.char.id, str(path))
 
 
 # --- cards --------------------------------------------------------------------
 
 
-class _CharCard(QtWidgets.QFrame):
+class CharCard(QtWidgets.QFrame):
     install_requested = QtCore.Signal(str)
     uninstall_requested = QtCore.Signal(str)
 
@@ -167,12 +167,12 @@ class _CharCard(QtWidgets.QFrame):
         layout.addWidget(self.progress)
 
         self.button = QtWidgets.QPushButton()
-        self.button.clicked.connect(self._on_button)
+        self.button.clicked.connect(self.on_button)
         layout.addWidget(self.button)
 
-        self._refresh_button()
+        self.refresh_button()
 
-    def _on_button(self) -> None:
+    def on_button(self) -> None:
         if self.installed:
             self.uninstall_requested.emit(self.char.id)
         else:
@@ -181,9 +181,9 @@ class _CharCard(QtWidgets.QFrame):
     def set_installed(self, installed: bool) -> None:
         self.installed = installed
         self.progress.setVisible(False)
-        self._refresh_button()
+        self.refresh_button()
 
-    def _refresh_button(self) -> None:
+    def refresh_button(self) -> None:
         if self.installed:
             self.button.setText("✓ Installed — Uninstall")
         else:
@@ -212,7 +212,7 @@ class _CharCard(QtWidgets.QFrame):
             movie.setScaledSize(QtCore.QSize(120, 120))
             self.preview_label.setMovie(movie)
             movie.start()
-            self._movie = movie
+            self.movie = movie
             return
         pixmap = QtGui.QPixmap(local_path)
         if not pixmap.isNull():
@@ -256,20 +256,20 @@ class ShopDialog(QtWidgets.QDialog):
 
         if base_url is None:
             base_url = resolve_base_url(config_path)
-        self._client = ShopClient(base_url)
-        self._signals = _Signals()
-        self._pool = QtCore.QThreadPool.globalInstance()
-        self._cards: dict[str, _CharCard] = {}
-        self._catalog: Catalog | None = None
-        self._user_chars_dir = char_catalog.ensure_user_chars_dir()
+        self.client = ShopClient(base_url)
+        self.signals = Signals()
+        self.pool = QtCore.QThreadPool.globalInstance()
+        self.cards: dict[str, CharCard] = {}
+        self.catalog: Catalog | None = None
+        self.user_chars_dir = char_catalog.ensure_user_chars_dir()
 
-        self._build_ui()
-        self._wire_signals()
-        self._refresh_catalog()
+        self.build_ui()
+        self.wire_signals()
+        self.refresh_catalog()
 
     # ---- UI build ---------------------------------------------------------
 
-    def _build_ui(self) -> None:
+    def build_ui(self) -> None:
         root = QtWidgets.QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(6)
@@ -280,11 +280,11 @@ class ShopDialog(QtWidgets.QDialog):
         header.addWidget(self.title_label)
         header.addStretch(1)
         self.refresh_button = QtWidgets.QPushButton("Refresh")
-        self.refresh_button.clicked.connect(lambda: self._refresh_catalog(force=True))
+        self.refresh_button.clicked.connect(lambda: self.refresh_catalog(force=True))
         header.addWidget(self.refresh_button)
         root.addLayout(header)
 
-        self.url_label = QtWidgets.QLabel(f"Server: {self._client.base_url}")
+        self.url_label = QtWidgets.QLabel(f"Server: {self.client.base_url}")
         self.url_label.setStyleSheet("color:#888; font-size:11px;")
         root.addWidget(self.url_label)
 
@@ -311,7 +311,7 @@ class ShopDialog(QtWidgets.QDialog):
         my_chars_layout.addWidget(self.my_chars_list, 1)
         buttons = QtWidgets.QHBoxLayout()
         self.uninstall_button = QtWidgets.QPushButton("Uninstall selected")
-        self.uninstall_button.clicked.connect(self._uninstall_selected)
+        self.uninstall_button.clicked.connect(self.uninstall_selected)
         buttons.addWidget(self.uninstall_button)
         buttons.addStretch(1)
         my_chars_layout.addLayout(buttons)
@@ -322,114 +322,114 @@ class ShopDialog(QtWidgets.QDialog):
         self.status_label.setStyleSheet("color:#888;")
         root.addWidget(self.status_label)
 
-    def _wire_signals(self) -> None:
-        self._signals.catalog_ready.connect(self._on_catalog_ready)
-        self._signals.catalog_failed.connect(self._on_catalog_failed)
-        self._signals.download_progress.connect(self._on_download_progress)
-        self._signals.download_finished.connect(self._on_download_finished)
-        self._signals.download_failed.connect(self._on_download_failed)
-        self._signals.preview_ready.connect(self._on_preview_ready)
+    def wire_signals(self) -> None:
+        self.signals.catalog_ready.connect(self.on_catalog_ready)
+        self.signals.catalog_failed.connect(self.on_catalog_failed)
+        self.signals.download_progress.connect(self.on_download_progress)
+        self.signals.download_finished.connect(self.on_download_finished)
+        self.signals.download_failed.connect(self.on_download_failed)
+        self.signals.preview_ready.connect(self.on_preview_ready)
 
     # ---- catalog flow -----------------------------------------------------
 
-    def _refresh_catalog(self, *, force: bool = False) -> None:
+    def refresh_catalog(self, *, force: bool = False) -> None:
         self.status_label.setText("Loading catalog…")
         self.refresh_button.setEnabled(False)
-        worker = _CatalogWorker(self._client, self._signals, force_refresh=force)
-        self._pool.start(worker)
+        worker = CatalogWorker(self.client, self.signals, force_refresh=force)
+        self.pool.start(worker)
 
-    def _on_catalog_ready(self, catalog: Catalog) -> None:
-        self._catalog = catalog
+    def on_catalog_ready(self, catalog: Catalog) -> None:
+        self.catalog = catalog
         self.refresh_button.setEnabled(True)
-        self._render_catalog()
-        self._refresh_my_chars()
+        self.render_catalog()
+        self.refresh_my_chars()
         self.status_label.setText(f"{len(catalog.chars)} chars available.")
 
-    def _on_catalog_failed(self, message: str) -> None:
+    def on_catalog_failed(self, message: str) -> None:
         self.refresh_button.setEnabled(True)
         self.status_label.setText(f"⚠ {message}")
 
-    def _render_catalog(self) -> None:
+    def render_catalog(self) -> None:
         # Clear old cards
         while self.catalog_grid.count():
             item = self.catalog_grid.takeAt(0)
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
-        self._cards.clear()
+        self.cards.clear()
 
-        if not self._catalog or not self._catalog.chars:
+        if not self.catalog or not self.catalog.chars:
             empty = QtWidgets.QLabel("No chars available.")
             empty.setStyleSheet("color:#888;")
             self.catalog_grid.addWidget(empty, 0, 0)
             return
 
         columns = 3
-        for index, char in enumerate(self._catalog.chars):
+        for index, char in enumerate(self.catalog.chars):
             row, col = divmod(index, columns)
             installed = char_catalog.is_user_installed(char.id)
-            card = _CharCard(char, installed=installed, parent=self.catalog_content)
-            card.install_requested.connect(self._install_char)
-            card.uninstall_requested.connect(self._uninstall_char)
-            self._cards[char.id] = card
+            card = CharCard(char, installed=installed, parent=self.catalog_content)
+            card.install_requested.connect(self.install_char)
+            card.uninstall_requested.connect(self.uninstall_char)
+            self.cards[char.id] = card
             self.catalog_grid.addWidget(card, row, col)
-            self._pool.start(_PreviewWorker(self._client, self._signals, char))
+            self.pool.start(PreviewWorker(self.client, self.signals, char))
 
     # ---- install / uninstall ----------------------------------------------
 
-    def _install_char(self, char_id: str) -> None:
-        if not self._catalog:
+    def install_char(self, char_id: str) -> None:
+        if not self.catalog:
             return
-        char = next((s for s in self._catalog.chars if s.id == char_id), None)
+        char = next((s for s in self.catalog.chars if s.id == char_id), None)
         if char is None:
             return
         if char.tier != "free":
             # Premium tiers require entitlements; not in MVP.
             self.status_label.setText(f"⚠ Premium char '{char.name}' requires a subscription (coming soon).")
             return
-        worker = _DownloadWorker(self._client, self._signals, char, self._user_chars_dir)
-        self._pool.start(worker)
+        worker = DownloadWorker(self.client, self.signals, char, self.user_chars_dir)
+        self.pool.start(worker)
         self.status_label.setText(f"Downloading {char.name}…")
 
-    def _on_download_progress(self, char_id: str, done: int, total: int) -> None:
-        card = self._cards.get(char_id)
+    def on_download_progress(self, char_id: str, done: int, total: int) -> None:
+        card = self.cards.get(char_id)
         if card is not None:
             card.set_progress(done, total)
 
-    def _on_download_finished(self, char_id: str, path: str) -> None:
-        card = self._cards.get(char_id)
+    def on_download_finished(self, char_id: str, path: str) -> None:
+        card = self.cards.get(char_id)
         if card is not None:
             card.set_installed(True)
         self.status_label.setText(f"Installed: {char_id}")
-        self._refresh_my_chars()
+        self.refresh_my_chars()
         self.char_installed.emit(char_id)
 
-    def _on_download_failed(self, char_id: str, message: str) -> None:
-        card = self._cards.get(char_id)
+    def on_download_failed(self, char_id: str, message: str) -> None:
+        card = self.cards.get(char_id)
         if card is not None:
             card.set_failed(message)
         self.status_label.setText(f"⚠ Failed: {char_id} — {message}")
 
-    def _uninstall_char(self, char_id: str) -> None:
+    def uninstall_char(self, char_id: str) -> None:
         if char_catalog.remove_installed(char_id):
-            card = self._cards.get(char_id)
+            card = self.cards.get(char_id)
             if card is not None:
                 card.set_installed(False)
             self.status_label.setText(f"Uninstalled: {char_id}")
-            self._refresh_my_chars()
+            self.refresh_my_chars()
             self.char_uninstalled.emit(char_id)
         else:
             self.status_label.setText(f"⚠ Could not uninstall {char_id}")
 
-    def _uninstall_selected(self) -> None:
+    def uninstall_selected(self) -> None:
         item = self.my_chars_list.currentItem()
         if item is None:
             return
         char_id = item.data(QtCore.Qt.ItemDataRole.UserRole)
         if char_id:
-            self._uninstall_char(char_id)
+            self.uninstall_char(char_id)
 
-    def _refresh_my_chars(self) -> None:
+    def refresh_my_chars(self) -> None:
         self.my_chars_list.clear()
         meta = char_catalog.load_installed_metadata()
         for entry in meta.get("characters", []):
@@ -438,8 +438,8 @@ class ShopDialog(QtWidgets.QDialog):
             item.setData(QtCore.Qt.ItemDataRole.UserRole, entry.get("id"))
             self.my_chars_list.addItem(item)
 
-    def _on_preview_ready(self, char_id: str, local_path: str) -> None:
-        card = self._cards.get(char_id)
+    def on_preview_ready(self, char_id: str, local_path: str) -> None:
+        card = self.cards.get(char_id)
         if card is not None:
             card.set_preview(local_path)
 
