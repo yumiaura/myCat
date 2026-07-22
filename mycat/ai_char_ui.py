@@ -87,6 +87,18 @@ class ModelLoadWorker(QtCore.QRunnable):
             self.signals.loaded.emit(models)
 
 
+class ClickableLabel(QtWidgets.QLabel):
+    """A QLabel that emits `clicked` on a left-button press, so the status line
+    can copy its (error) text to the clipboard when tapped."""
+
+    clicked = QtCore.Signal()
+
+    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
+
+
 class AICharDialog(QtWidgets.QDialog):
     character_created = QtCore.Signal(str)
 
@@ -199,8 +211,10 @@ class AICharDialog(QtWidgets.QDialog):
         top_form.addRow("Generate with", self.backend_combo)
         top_form.addRow("Mode", self.mode_combo)
 
-        self.status_label = QtWidgets.QLabel("")
+        self.status_is_error = False
+        self.status_label = ClickableLabel("")
         self.status_label.setWordWrap(True)
+        self.status_label.clicked.connect(self.copy_status)
         self.generate_btn = QtWidgets.QPushButton("Generate")
         close_btn = QtWidgets.QPushButton("Close")
         self.generate_btn.clicked.connect(self.generate)
@@ -350,8 +364,33 @@ class AICharDialog(QtWidgets.QDialog):
 
     # --- references -----------------------------------------------------------
     def set_status(self, text: str, *, error: bool = False) -> None:
+        self.status_is_error = error
         self.status_label.setStyleSheet("color: #c0392b;" if error else "color: #555555;")
         self.status_label.setText(text)
+        if error and text:
+            self.status_label.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+            self.status_label.setToolTip("Click to copy this error")
+        else:
+            self.status_label.setCursor(QtCore.Qt.CursorShape.ArrowCursor)
+            self.status_label.setToolTip("")
+
+    def copy_status(self) -> None:
+        """Copy the current error to the clipboard (a click on the status line)."""
+        if not self.status_is_error:
+            return
+        text = self.status_label.text().strip()
+        if not text:
+            return
+        QtWidgets.QApplication.clipboard().setText(text)
+        # Flash a confirmation, then restore the error so it stays visible/copyable.
+        self.status_label.setStyleSheet("color: #2e7d32;")
+        self.status_label.setText("Copied to clipboard.")
+        QtCore.QTimer.singleShot(1200, lambda: self.restore_error(text))
+
+    def restore_error(self, text: str) -> None:
+        if self.status_label.text() == "Copied to clipboard.":
+            self.status_label.setStyleSheet("color: #c0392b;")
+            self.status_label.setText(text)
 
     def add_references(self) -> None:
         remaining = ai_char.MAX_REFERENCES - len(self.reference_paths)
