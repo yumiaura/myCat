@@ -20,7 +20,6 @@ CFG_DIR = paths.config_dir()
 CFG_FILE = paths.config_file()
 HISTORY_FILE = CFG_DIR / "history.txt"
 PROMPT_TEMPLATE_PATH = Path(__file__).resolve().parent / "PROMPT.j2"
-_LEGACY_PROMPT_TEMPLATE_PATH = Path(__file__).resolve().parent / "PROMT.j2"
 HISTORY_MAX_BYTES = 1_000_000
 
 DEFAULT_PROMPT_TEMPLATE = """You are a cute, affectionate talking cat belonging to a girl.
@@ -29,8 +28,8 @@ Recent conversation (latest {{history_count}} messages):
 {{history}}
 Stay warm, playful, and loving when you reply."""
 
-_ENV_LOADED = False
-_PROMPT_TEMPLATE_CACHE: str | None = None
+ENV_LOADED = False
+PROMPT_TEMPLATE_CACHE: str | None = None
 
 HISTORY_HEADER_RE = re.compile(r"^\[(?P<timestamp>.+?)\]\s+(?P<label>REQUEST|RESPONSE):$")
 
@@ -49,10 +48,10 @@ class LLMSettings:
 
 def load_env_file() -> None:
     """Populate environment variables from .env-style files once per process."""
-    global _ENV_LOADED
-    if _ENV_LOADED:
+    global ENV_LOADED
+    if ENV_LOADED:
         return
-    _ENV_LOADED = True
+    ENV_LOADED = True
 
     def apply_env(path: Path) -> None:
         try:
@@ -192,17 +191,17 @@ def ensure_history_file() -> Path:
         CFG_DIR.mkdir(parents=True, exist_ok=True)
         if not HISTORY_FILE.exists():
             HISTORY_FILE.touch()
-        _restrict_permissions(HISTORY_FILE)
+        restrict_permissions(HISTORY_FILE)
         return HISTORY_FILE
     except OSError as exc:
         logger.warning("Falling back to temp history file: %s", exc)
         fallback = Path(tempfile.gettempdir()) / "mycat_history.txt"
         fallback.touch(exist_ok=True)
-        _restrict_permissions(fallback)
+        restrict_permissions(fallback)
         return fallback
 
 
-def _restrict_permissions(path: Path) -> None:
+def restrict_permissions(path: Path) -> None:
     """Best-effort chmod 600 for files that may hold private chat content."""
     try:
         os.chmod(path, 0o600)
@@ -223,7 +222,7 @@ def rotate_history_if_needed(path: Path, max_bytes: int = HISTORY_MAX_BYTES) -> 
             logger.debug("Unable to remove old history backup %s: %s", backup, exc)
         path.replace(backup)
         path.touch()
-        _restrict_permissions(path)
+        restrict_permissions(path)
         logger.info("Rotated history file to %s", backup)
     except OSError as exc:
         logger.warning("Unable to rotate history file %s: %s", path, exc)
@@ -296,7 +295,7 @@ def get_history_tail(history_path: Path, limit: int) -> list[str]:
     return out
 
 
-_PLACEHOLDER_RE = re.compile(r"\{\{\s*(date|history|history_count)\s*\}\}")
+PLACEHOLDER_RE = re.compile(r"\{\{\s*(date|history|history_count)\s*\}\}")
 
 
 def render_prompt(history_lines: list[str], history_limit: int) -> str:
@@ -305,7 +304,7 @@ def render_prompt(history_lines: list[str], history_limit: int) -> str:
     Supports both `{{key}}` and `{{ key }}` placeholder forms so the file may
     use Jinja-style spacing without depending on Jinja2 itself.
     """
-    template = _load_prompt_template()
+    template = load_prompt_template()
     history_text = "\n".join(history_lines) if history_lines else "No history available."
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     values = {
@@ -313,24 +312,22 @@ def render_prompt(history_lines: list[str], history_limit: int) -> str:
         "history": history_text,
         "history_count": str(history_limit),
     }
-    return _PLACEHOLDER_RE.sub(lambda m: values[m.group(1)], template)
+    return PLACEHOLDER_RE.sub(lambda m: values[m.group(1)], template)
 
 
-def _load_prompt_template() -> str:
-    global _PROMPT_TEMPLATE_CACHE
-    if _PROMPT_TEMPLATE_CACHE is not None:
-        return _PROMPT_TEMPLATE_CACHE
-    for candidate in (PROMPT_TEMPLATE_PATH, _LEGACY_PROMPT_TEMPLATE_PATH):
-        if not candidate.exists():
-            continue
+def load_prompt_template() -> str:
+    global PROMPT_TEMPLATE_CACHE
+    if PROMPT_TEMPLATE_CACHE is not None:
+        return PROMPT_TEMPLATE_CACHE
+    if PROMPT_TEMPLATE_PATH.exists():
         try:
-            _PROMPT_TEMPLATE_CACHE = candidate.read_text(encoding="utf-8")
-            logger.debug("Loaded prompt template from %s", candidate)
-            return _PROMPT_TEMPLATE_CACHE
+            PROMPT_TEMPLATE_CACHE = PROMPT_TEMPLATE_PATH.read_text(encoding="utf-8")
+            logger.debug("Loaded prompt template from %s", PROMPT_TEMPLATE_PATH)
+            return PROMPT_TEMPLATE_CACHE
         except OSError as exc:
-            logger.warning("Unable to read %s: %s", candidate, exc)
-    _PROMPT_TEMPLATE_CACHE = DEFAULT_PROMPT_TEMPLATE
-    return _PROMPT_TEMPLATE_CACHE
+            logger.warning("Unable to read %s: %s", PROMPT_TEMPLATE_PATH, exc)
+    PROMPT_TEMPLATE_CACHE = DEFAULT_PROMPT_TEMPLATE
+    return PROMPT_TEMPLATE_CACHE
 
 
 __all__ = [
