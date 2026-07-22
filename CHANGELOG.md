@@ -5,9 +5,11 @@ All notable changes to this project are documented in this file.
 ## [0.1.26] - Unreleased
 
 ### Added
+- **Preview a generated char before saving it.** The "Generate a custom char with AI" dialog now has a two-column layout — settings on the left, a tall preview on the right. **Generate** produces an image and shows it in the preview without saving or closing; **Save** installs the previewed char and closes (Save is disabled until there's something to save). You can regenerate as many times as you like before committing.
 - **Click a generation error to copy it.** The red status line in the "Generate a custom char with AI" dialog is now clickable when it shows an error — a click copies the full message to the clipboard (handy for pasting a server's 500 into a bug report).
 
 ### Changed
+- **New default self-hosted prompt.** The Stable Diffusion / ComfyUI default prompt is now a plain chibi girl in a school uniform (`…kawaii chibi girl, cute big eyes, full body, standing, centered, school form, simple plain background, soft shading, no shadows`) — the cat-specific tags (ears, paws, tail, whiskers) are gone. Existing saved prompts are untouched.
 - **Generated chars are scaled down to 200×300 (width first).** A generated char is now stored and shown at most 200×300 px (was 240×400, from a 600×900 frame), so it sits smaller on the desktop; the renderer only ever shrinks, so it's never enlarged. Existing saved chars are unaffected — regenerate to get the new size.
 - **Background defaults to "Remove" for new generations.** A fresh setup now starts with plain-background removal so the char sits transparently on the desktop out of the box; existing saved choices are untouched.
 

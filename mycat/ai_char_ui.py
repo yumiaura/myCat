@@ -31,7 +31,7 @@ MODE_LABELS = [
 
 
 class GenerationSignals(QtCore.QObject):
-    completed = QtCore.Signal(str, str)
+    completed = QtCore.Signal(object)  # the generated PNG bytes (not yet installed)
     failed = QtCore.Signal(str)
 
 
@@ -57,13 +57,12 @@ class GenerationWorker(QtCore.QRunnable):
                 legacy_remove_background=self.settings.get("remove_background"),
             )
             image = ai_char.apply_background_removal(image, method)
-            char_id, path = ai_char.install_character(self.name, image)
         except Exception as exc:  # noqa: BLE001 - error is shown in the dialog
             logger.warning("Character generation failed (backend=%s, mode=%s): %s", kind, mode, exc)
             self.signals.failed.emit(str(exc))
         else:
-            logger.info("Character generation succeeded: %s", char_id)
-            self.signals.completed.emit(char_id, str(path))
+            logger.info("Character generation succeeded (backend=%s)", kind)
+            self.signals.completed.emit(image)  # preview only — the dialog installs it on Save
 
 
 class ModelSignals(QtCore.QObject):
@@ -105,10 +104,11 @@ class AICharDialog(QtWidgets.QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Generate a custom char with AI")
-        self.setMinimumWidth(540)
+        self.setMinimumWidth(640)
         self.setStyleSheet(LIGHT_QSS)
         self.pool = QtCore.QThreadPool(self)
         self.reference_paths: list[Path] = []
+        self.generated_image: bytes | None = None  # last generated PNG, installed on Save
         self.settings = ai_backends.load_generation_settings()
         self.current_kind = self.settings.get("backend", "openai")
 
@@ -215,30 +215,55 @@ class AICharDialog(QtWidgets.QDialog):
         self.status_label = ClickableLabel("")
         self.status_label.setWordWrap(True)
         self.status_label.clicked.connect(self.copy_status)
+
+        # Left column: every setting, stacked (the old single-column body).
+        settings_col = QtWidgets.QVBoxLayout()
+        settings_col.addWidget(intro)
+        settings_col.addLayout(top_form)
+        settings_col.addWidget(self.openai_group)
+        settings_col.addWidget(self.local_group)
+        settings_col.addWidget(QtWidgets.QLabel("Prompt"))
+        settings_col.addWidget(self.prompt_edit)
+        settings_col.addWidget(self.negative_label)
+        settings_col.addWidget(self.negative_edit)
+        settings_col.addWidget(QtWidgets.QLabel("Reference photos (maximum 3)"))
+        settings_col.addWidget(self.reference_list)
+        settings_col.addLayout(photo_buttons)
+        settings_col.addStretch(1)
+
+        # Right column: a tall preview of the generated char (before it's saved).
+        self.preview_label = QtWidgets.QLabel("The generated char\nwill appear here.")
+        self.preview_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.preview_label.setWordWrap(True)
+        self.preview_label.setMinimumSize(240, 300)
+        self.preview_label.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Expanding
+        )
+        self.preview_label.setStyleSheet(
+            "border: 1px solid #cfcfcf; border-radius: 8px; color: #9a9a9a; background: #fafafa;"
+        )
+
+        columns = QtWidgets.QHBoxLayout()
+        columns.addLayout(settings_col, 1)
+        columns.addWidget(self.preview_label)
+
         self.generate_btn = QtWidgets.QPushButton("Generate")
+        self.save_btn = QtWidgets.QPushButton("Save")
+        self.save_btn.setEnabled(False)  # nothing to save until a generation lands
         close_btn = QtWidgets.QPushButton("Close")
         self.generate_btn.clicked.connect(self.generate)
+        self.save_btn.clicked.connect(self.save_character)
         close_btn.clicked.connect(self.reject)
         buttons = QtWidgets.QHBoxLayout()
         buttons.addWidget(self.reset_prompt_btn)
         buttons.addStretch(1)
         buttons.addWidget(self.generate_btn)
+        buttons.addWidget(self.save_btn)
         buttons.addWidget(close_btn)
 
         layout = QtWidgets.QVBoxLayout(self)
-        layout.addWidget(intro)
-        layout.addLayout(top_form)
-        layout.addWidget(self.openai_group)
-        layout.addWidget(self.local_group)
-        layout.addWidget(QtWidgets.QLabel("Prompt"))
-        layout.addWidget(self.prompt_edit)
-        layout.addWidget(self.negative_label)
-        layout.addWidget(self.negative_edit)
-        layout.addWidget(QtWidgets.QLabel("Reference photos (maximum 3)"))
-        layout.addWidget(self.reference_list)
-        layout.addLayout(photo_buttons)
+        layout.addLayout(columns)
         layout.addWidget(self.status_label)
-        layout.addStretch(1)
         layout.addLayout(buttons)
 
         # Fix the height to the tallest (self-hosted) layout up front, so switching
@@ -249,7 +274,7 @@ class AICharDialog(QtWidgets.QDialog):
         tall = self.sizeHint().height()
         self.apply_settings()
         self.setMinimumHeight(tall)
-        self.resize(560, tall)
+        self.resize(max(680, self.sizeHint().width()), tall)
         self.backend_combo.currentIndexChanged.connect(self.on_backend_changed)
 
     # --- settings <-> widgets -------------------------------------------------
@@ -420,12 +445,7 @@ class AICharDialog(QtWidgets.QDialog):
 
     # --- generate -------------------------------------------------------------
     def generate(self) -> None:
-        name = self.name_edit.text().strip()
-        try:
-            char_id = ai_char.slugify(name)
-        except ai_char.AICharError as exc:
-            self.set_status(str(exc), error=True)
-            return
+        """Generate an image and show it in the preview — it is not saved yet."""
         settings = self.collect_settings()
         kind = settings["backend"]
         mode = settings["mode"]
@@ -443,13 +463,6 @@ class AICharDialog(QtWidgets.QDialog):
         if not self.prompt_edit.toPlainText().strip():
             self.set_status("Enter a prompt.", error=True)
             return
-        if char_catalog.find_char(char_id) is not None:
-            answer = QtWidgets.QMessageBox.question(
-                self, "Replace character?",
-                f'A character named "{char_id}" already exists. Replace it with a new generation?',
-            )
-            if answer != QtWidgets.QMessageBox.StandardButton.Yes:
-                return
 
         if kind == "openai":
             if self.remember_box.isChecked():
@@ -460,21 +473,63 @@ class AICharDialog(QtWidgets.QDialog):
 
         ai_backends.save_generation_settings(settings)
         self.generate_btn.setEnabled(False)
+        self.save_btn.setEnabled(False)
         note = " One API request will be charged." if kind == "openai" else ""
         self.set_status("Generating… this can take a bit." + note)
-        worker = GenerationWorker(name, list(self.reference_paths), settings, key)
-        worker.signals.completed.connect(self.on_completed)
+        worker = GenerationWorker(self.name_edit.text().strip(), list(self.reference_paths), settings, key)
+        worker.signals.completed.connect(self.on_generated)
         worker.signals.failed.connect(self.on_failed)
         self.pool.start(worker)
 
-    def on_completed(self, char_id: str, path: str) -> None:
+    def on_generated(self, image: bytes) -> None:
+        self.generated_image = image
         self.generate_btn.setEnabled(True)
-        self.set_status("Saved. Reusing this character does not generate again.")
+        self.save_btn.setEnabled(True)
+        self.show_preview(image)
+        self.set_status("Generated. Click Save to keep it, or Generate again.")
+
+    def show_preview(self, image_bytes: bytes) -> None:
+        pixmap = QtGui.QPixmap()
+        pixmap.loadFromData(image_bytes)
+        if pixmap.isNull():
+            self.preview_label.setText("Preview unavailable.")
+            return
+        self.preview_label.setPixmap(
+            pixmap.scaled(
+                self.preview_label.width(), self.preview_label.height(),
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+
+    def save_character(self) -> None:
+        """Install the previewed image as a char and close."""
+        if self.generated_image is None:
+            return
+        name = self.name_edit.text().strip()
+        try:
+            char_id = ai_char.slugify(name)
+        except ai_char.AICharError as exc:
+            self.set_status(str(exc), error=True)
+            return
+        if char_catalog.find_char(char_id) is not None:
+            answer = QtWidgets.QMessageBox.question(
+                self, "Replace character?",
+                f'A character named "{char_id}" already exists. Replace it?',
+            )
+            if answer != QtWidgets.QMessageBox.StandardButton.Yes:
+                return
+        try:
+            char_id, path = ai_char.install_character(name, self.generated_image)
+        except ai_char.AICharError as exc:
+            self.set_status(str(exc), error=True)
+            return
         self.character_created.emit(char_id)
         self.accept()
 
     def on_failed(self, message: str) -> None:
         self.generate_btn.setEnabled(True)
+        self.save_btn.setEnabled(self.generated_image is not None)
         self.set_status(message, error=True)
 
 
