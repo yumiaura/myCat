@@ -88,7 +88,6 @@ class ActivitySettings:
     # session-only — the counts are never written to disk.
     key_heatmap_enabled: bool = False
     retention_days: int = DEFAULT_RETENTION_DAYS
-    prompted: bool = False  # kept for config compatibility (prompt removed)
 
 
 def pynput_available() -> bool:
@@ -128,7 +127,6 @@ def load_activity_settings(cfg_file: Path = CFG_FILE) -> ActivitySettings:
         settings.keyboard_enabled = section.getboolean("keyboard_enabled", fallback=True)
         settings.key_heatmap_enabled = section.getboolean("key_heatmap_enabled", fallback=False)
         settings.retention_days = section.getint("retention_days", fallback=DEFAULT_RETENTION_DAYS)
-        settings.prompted = section.getboolean("prompted", fallback=False)
     except Exception as exc:  # noqa: BLE001 - never let a bad config crash the app
         logger.error("Failed to load [activity] settings: %s", exc)
     return settings
@@ -148,7 +146,6 @@ def save_activity_settings(settings: ActivitySettings, cfg_file: Path = CFG_FILE
         section["keyboard_enabled"] = "true" if settings.keyboard_enabled else "false"
         section["key_heatmap_enabled"] = "true" if settings.key_heatmap_enabled else "false"
         section["retention_days"] = str(settings.retention_days)
-        section["prompted"] = "true" if settings.prompted else "false"
         with open(cfg_file, "w") as fh:
             config.write(fh)
         secret_store.secure_file(cfg_file)

@@ -108,7 +108,7 @@ def test_activity_settings_round_trip(tmp_path):
     # Each track flips independently: activity off, mouse on, keyboard off.
     save_activity_settings(
         ActivitySettings(
-            enabled=False, mouse_enabled=True, keyboard_enabled=False, retention_days=30, prompted=True
+            enabled=False, mouse_enabled=True, keyboard_enabled=False, retention_days=30
         ),
         cfg_file=cfg,
     )
@@ -116,7 +116,6 @@ def test_activity_settings_round_trip(tmp_path):
     assert loaded.enabled is False  # opt-out round-trips
     assert loaded.mouse_enabled is True
     assert loaded.keyboard_enabled is False
-    assert loaded.prompted is True
     assert loaded.retention_days == 30
 
 
