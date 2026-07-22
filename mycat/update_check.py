@@ -12,6 +12,8 @@ import logging
 import threading
 import urllib.request
 
+from . import github_api
+
 logger = logging.getLogger(__name__)
 
 LATEST_RELEASE_URL = "https://api.github.com/repos/yumiaura/myCat/releases/latest"
@@ -56,12 +58,16 @@ def parse_version(text: str) -> tuple:
     return tuple(parts)
 
 
-def latest_release_tag(url: str = LATEST_RELEASE_URL, timeout: float = 6.0, opener=None) -> str | None:
-    """Return the latest GitHub release tag, or None on any error."""
+def latest_release_tag(
+    url: str = LATEST_RELEASE_URL, timeout: float = 6.0, opener=None, token: str = ""
+) -> str | None:
+    """Return the latest GitHub release tag, or None on any error.
+
+    ``token`` (a GitHub PAT) authenticates the request so it isn't subject to the
+    anonymous 60 req/h per-IP rate limit; entry points resolve it via
+    github_api.github_token()."""
     open_fn = opener or urllib.request.urlopen
-    request = urllib.request.Request(
-        url, headers={"User-Agent": "mycat", "Accept": "application/vnd.github+json"}
-    )
+    request = github_api.build_request(url, token=token)
     try:
         with open_fn(request, timeout=timeout) as response:
             data = json.loads(response.read().decode("utf-8"))
@@ -86,7 +92,7 @@ def check_in_background(current: str) -> None:
     """Fire the release check on a daemon thread; log if an update is available."""
 
     def run() -> None:
-        latest = newer_release(current)
+        latest = newer_release(current, token=github_api.github_token())
         if latest:
             logger.info(
                 "Update available: mycat %s (you have %s) — %s",

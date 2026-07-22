@@ -797,7 +797,6 @@ class ActivityDialog(QtWidgets.QDialog):
             keyboard_enabled=self.keyboard_box.isChecked(),
             key_heatmap_enabled=self.collect_box.isChecked(),
             retention_days=self.retention_spin.value(),
-            prompted=True,
         )
         activity_mod.save_activity_settings(settings)
         self.collector.apply_settings(settings)

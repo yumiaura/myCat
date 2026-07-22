@@ -13,7 +13,8 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-APP_ID = "mycat"
+APP_ID = "mycat"          # technical id: .desktop filename, Windows Run key value name
+APP_NAME = "myCat"        # display name shown to the user (Name= in the .desktop)
 WIN_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 
@@ -49,7 +50,7 @@ def linux_set(enabled: bool) -> None:
         path.write_text(
             "[Desktop Entry]\n"
             "Type=Application\n"
-            f"Name={APP_ID}\n"
+            f"Name={APP_NAME}\n"
             f"Exec={launch_command()}\n"
             "Terminal=false\n"
             "X-GNOME-Autostart-enabled=true\n"

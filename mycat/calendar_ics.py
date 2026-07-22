@@ -17,7 +17,6 @@ expansion is a swamp not worth hand-rolling). They are an optional extra:
 nothing else breaks.
 """
 
-import configparser
 import logging
 import urllib.request
 from dataclasses import dataclass
@@ -27,16 +26,17 @@ from pathlib import Path
 from PySide6 import QtCore
 
 if __package__:
-    from . import secret_store
+    from . import config_store, paths
 else:
     import importlib
 
-    secret_store = importlib.import_module("mycat.secret_store")
+    config_store = importlib.import_module("mycat.config_store")
+    paths = importlib.import_module("mycat.paths")
 
 logger = logging.getLogger(__name__)
 
-CFG_DIR = Path.home() / ".config" / "mycat"
-CFG_FILE = CFG_DIR / "config.ini"
+CFG_DIR = paths.config_dir()
+CFG_FILE = paths.config_file()
 
 DEFAULT_REMIND_MINUTES = 10
 DEFAULT_POLL_MINUTES = 10
@@ -58,41 +58,31 @@ class CalendarSettings:
 
 def load_calendar_settings(cfg_file: Path = CFG_FILE) -> CalendarSettings:
     settings = CalendarSettings()
-    if not cfg_file.exists():
+    config = config_store.read_config(cfg_file)
+    if config is None or "calendar" not in config:
         return settings
     try:
-        config = configparser.ConfigParser()
-        config.read(cfg_file)
-        if "calendar" not in config:
-            return settings
         section = config["calendar"]
         settings.enabled = section.getboolean("enabled", fallback=False)
         settings.url = section.get("url", "")
         settings.remind_minutes = section.getint("remind_minutes", fallback=DEFAULT_REMIND_MINUTES)
         settings.poll_minutes = section.getint("poll_minutes", fallback=DEFAULT_POLL_MINUTES)
-    except Exception as exc:  # noqa: BLE001 - never let a bad config crash the app
+    except (ValueError, TypeError) as exc:  # a malformed value -> keep the defaults
         logger.error("Failed to load [calendar] settings: %s", exc)
     return settings
 
 
 def save_calendar_settings(settings: CalendarSettings, cfg_file: Path = CFG_FILE) -> None:
-    try:
-        cfg_file.parent.mkdir(parents=True, exist_ok=True)
-        config = configparser.ConfigParser()
-        if cfg_file.exists():
-            config.read(cfg_file)
-        if "calendar" not in config:
-            config.add_section("calendar")
-        section = config["calendar"]
-        section["enabled"] = "true" if settings.enabled else "false"
-        section["url"] = settings.url
-        section["remind_minutes"] = str(settings.remind_minutes)
-        section["poll_minutes"] = str(settings.poll_minutes)
-        with open(cfg_file, "w") as fh:
-            config.write(fh)
-        secret_store.secure_file(cfg_file)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Failed to save [calendar] settings: %s", exc)
+    config_store.write_section(
+        "calendar",
+        {
+            "enabled": config_store.bool_str(settings.enabled),
+            "url": settings.url,
+            "remind_minutes": settings.remind_minutes,
+            "poll_minutes": settings.poll_minutes,
+        },
+        cfg_file,
+    )
 
 
 # -- pure helpers (unit-tested without Qt or network) ---------------------------

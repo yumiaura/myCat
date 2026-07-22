@@ -40,16 +40,19 @@ from pathlib import Path
 from PySide6 import QtCore
 
 if __package__:
-    from . import secret_store
+    from . import config_store, github_api, paths, secret_store
 else:
     import importlib
 
+    config_store = importlib.import_module("mycat.config_store")
+    github_api = importlib.import_module("mycat.github_api")
     secret_store = importlib.import_module("mycat.secret_store")
+    paths = importlib.import_module("mycat.paths")
 
 logger = logging.getLogger(__name__)
 
-CFG_DIR = Path.home() / ".config" / "mycat"
-CFG_FILE = CFG_DIR / "config.ini"
+CFG_DIR = paths.config_dir()
+CFG_FILE = paths.config_file()
 
 API_URL = "https://api.github.com/notifications"
 USER_URL = "https://api.github.com/user"
@@ -138,22 +141,15 @@ class GitHubSettings:
     token_verified: bool = False  # a UI gate: the inbox checkboxes unlock on a good Test
 
     def resolve_token(self) -> str:
-        if self.token:
-            return self.token
-        import os
-
-        return os.getenv(self.token_env, "")
+        return github_api.resolve_token(self.token, self.token_env)
 
 
 def load_github_settings(cfg_file: Path = CFG_FILE) -> GitHubSettings:
     settings = GitHubSettings()
-    if not cfg_file.exists():
+    config = config_store.read_config(cfg_file)
+    if config is None or "github" not in config:
         return settings
     try:
-        config = configparser.ConfigParser()
-        config.read(cfg_file)
-        if "github" not in config:
-            return settings
         section = config["github"]
         settings.enabled = section.getboolean("enabled", fallback=False)
         settings.token = section.get("token", "")
@@ -167,7 +163,7 @@ def load_github_settings(cfg_file: Path = CFG_FILE) -> GitHubSettings:
         raw = section.get("categories", "") or section.get("reasons", ",".join(DEFAULT_CATEGORIES))
         categories = tuple(item.strip() for item in raw.split(",") if item.strip())
         settings.categories = categories or DEFAULT_CATEGORIES
-    except Exception as exc:  # noqa: BLE001 - never let a bad config crash the app
+    except (ValueError, TypeError) as exc:  # a malformed value -> keep the defaults
         logger.error("Failed to load [github] settings: %s", exc)
     return settings
 
@@ -462,17 +458,7 @@ class FollowerTracker:
 
 
 def github_request(url: str, token: str = "", etag: str = "", last_modified: str = ""):
-    request = urllib.request.Request(url)
-    if token:
-        request.add_header("Authorization", f"Bearer {token}")
-    request.add_header("Accept", "application/vnd.github+json")
-    request.add_header("X-GitHub-Api-Version", "2022-11-28")
-    request.add_header("User-Agent", "mycat-desktop-pet")
-    if etag:
-        request.add_header("If-None-Match", etag)
-    if last_modified:
-        request.add_header("If-Modified-Since", last_modified)
-    return request
+    return github_api.build_request(url, token=token, etag=etag, last_modified=last_modified)
 
 
 def rate_limit_reset(headers) -> int:

@@ -56,7 +56,7 @@ def slugify(name: str) -> str:
     return f"custom-{slug[:48]}"
 
 
-def _reference_png(path: Path) -> bytes:
+def reference_png(path: Path) -> bytes:
     try:
         with Image.open(path) as source:
             image = ImageOps.exif_transpose(source).convert("RGB")
@@ -71,7 +71,7 @@ def _reference_png(path: Path) -> bytes:
 def prepare_references(paths: list[Path]) -> list[tuple[str, bytes]]:
     if not 1 <= len(paths) <= MAX_REFERENCES:
         raise AICharError("Choose between 1 and 3 reference images.")
-    return [(f"reference-{index}.png", _reference_png(Path(path))) for index, path in enumerate(paths, 1)]
+    return [(f"reference-{index}.png", reference_png(Path(path))) for index, path in enumerate(paths, 1)]
 
 
 def build_prompt(additional_instructions: str = "") -> str:
@@ -89,7 +89,7 @@ def build_prompt(additional_instructions: str = "") -> str:
     )
 
 
-def _multipart(fields: dict[str, str], images: list[tuple[str, bytes]]) -> tuple[bytes, str]:
+def multipart(fields: dict[str, str], images: list[tuple[str, bytes]]) -> tuple[bytes, str]:
     boundary = f"mycat-{uuid.uuid4().hex}"
     body = io.BytesIO()
 
@@ -125,7 +125,7 @@ def request_image(
         raise AICharError("Enter an OpenAI API key or set OPENAI_API_KEY.")
     if quality not in {"low", "medium"}:
         raise AICharError("Unsupported image quality.")
-    body, content_type = _multipart(
+    body, content_type = multipart(
         {
             "model": model,
             "prompt": prompt if prompt is not None else build_prompt(additional_instructions),
@@ -170,7 +170,7 @@ def request_image(
     return result
 
 
-def _normalized_character_png(image_bytes: bytes) -> bytes:
+def normalized_character_png(image_bytes: bytes) -> bytes:
     with Image.open(io.BytesIO(image_bytes)) as source:
         image = source.convert("RGBA")
     alpha_box = image.getchannel("A").getbbox()
@@ -273,7 +273,7 @@ def install_character(display_name: str, image_bytes: bytes) -> tuple[str, Path]
         "max_height": 400,
         "blink": {"enabled": False},
     }
-    png = _normalized_character_png(image_bytes)
+    png = normalized_character_png(image_bytes)
     try:
         with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             archive.writestr("static.png", png)

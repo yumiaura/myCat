@@ -34,16 +34,14 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
 
-from . import ai_char
+from . import ai_char, paths
 from .ai_char import AICharError
 
-APP_NAME = "mycat"
-CFG_DIR = Path.home() / ".config" / APP_NAME
-CFG_FILE = CFG_DIR / "config.ini"
+CFG_DIR = paths.config_dir()
+CFG_FILE = paths.config_file()
 CFG_SECTION = "generation"
 
 BACKENDS = ("openai", "a1111", "comfyui")

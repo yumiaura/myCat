@@ -60,32 +60,32 @@ def test_pack_loads_all_state_assets(qapp, tmp_path, monkeypatch):
 def test_yawn_then_sleep_then_wake(qapp, tmp_path, monkeypatch):
     w, _ = make_window(qapp, tmp_path, monkeypatch)
 
-    w._test_now = 0.5
-    assert w._update_pack_frame() == "open"          # awake
+    w.test_now = 0.5
+    assert w.update_pack_frame() == "open"          # awake
 
-    w._test_now = 1.5                                # cursor still > yawn_after
-    assert w._update_pack_frame() == "anim"          # yawn one-shot
+    w.test_now = 1.5                                # cursor still > yawn_after
+    assert w.update_pack_frame() == "anim"          # yawn one-shot
     assert w.yawned is True
 
-    w._test_now = 1.8                                # yawn (100ms) finished
-    assert w._update_pack_frame() == "open"
+    w.test_now = 1.8                                # yawn (100ms) finished
+    assert w.update_pack_frame() == "open"
 
-    w._test_now = 2.5                                # idle > sleep_after -> sleep_in
-    assert w._update_pack_frame() == "anim"
-    w._test_now = 2.8                                # sleep_in finished -> sleeping
-    assert w._update_pack_frame() == "sleep"
+    w.test_now = 2.5                                # idle > sleep_after -> sleep_in
+    assert w.update_pack_frame() == "anim"
+    w.test_now = 2.8                                # sleep_in finished -> sleeping
+    assert w.update_pack_frame() == "sleep"
     assert w.base_state == "sleeping"
 
-    w._test_now = 3.0                                # interaction wakes -> sleep_out
-    w._wake(w._pack_now())
-    assert w._update_pack_frame() == "anim"
-    w._test_now = 3.3                                # sleep_out finished -> awake
-    assert w._update_pack_frame() == "open"
+    w.test_now = 3.0                                # interaction wakes -> sleep_out
+    w.wake(w.pack_now())
+    assert w.update_pack_frame() == "anim"
+    w.test_now = 3.3                                # sleep_out finished -> awake
+    assert w.update_pack_frame() == "open"
     assert w.base_state == "awake"
 
 
 def test_click_plays_reaction(qapp, tmp_path, monkeypatch):
     w, _ = make_window(qapp, tmp_path, monkeypatch)
-    w._test_now = 4.0
-    w._on_pack_click()
-    assert w._update_pack_frame() == "anim"          # click1 one-shot
+    w.test_now = 4.0
+    w.on_pack_click()
+    assert w.update_pack_frame() == "anim"          # click1 one-shot

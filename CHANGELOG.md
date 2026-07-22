@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.25] - 2026-07-22
+
+### Fixed
+- **The update check now uses your GitHub token, so it isn't rate-limited.** It made anonymous GitHub calls (60 req/h per IP), so a shared IP could hit "rate-limited" even with a token configured. A shared `github_api.py` layer now attaches the `[github]` token (or `GITHUB_TOKEN`) to *every* GitHub request — the update check and the notifications poller both go through it (5000 req/h). The update dialog is shorter and always shows the current and latest version, then whether an update is needed.
+- **The autostart entry shows "myCat", not "mycat".** The XDG autostart `.desktop` wrote `Name=mycat` while the app-menu entry wrote `Name=myCat`, so the same app showed two different names.
+- **Switching char no longer half-updates the window on a bad char.** `_load_image` mutated the window's state and resized it inside the same `try` that decodes the GIF, so a decode failure left the window half-switched; it now decodes into locals first and commits only on success.
+
+### Changed
+- **Internal maintainability refactor (no behaviour change).** A single source of truth for the config path (`paths.py`) and shared config load/save plumbing (`config_store.py`) replace the per-feature copy-paste, and every single-underscore identifier across the codebase was renamed to a plain public name (house style). Also corrects stale contributor paths in `CLAUDE.md` (`chars/` and the "Chars" menu) and drops a dead `prompted` config field (branch `chore/maintainability-phase-0`).
+
 ## [0.1.24] - 2026-07-21
 
 ### Fixed

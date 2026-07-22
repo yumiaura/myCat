@@ -19,15 +19,15 @@ logger = logging.getLogger(__name__)
 
 
 def attach_chat(window: QtWidgets.QWidget, context: LLMContext, enabled: bool = True) -> None:
-    controller = _LLMController(window, context, enabled=enabled)
-    setattr(window, "_llm_controller", controller)
-    setattr(window, "_toggle_llm_chat", controller.toggle_chat)
-    setattr(window, "_toggle_llm_enabled", controller.toggle_enabled)
-    setattr(window, "_is_llm_enabled", controller.is_enabled)
+    controller = LLMController(window, context, enabled=enabled)
+    setattr(window, "llm_controller", controller)
+    setattr(window, "toggle_llm_chat", controller.toggle_chat)
+    setattr(window, "toggle_llm_enabled", controller.toggle_enabled)
+    setattr(window, "is_llm_enabled", controller.is_enabled)
     logger.debug("Chat controller attached to window %s", window)
 
 
-class _LLMController(QtCore.QObject):
+class LLMController(QtCore.QObject):
     """Owns the chat dialog lifecycle and keeps it anchored to the cat window."""
 
     def __init__(self, window: QtWidgets.QWidget, context: LLMContext, enabled: bool = True) -> None:
@@ -39,7 +39,7 @@ class _LLMController(QtCore.QObject):
         self.history_file = llm_prompt.ensure_history_file()
 
         window.installEventFilter(self)
-        window.destroyed.connect(self._on_window_destroyed)
+        window.destroyed.connect(self.on_window_destroyed)
         logger.debug("LLM controller initialised with history file %s", self.history_file)
 
     def eventFilter(self, watched: QtCore.QObject, event: QtCore.QEvent) -> bool:
@@ -47,10 +47,11 @@ class _LLMController(QtCore.QObject):
             QtCore.QEvent.Type.Move,
             QtCore.QEvent.Type.Resize,
         ):
-            self._position_dialog()
+            self.position_dialog()
         return super().eventFilter(watched, event)
 
-    def _toggle_chat(self) -> None:
+    def toggle_chat(self) -> None:
+        """Public hook for opening chat from host UI."""
         if not self.enabled:
             logger.debug("LLM chat is disabled, ignoring toggle")
             return
@@ -61,7 +62,7 @@ class _LLMController(QtCore.QObject):
                 return
             logger.debug("Showing existing chat dialog")
             self.chat_dialog.show()
-            self._position_dialog()
+            self.position_dialog()
             self.chat_dialog.raise_()
             self.chat_dialog.activateWindow()
             return
@@ -69,13 +70,9 @@ class _LLMController(QtCore.QObject):
         logger.debug("Creating new chat dialog")
         dialog = ChatDialog(self)
         dialog.show()
-        dialog.destroyed.connect(self._on_chat_destroyed)
+        dialog.destroyed.connect(self.on_chat_destroyed)
         self.chat_dialog = dialog
-        self._position_dialog()
-
-    def toggle_chat(self) -> None:
-        """Public hook for opening chat from host UI."""
-        self._toggle_chat()
+        self.position_dialog()
 
     def is_enabled(self) -> bool:
         return self.enabled
@@ -90,7 +87,7 @@ class _LLMController(QtCore.QObject):
         logger.info("LLM chat %s", "enabled" if self.enabled else "disabled")
         return self.enabled
 
-    def _position_dialog(self) -> None:
+    def position_dialog(self) -> None:
         if not self.chat_dialog:
             return
         screen_rect = QtGui.QGuiApplication.primaryScreen().availableGeometry()
@@ -110,35 +107,35 @@ class _LLMController(QtCore.QObject):
         if x + dialog_width > screen_rect.width():
             x = screen_rect.width() - dialog_width - 10
 
-        dialog._suspend_anchor = True  # type: ignore[attr-defined]
+        dialog.suspend_anchor = True  # type: ignore[attr-defined]
         dialog.move(x, y)
-        dialog._suspend_anchor = False  # type: ignore[attr-defined]
+        dialog.suspend_anchor = False  # type: ignore[attr-defined]
 
-    def _on_chat_destroyed(self, *_args) -> None:
+    def on_chat_destroyed(self, *_args) -> None:
         logger.debug("Chat dialog destroyed")
         self.chat_dialog = None
 
-    def _on_window_destroyed(self, *_args) -> None:
+    def on_window_destroyed(self, *_args) -> None:
         self.chat_dialog = None
 
 
 class ChatDialog(QtWidgets.QDialog):
     """Frameless chat dialog with message history and async LLM requests."""
 
-    def __init__(self, controller: _LLMController):
+    def __init__(self, controller: LLMController):
         super().__init__(controller.window)
         self.controller = controller
         self.backend = controller.context.backend
         self.settings = controller.context.settings
         self.history_file = controller.history_file
         self.message_count = 0
-        self._waiting_for_response = False
-        self._thread_pool = QtCore.QThreadPool.globalInstance()
-        self._pending_worker: _LLMWorker | None = None
-        self._pending_request_started: float | None = None
-        self._pending_request_text: str | None = None
-        self._suspend_anchor = False
-        self._messages: list[tuple[str, str, str]] = []
+        self.waiting_for_response = False
+        self.thread_pool = QtCore.QThreadPool.globalInstance()
+        self.pending_worker: LLMWorker | None = None
+        self.pending_request_started: float | None = None
+        self.pending_request_text: str | None = None
+        self.suspend_anchor = False
+        self.messages: list[tuple[str, str, str]] = []
 
         self.setWindowFlags(
             QtCore.Qt.WindowType.Window
@@ -151,10 +148,10 @@ class ChatDialog(QtWidgets.QDialog):
         self.setSizeGripEnabled(True)
         self.setModal(False)
 
-        self._build_ui()
-        self._load_history()
+        self.build_ui()
+        self.load_history()
 
-    def _build_ui(self) -> None:
+    def build_ui(self) -> None:
         main_layout = QtWidgets.QVBoxLayout(self)
         main_layout.setContentsMargins(4, 4, 4, 4)
         main_layout.setSpacing(2)
@@ -175,7 +172,7 @@ class ChatDialog(QtWidgets.QDialog):
         self.messages_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignBottom)
         self.scroll_area.setWidget(self.messages_widget)
         self.scroll_area.verticalScrollBar().rangeChanged.connect(
-            lambda *_: QtCore.QTimer.singleShot(0, self._scroll_to_bottom)
+            lambda *_: QtCore.QTimer.singleShot(0, self.scroll_to_bottom)
         )
 
         input_layout = QtWidgets.QHBoxLayout()
@@ -226,23 +223,23 @@ class ChatDialog(QtWidgets.QDialog):
         self.send_button.setStyleSheet(button_style)
         self.send_button.setDefault(True)
         self.send_button.setAutoDefault(True)
-        self.send_button.clicked.connect(self._send_message)
+        self.send_button.clicked.connect(self.send_message)
         input_layout.addWidget(self.send_button)
 
         main_layout.addLayout(input_layout)
-        self.input_field.returnPressed.connect(self._send_message)
-        self._typing_indicator: TypingIndicator | None = None
+        self.input_field.returnPressed.connect(self.send_message)
+        self.typing_indicator: TypingIndicator | None = None
 
-    def _load_history(self) -> None:
+    def load_history(self) -> None:
         entries = llm_prompt.parse_history_file(self.history_file)
-        self._messages = entries
+        self.messages = entries
         self.message_count = len(entries)
         logger.debug("Loaded %d history entries", self.message_count)
-        self._render_messages()
+        self.render_messages()
 
-    def _show_welcome_message(self) -> None:
-        self._messages = []
-        self._clear_message_widgets()
+    def show_welcome_message(self) -> None:
+        self.messages = []
+        self.clear_message_widgets()
         label = QtWidgets.QLabel("Write something...")
         label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         label.setStyleSheet("color: #888; font-style: italic; margin-top: 40px;")
@@ -258,64 +255,64 @@ class ChatDialog(QtWidgets.QDialog):
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         super().resizeEvent(event)
-        if not getattr(self, "_suspend_anchor", False):
-            self.controller._position_dialog()
+        if not getattr(self, "suspend_anchor", False):
+            self.controller.position_dialog()
 
     def moveEvent(self, event: QtGui.QMoveEvent) -> None:
         super().moveEvent(event)
-        if not getattr(self, "_suspend_anchor", False):
-            self.controller._position_dialog()
+        if not getattr(self, "suspend_anchor", False):
+            self.controller.position_dialog()
 
-    def _send_message(self) -> None:
+    def send_message(self) -> None:
         text = self.input_field.text().strip()
-        if not text or self._waiting_for_response:
+        if not text or self.waiting_for_response:
             return
         logger.info("Request: %s", text)
-        self._append_message("user", text)
-        QtCore.QTimer.singleShot(0, self._scroll_to_bottom)
+        self.append_message("user", text)
+        QtCore.QTimer.singleShot(0, self.scroll_to_bottom)
         self.input_field.clear()
-        self._set_input_enabled(False)
-        self._waiting_for_response = True
-        self._request_ai_response(text)
-        self._show_typing_indicator()
-        self._schedule_scroll()
+        self.set_input_enabled(False)
+        self.waiting_for_response = True
+        self.request_ai_response(text)
+        self.show_typing_indicator()
+        self.schedule_scroll()
 
-    def _request_ai_response(self, text: str) -> None:
+    def request_ai_response(self, text: str) -> None:
         history_lines = llm_prompt.get_history_tail(self.history_file, self.settings.history_messages)
         system_prompt = llm_prompt.render_prompt(history_lines, self.settings.history_messages)
-        self._pending_request_started = time.monotonic()
-        self._pending_request_text = text
-        worker = _LLMWorker(self.backend, text, system_prompt)
-        worker.signals.result.connect(self._on_ai_success)
-        worker.signals.error.connect(self._on_ai_error)
-        worker.signals.finished.connect(self._on_ai_finished)
-        self._thread_pool.start(worker)
-        self._pending_worker = worker
+        self.pending_request_started = time.monotonic()
+        self.pending_request_text = text
+        worker = LLMWorker(self.backend, text, system_prompt)
+        worker.signals.result.connect(self.on_ai_success)
+        worker.signals.error.connect(self.on_ai_error)
+        worker.signals.finished.connect(self.on_ai_finished)
+        self.thread_pool.start(worker)
+        self.pending_worker = worker
 
-    def _on_ai_success(self, answer: str) -> None:
-        self._append_message("cat", answer)
-        self._schedule_scroll()
-        self._log_request_summary(answer, success=True)
+    def on_ai_success(self, answer: str) -> None:
+        self.append_message("cat", answer)
+        self.schedule_scroll()
+        self.log_request_summary(answer, success=True)
 
-    def _on_ai_error(self, message: str) -> None:
+    def on_ai_error(self, message: str) -> None:
         logger.error("LLM backend error: %s", message)
-        self._append_message("cat", f"Error: {message}")
-        self._schedule_scroll()
-        self._log_request_summary(message, success=False)
+        self.append_message("cat", f"Error: {message}")
+        self.schedule_scroll()
+        self.log_request_summary(message, success=False)
 
-    def _on_ai_finished(self) -> None:
-        self._pending_worker = None
-        self._waiting_for_response = False
-        self._set_input_enabled(True)
-        self._pending_request_started = None
-        self._pending_request_text = None
-        self._hide_typing_indicator()
+    def on_ai_finished(self) -> None:
+        self.pending_worker = None
+        self.waiting_for_response = False
+        self.set_input_enabled(True)
+        self.pending_request_started = None
+        self.pending_request_text = None
+        self.hide_typing_indicator()
 
-    def _set_input_enabled(self, enabled: bool) -> None:
+    def set_input_enabled(self, enabled: bool) -> None:
         self.input_field.setEnabled(enabled)
         self.send_button.setEnabled(enabled)
 
-    def _append_message(
+    def append_message(
         self,
         role: str,
         text: str,
@@ -324,59 +321,59 @@ class ChatDialog(QtWidgets.QDialog):
     ) -> None:
         timestamp = timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if self.message_count == 0:
-            self._messages = []
-        self._messages.append((role, text, timestamp))
-        self.message_count = len(self._messages)
-        self._render_messages()
+            self.messages = []
+        self.messages.append((role, text, timestamp))
+        self.message_count = len(self.messages)
+        self.render_messages()
         if persist:
             llm_prompt.append_history_entry(self.history_file, role, text, timestamp)
 
-    def _render_messages(self) -> None:
-        if not self._messages:
-            self._show_welcome_message()
+    def render_messages(self) -> None:
+        if not self.messages:
+            self.show_welcome_message()
             return
 
-        self._clear_message_widgets()
-        for role, text, _timestamp in self._messages:
+        self.clear_message_widgets()
+        for role, text, _timestamp in self.messages:
             bubble = MessageBubble(role, text)
             self.messages_layout.addWidget(bubble, alignment=bubble.alignment_flag)
-        self._schedule_scroll()
-        self._update_bubble_widths()
+        self.schedule_scroll()
+        self.update_bubble_widths()
 
-    def _clear_message_widgets(self) -> None:
+    def clear_message_widgets(self) -> None:
         while self.messages_layout.count():
             item = self.messages_layout.takeAt(0)
             widget = item.widget()
             if widget:
                 widget.deleteLater()
-        self._typing_indicator = None
+        self.typing_indicator = None
 
-    def _show_typing_indicator(self) -> None:
-        if getattr(self, "_typing_indicator", None):
+    def show_typing_indicator(self) -> None:
+        if getattr(self, "typing_indicator", None):
             return
         indicator = TypingIndicator()
         self.messages_layout.addWidget(indicator, alignment=QtCore.Qt.AlignmentFlag.AlignRight)
-        self._typing_indicator = indicator
-        self._schedule_scroll()
+        self.typing_indicator = indicator
+        self.schedule_scroll()
 
-    def _hide_typing_indicator(self) -> None:
-        indicator = getattr(self, "_typing_indicator", None)
+    def hide_typing_indicator(self) -> None:
+        indicator = getattr(self, "typing_indicator", None)
         if not indicator:
             return
         indicator.deleteLater()
-        self._typing_indicator = None
-        self._schedule_scroll()
+        self.typing_indicator = None
+        self.schedule_scroll()
 
-    def _scroll_to_bottom(self) -> None:
+    def scroll_to_bottom(self) -> None:
         scrollbar = self.scroll_area.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
-        self._update_bubble_widths()
+        self.update_bubble_widths()
 
-    def _schedule_scroll(self) -> None:
-        QtCore.QTimer.singleShot(0, self._scroll_to_bottom)
-        QtCore.QTimer.singleShot(60, self._scroll_to_bottom)
+    def schedule_scroll(self) -> None:
+        QtCore.QTimer.singleShot(0, self.scroll_to_bottom)
+        QtCore.QTimer.singleShot(60, self.scroll_to_bottom)
 
-    def _update_bubble_widths(self) -> None:
+    def update_bubble_widths(self) -> None:
         viewport = self.scroll_area.viewport()
         max_width = max(100, int(viewport.width() * 0.85))
         for index in range(self.messages_layout.count()):
@@ -386,10 +383,10 @@ class ChatDialog(QtWidgets.QDialog):
                 widget.set_max_width(max_width)
         self.messages_widget.setMinimumHeight(viewport.height())
 
-    def _log_request_summary(self, response: str, success: bool) -> None:
-        if self._pending_request_started is None or self._pending_request_text is None:
+    def log_request_summary(self, response: str, success: bool) -> None:
+        if self.pending_request_started is None or self.pending_request_text is None:
             return
-        duration = time.monotonic() - self._pending_request_started
+        duration = time.monotonic() - self.pending_request_started
         # One line. The request itself is already logged when it is sent.
         if success:
             # Readable text, newlines collapsed so it stays on one line.
@@ -399,21 +396,21 @@ class ChatDialog(QtWidgets.QDialog):
             logger.error("error: %s (%.2fs)", json.dumps(response, ensure_ascii=False), duration)
 
 
-class _LLMWorkerSignals(QtCore.QObject):
+class LLMWorkerSignals(QtCore.QObject):
     """Qt signals emitted by the background worker."""
     result = QtCore.Signal(str)
     error = QtCore.Signal(str)
     finished = QtCore.Signal()
 
 
-class _LLMWorker(QtCore.QRunnable):
+class LLMWorker(QtCore.QRunnable):
     """Runs LLM requests off the UI thread and streams results via signals."""
     def __init__(self, backend, user_text: str, system_prompt: str) -> None:
         super().__init__()
         self.backend = backend
         self.user_text = user_text
         self.system_prompt = system_prompt
-        self.signals = _LLMWorkerSignals()
+        self.signals = LLMWorkerSignals()
 
     def run(self) -> None:
         try:
@@ -473,28 +470,28 @@ class MessageBubble(QtWidgets.QWidget):
         inner.addWidget(body)
         layout.addWidget(self.frame)
 
-        self._body_label = body
-        self._opacity_timer = QtCore.QTimer(self)
-        self._opacity_timer.setSingleShot(True)
-        self._opacity_timer.timeout.connect(self._restore_opacity)
+        self.body_label = body
+        self.opacity_timer = QtCore.QTimer(self)
+        self.opacity_timer.setSingleShot(True)
+        self.opacity_timer.timeout.connect(self.restore_opacity)
 
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
             QtWidgets.QApplication.clipboard().setText(self.raw_text)
-            self._body_label.setStyleSheet("font-size: 13px; color: rgba(28,28,28,0.4);")
-            self._opacity_timer.start(200)
+            self.body_label.setStyleSheet("font-size: 13px; color: rgba(28,28,28,0.4);")
+            self.opacity_timer.start(200)
         super().mousePressEvent(event)
 
-    def _restore_opacity(self) -> None:
-        self._body_label.setStyleSheet("font-size: 13px; color: #1c1c1c; background: transparent;")
+    def restore_opacity(self) -> None:
+        self.body_label.setStyleSheet("font-size: 13px; color: #1c1c1c; background: transparent;")
 
     def set_max_width(self, width: int) -> None:
         self.frame.setMaximumWidth(width)
         self.frame.setMinimumWidth(min(width, 200))
         max_body = max(50, width - 12)
         self.frame.setMinimumWidth(max_body)
-        self._body_label.setMaximumWidth(max_body - 12)
-        self._body_label.setMinimumWidth(max(60, max_body - 12))
+        self.body_label.setMaximumWidth(max_body - 12)
+        self.body_label.setMinimumWidth(max(60, max_body - 12))
 
 
 class TypingIndicator(QtWidgets.QWidget):
@@ -522,18 +519,18 @@ class TypingIndicator(QtWidgets.QWidget):
         inner.addWidget(self.label)
         layout.addWidget(frame)
 
-        self._phase = 0
-        self._timer = QtCore.QTimer(self)
-        self._timer.timeout.connect(self._advance)
-        self._timer.start(1000)
+        self.phase = 0
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self.advance)
+        self.timer.start(1000)
 
-    def _advance(self) -> None:
-        if self._phase < 3:
+    def advance(self) -> None:
+        if self.phase < 3:
             opacity = 1.0
         else:
             opacity = 0.5
         self.label.setStyleSheet(f"font-size: 14px; color: rgba(28,28,28,{opacity});")
-        self._phase = (self._phase + 1) % 4
+        self.phase = (self.phase + 1) % 4
 
 
 __all__ = ["attach_chat"]
