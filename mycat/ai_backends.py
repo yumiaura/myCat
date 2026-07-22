@@ -52,7 +52,9 @@ OPENAI_GENERATIONS_URL = "https://api.openai.com/v1/images/generations"
 
 HTTP_TIMEOUT = 300.0
 POLL_TIMEOUT = 300.0
-LOCAL_SIZE = (512, 768)          # SD1.5-friendly portrait for the mascot
+LOCAL_SIZE = (832, 1216)         # SDXL portrait bucket (2:3) — the modern local models
+                                 # (SDXL, Illustrious, Pony, NoobAI) are trained at ~1024px;
+                                 # generating at SD1.5's 512×768 gives them mush or OOMs.
 LOCAL_STEPS = 24
 LOCAL_SAMPLER = "DPM++ 2M"
 LOCAL_CFG = 6.0
@@ -94,17 +96,43 @@ def http_json(url: str, payload=None, *, timeout: float = HTTP_TIMEOUT, method: 
         return json.load(response)
 
 
+def api_error_message(parsed: object) -> str:
+    """Pull a human message out of the different error JSON shapes we get back.
+
+    OpenAI nests it — ``{"error": {"message": "…"}}`` — while AUTOMATIC1111 puts a
+    short type in ``error`` (a *string*, not an object) and the real detail in
+    ``errors`` — ``{"error": "OutOfMemoryError", "errors": "CUDA out of memory…"}``.
+    ComfyUI/FastAPI use ``{"detail": "…"}``. Returns "" if none of these fit."""
+    if not isinstance(parsed, dict):
+        return ""
+    error = parsed.get("error")
+    if isinstance(error, dict):
+        message = error.get("message")
+        if message:
+            return str(message)
+    elif isinstance(error, str) and error.strip():
+        detail = parsed.get("errors")
+        if isinstance(detail, str) and detail.strip():
+            return f"{error}: {detail}"
+        return error
+    for key in ("errors", "detail"):
+        value = parsed.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return ""
+
+
 def service_error(prefix: str, exc: Exception) -> AICharError:
     """Turn a low-level HTTP/URL error into a readable, user-facing message."""
     if isinstance(exc, urllib.error.HTTPError):
         body = ""
+        message = ""
         try:
             body = exc.read().decode("utf-8", errors="replace")
-            parsed = json.loads(body)
-            body = parsed.get("error", {}).get("message") or parsed.get("detail") or body
+            message = api_error_message(json.loads(body))
         except Exception:  # noqa: BLE001 - best-effort detail extraction
             pass
-        return AICharError(f"{prefix} ({exc.code}): {body[:300] or exc.reason}")
+        return AICharError(f"{prefix} ({exc.code}): {message or body[:300] or exc.reason}")
     reason = getattr(exc, "reason", None)
     if isinstance(exc, TimeoutError) or isinstance(reason, TimeoutError) or "timed out" in str(reason or exc).lower():
         return AICharError(f"{prefix}: the server didn't respond in time — it may be loading a model or out of memory.")

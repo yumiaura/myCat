@@ -207,6 +207,39 @@ def test_comfyui_uses_prompt_and_negative(monkeypatch):
     assert submitted["graph"]["neg"]["inputs"]["text"] == "NEG"
 
 
+def test_api_error_message_a1111_string_error():
+    # AUTOMATIC1111: `error` is a short type string, the detail lives in `errors`.
+    parsed = {"error": "OutOfMemoryError", "detail": "", "errors": "CUDA out of memory."}
+    assert ai_backends.api_error_message(parsed) == "OutOfMemoryError: CUDA out of memory."
+
+
+def test_api_error_message_a1111_error_without_detail():
+    assert ai_backends.api_error_message({"error": "RuntimeError", "errors": ""}) == "RuntimeError"
+
+
+def test_api_error_message_openai_nested():
+    parsed = {"error": {"message": "Invalid API key", "type": "invalid_request_error"}}
+    assert ai_backends.api_error_message(parsed) == "Invalid API key"
+
+
+def test_api_error_message_fastapi_detail():
+    assert ai_backends.api_error_message({"detail": "Not found"}) == "Not found"
+
+
+def test_api_error_message_unknown_shape():
+    assert ai_backends.api_error_message({"nope": 1}) == ""
+    assert ai_backends.api_error_message("plain text") == ""
+
+
+def test_service_error_surfaces_a1111_500():
+    body = json.dumps({"error": "OutOfMemoryError", "errors": "CUDA out of memory."}).encode()
+    exc = ai_backends.urllib.error.HTTPError(
+        "http://sd/sdapi/v1/txt2img", 500, "Internal Server Error", {}, io.BytesIO(body)
+    )
+    err = ai_backends.service_error("Stable Diffusion error", exc)
+    assert str(err) == "Stable Diffusion error (500): OutOfMemoryError: CUDA out of memory."
+
+
 def test_settings_roundtrip_with_prompts(tmp_path, monkeypatch):
     monkeypatch.setattr(ai_backends, "CFG_DIR", tmp_path)
     monkeypatch.setattr(ai_backends, "CFG_FILE", tmp_path / "config.ini")
