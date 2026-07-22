@@ -1009,100 +1009,85 @@ class PixelCatWindow(QtWidgets.QWidget):
         if char_pack.is_new_pack(zip_path):
             self._switch_to_pack(image_name, zip_path)
             return
-        if self.char_pack is not None:
-            self._teardown_pack_mode()
+        # Decode the new char into locals first — a failure here must not leave
+        # the window half-switched. Only once everything is built do we commit
+        # to self.* and resize the window (mirrors _switch_to_pack).
         try:
-            # Read the first GIF from the char (folder or zip, in memory).
             with char_pack.CharSource(zip_path) as source:
                 gif_files = sorted(n for n in source.names() if n.lower().endswith(".gif"))
                 if not gif_files:
-                    logger.error(f"No GIF found in char: {image_name}")
+                    logger.error("No GIF found in char: %s", image_name)
                     return
                 gif_data = source.read(gif_files[0])
-                logger.info(f"Extracted {gif_files[0]} from {Path(zip_path).name}")
-            
-            # Build the new movie from the GIF bytes in memory (no temp files).
+                logger.info("Extracted %s from %s", gif_files[0], Path(zip_path).name)
+
             new_movie = movie_from_gif_bytes(gif_data)
             new_movie.jumpToFrame(0)
             first_frame = new_movie.currentPixmap()
             if first_frame.isNull():
-                logger.error(f"Failed to extract first frame from {image_name}.zip")
+                logger.error("Failed to extract first frame from %s.zip", image_name)
                 return
 
-            # Scale if needed
-            original_size = first_frame.size()
+            source_size = first_frame.size()
             new_pixmap = scale_pixmap_if_needed(first_frame, IMAGE_WIDTH_MAX, IMAGE_HEIGHT_MAX)
-            if original_size != new_pixmap.size():
-                logger.info(
-                    f"Resized {image_name}.zip: "
-                    f"{original_size.width()}x{original_size.height()} -> "
-                    f"{new_pixmap.width()}x{new_pixmap.height()}"
-                )
             if new_pixmap.isNull():
-                logger.error(f"Failed to render first frame from {image_name}.zip")
+                logger.error("Failed to render first frame from %s.zip", image_name)
                 return
+            if source_size != new_pixmap.size():
+                logger.info(
+                    "Resized %s.zip: %dx%d -> %dx%d",
+                    image_name,
+                    source_size.width(), source_size.height(),
+                    new_pixmap.width(), new_pixmap.height(),
+                )
 
-            # Configure movie
             new_movie.setScaledSize(new_pixmap.size())
             new_movie.setSpeed(100)
             new_movie.jumpToFrame(0)
+            movie_frame_size = new_movie.currentPixmap().size()
+            gif_duration, frame_delays = get_gif_duration(new_movie, gif_data)
+        except Exception:  # noqa: BLE001 -- a bad char must never corrupt the current one
+            logger.exception("Error loading %s", image_name)
+            return
 
-            # Update current images
-            self.png_pixmap = new_pixmap
-            self.gif_movie = new_movie
-            self.gif_data = gif_data
-            self.file_name = image_name
+        if not frame_delays:
+            frame_count = new_movie.frameCount()
+            if frame_count > 0 and gif_duration > 0:
+                frame_delays = [int((gif_duration / frame_count) * 1000)] * frame_count
+            else:
+                frame_delays = [100]  # default 100ms per frame
 
-            # Update original size
-            new_movie.jumpToFrame(0)
-            self.original_size = new_movie.currentPixmap().size()
+        # Decoded cleanly — commit the switch. The Qt calls below don't raise, so
+        # the old char stays fully intact if anything above failed.
+        if self.char_pack is not None:
+            self._teardown_pack_mode()
+        self.png_pixmap = new_pixmap
+        self.gif_movie = new_movie
+        self.gif_data = gif_data
+        self.file_name = image_name
+        self.original_size = movie_frame_size
+        self.gif_duration = gif_duration
+        self.frame_delays = frame_delays
+        self.first_frame_pixmap = new_pixmap.copy()
 
-            # Calculate GIF duration and frame delays for new movie
-            self.gif_duration, self.frame_delays = get_gif_duration(new_movie, gif_data)
-            
-            # Fallback if no delays
-            if not self.frame_delays:
-                frame_count = new_movie.frameCount()
-                if frame_count > 0 and self.gif_duration > 0:
-                    self.frame_delays = [int((self.gif_duration / frame_count) * 1000)] * frame_count
-                else:
-                    self.frame_delays = [100]  # Default 100ms per frame
-            
-            # Save first frame (use the already scaled new_pixmap)
-            self.first_frame_pixmap = new_pixmap.copy()
-            
-            # Reset to PNG state
-            self.current_pixmap = self.png_pixmap
-            self.state = 'png'
-            self.animation_timer.stop()
-            self._schedule_next_animation()
+        self.current_pixmap = self.png_pixmap
+        self.state = 'png'
+        self.animation_timer.stop()
+        self._schedule_next_animation()
 
-            # Save bottom-right corner position before resize
-            old_size = self.size()
-            top_left = self.pos()
-            bottom_right_x = top_left.x() + old_size.width()
-            bottom_right_y = top_left.y() + old_size.height()
+        # Keep the bottom-right corner fixed across the resize.
+        old_size = self.size()
+        top_left = self.pos()
+        bottom_right_x = top_left.x() + old_size.width()
+        bottom_right_y = top_left.y() + old_size.height()
+        self.resize(self.png_pixmap.size())
+        new_size = self.png_pixmap.size()
+        self.move(bottom_right_x - new_size.width(), bottom_right_y - new_size.height())
 
-            # Resize window
-            self.resize(self.png_pixmap.size())
-
-            # Restore position to keep bottom-right corner in same place
-            new_size = self.png_pixmap.size()
-            new_x = bottom_right_x - new_size.width()
-            new_y = bottom_right_y - new_size.height()
-            self.move(new_x, new_y)
-
-            # Save to INI
-            save_image_to_ini(image_name)
-            
-            # Save new position
-            self._save_position()
-            
-            logger.info(f"Switched to {image_name}.zip {self.png_pixmap.width()}x{self.png_pixmap.height()}")
-            self.update()
-            
-        except Exception as e:
-            logger.error(f"Error loading {image_name}: {e}")
+        save_image_to_ini(image_name)
+        self._save_position()
+        logger.info("Switched to %s.zip %dx%d", image_name, self.png_pixmap.width(), self.png_pixmap.height())
+        self.update()
 
     def _teardown_pack_mode(self) -> None:
         """Leave interactive-pack mode so the legacy GIF path can take over."""
