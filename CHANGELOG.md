@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [0.1.25] - Unreleased
+## [0.1.25] - 2026-07-22
 
 ### Fixed
 - **The update check now uses your GitHub token, so it isn't rate-limited.** It made anonymous GitHub calls (60 req/h per IP), so a shared IP could hit "rate-limited" even with a token configured. A shared `github_api.py` layer now attaches the `[github]` token (or `GITHUB_TOKEN`) to *every* GitHub request — the update check and the notifications poller both go through it (5000 req/h). The update dialog is shorter and always shows the current and latest version, then whether an update is needed.
