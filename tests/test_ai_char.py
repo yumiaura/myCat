@@ -97,6 +97,29 @@ def test_install_and_delete_generated_character(monkeypatch, tmp_path):
     assert char_catalog.ai_generated_chars() == []
 
 
+def test_normalized_png_fits_within_200x300():
+    # A big generated frame is scaled down (width first), never enlarged.
+    big = ai_char.normalized_character_png(png_bytes(size=(1600, 2400)))
+    with Image.open(io.BytesIO(big)) as image:
+        assert image.width <= ai_char.CHAR_MAX_WIDTH == 200
+        assert image.height <= ai_char.CHAR_MAX_HEIGHT == 300
+        assert image.width == 200  # portrait frame is bound by the 200px width
+
+
+def test_small_png_is_not_enlarged():
+    tiny = ai_char.normalized_character_png(png_bytes(size=(40, 60)))
+    with Image.open(io.BytesIO(tiny)) as image:
+        assert (image.width, image.height) == (40, 60)
+
+
+def test_installed_char_declares_the_200x300_box(monkeypatch, tmp_path):
+    monkeypatch.setattr(char_catalog, "user_chars_dir", lambda: tmp_path)
+    char_id, path = ai_char.install_character("Mina Cat", png_bytes(size=(1600, 2400)))
+    with zipfile.ZipFile(path) as archive:
+        config = json.loads(archive.read("config.json"))
+        assert (config["max_width"], config["max_height"]) == (200, 300)
+
+
 def test_remove_plain_background_keeps_the_character_opaque():
     image = Image.new("RGBA", (7, 7), "white")
     image.putpixel((3, 3), (220, 20, 60, 255))

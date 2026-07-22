@@ -30,6 +30,10 @@ MODEL = "gpt-image-1.5"
 MAX_REFERENCES = 3
 MAX_REFERENCE_EDGE = 1536
 MAX_ADDITIONAL_INSTRUCTIONS = 2000
+# A generated char is scaled down to fit this box (width first), so it sits small
+# on the desktop; the renderer only ever shrinks, so it never gets enlarged again.
+CHAR_MAX_WIDTH = 200
+CHAR_MAX_HEIGHT = 300
 TIMEOUT_SECONDS = 180.0
 SECRET_NAME = "openai_image_api_key"
 
@@ -176,7 +180,7 @@ def normalized_character_png(image_bytes: bytes) -> bytes:
     alpha_box = image.getchannel("A").getbbox()
     if alpha_box:
         image = image.crop(alpha_box)
-    image.thumbnail((600, 900), Image.Resampling.LANCZOS)
+    image.thumbnail((CHAR_MAX_WIDTH, CHAR_MAX_HEIGHT), Image.Resampling.LANCZOS)
     output = io.BytesIO()
     image.save(output, "PNG", optimize=True)
     return output.getvalue()
@@ -269,8 +273,8 @@ def install_character(display_name: str, image_bytes: bytes) -> tuple[str, Path]
     temporary = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.tmp")
     config = {
         "name": display_name.strip(),
-        "max_width": 240,
-        "max_height": 400,
+        "max_width": CHAR_MAX_WIDTH,
+        "max_height": CHAR_MAX_HEIGHT,
         "blink": {"enabled": False},
     }
     png = normalized_character_png(image_bytes)
