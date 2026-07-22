@@ -40,11 +40,12 @@ from pathlib import Path
 from PySide6 import QtCore
 
 if __package__:
-    from . import config_store, paths, secret_store
+    from . import config_store, github_api, paths, secret_store
 else:
     import importlib
 
     config_store = importlib.import_module("mycat.config_store")
+    github_api = importlib.import_module("mycat.github_api")
     secret_store = importlib.import_module("mycat.secret_store")
     paths = importlib.import_module("mycat.paths")
 
@@ -140,11 +141,7 @@ class GitHubSettings:
     token_verified: bool = False  # a UI gate: the inbox checkboxes unlock on a good Test
 
     def resolve_token(self) -> str:
-        if self.token:
-            return self.token
-        import os
-
-        return os.getenv(self.token_env, "")
+        return github_api.resolve_token(self.token, self.token_env)
 
 
 def load_github_settings(cfg_file: Path = CFG_FILE) -> GitHubSettings:
@@ -461,17 +458,7 @@ class FollowerTracker:
 
 
 def github_request(url: str, token: str = "", etag: str = "", last_modified: str = ""):
-    request = urllib.request.Request(url)
-    if token:
-        request.add_header("Authorization", f"Bearer {token}")
-    request.add_header("Accept", "application/vnd.github+json")
-    request.add_header("X-GitHub-Api-Version", "2022-11-28")
-    request.add_header("User-Agent", "mycat-desktop-pet")
-    if etag:
-        request.add_header("If-None-Match", etag)
-    if last_modified:
-        request.add_header("If-Modified-Since", last_modified)
-    return request
+    return github_api.build_request(url, token=token, etag=etag, last_modified=last_modified)
 
 
 def rate_limit_reset(headers) -> int:

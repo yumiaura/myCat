@@ -5,6 +5,7 @@ All notable changes to this project are documented in this file.
 ## [0.1.25] - Unreleased
 
 ### Fixed
+- **The update check now uses your GitHub token, so it isn't rate-limited.** It made anonymous GitHub calls (60 req/h per IP), so a shared IP could hit "rate-limited" even with a token configured. A shared `github_api.py` layer now attaches the `[github]` token (or `GITHUB_TOKEN`) to *every* GitHub request — the update check and the notifications poller both go through it (5000 req/h). The update dialog is shorter and always shows the current and latest version, then whether an update is needed.
 - **The autostart entry shows "myCat", not "mycat".** The XDG autostart `.desktop` wrote `Name=mycat` while the app-menu entry wrote `Name=myCat`, so the same app showed two different names.
 - **Switching char no longer half-updates the window on a bad char.** `_load_image` mutated the window's state and resized it inside the same `try` that decodes the GIF, so a decode failure left the window half-switched; it now decodes into locals first and commits only on success.
 

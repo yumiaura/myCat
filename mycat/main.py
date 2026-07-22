@@ -37,6 +37,7 @@ if __package__:
         char_pack,
         digest,
         focus,
+        github_api,
         github_notify,
         llm,
         paths,
@@ -59,6 +60,7 @@ else:
     char_pack = importlib.import_module("mycat.char_pack")
     announcer = importlib.import_module("mycat.announcer")
     focus = importlib.import_module("mycat.focus")
+    github_api = importlib.import_module("mycat.github_api")
     github_notify = importlib.import_module("mycat.github_notify")
     calendar_ics = importlib.import_module("mycat.calendar_ics")
     activity = importlib.import_module("mycat.activity")
@@ -1375,7 +1377,7 @@ class PixelCatWindow(QtWidgets.QWidget):
             # let on_update_checked decide up-to-date vs. newer vs. check-failed —
             # so a rate-limited/offline check never poses as "you're up to date".
             try:
-                signals.checked.emit(update_check.latest_release_tag() or "")
+                signals.checked.emit(update_check.latest_release_tag(token=github_api.github_token()) or "")
             except Exception as exc:  # noqa: BLE001 - surfaced to the user
                 signals.failed.emit(str(exc))
 
@@ -1411,20 +1413,20 @@ class PixelCatWindow(QtWidgets.QWidget):
             # The check couldn't reach GitHub (offline, or the API rate-limited
             # this IP). Don't claim we're up to date — say the check failed.
             self.update_box(
-                "Update check",
-                "Couldn't check for updates right now.",
-                "GitHub may be unreachable or rate-limited — try again in a bit, "
-                "or open the releases page to check by hand.",
+                "myCat",
+                f"Current: {current}",
+                "Couldn't reach GitHub — try again in a bit.",
                 kind,
                 can_update=False,
             )
             return
+        versions = f"Current: {current}\nLatest: {latest}"
         if update_check.parse_version(latest) <= update_check.parse_version(current):
             # Up to date — nothing to update, so Update stays greyed out.
             self.update_box(
-                "mycat",
-                f"You're on the latest version ({current}). 🐱",
-                "Everything's up to date.",
+                "myCat",
+                versions,
+                "No update needed — you're on the latest version. 🐱",
                 kind,
                 can_update=False,
             )
@@ -1432,18 +1434,18 @@ class PixelCatWindow(QtWidgets.QWidget):
         if not updater.can_self_update(kind):
             # pip / git / deb / AppImage: tell them how, Update stays greyed out.
             self.update_box(
-                "Update available",
-                f"mycat {latest} is available (you have {current}).",
-                f"Update with:\n\n    {updater.update_hint(kind)}",
+                "myCat",
+                versions,
+                f"Update available. Update with:\n\n    {updater.update_hint(kind)}",
                 kind,
                 can_update=False,
             )
             return
         # Windows / macOS with a newer release: Update is enabled.
         self.update_box(
-            "Update available",
-            f"mycat {latest} is available (you have {current}).",
-            "Click Update to download the new build and restart.",
+            "myCat",
+            versions,
+            "Update available — click Update to download and restart.",
             kind,
             can_update=True,
         )
