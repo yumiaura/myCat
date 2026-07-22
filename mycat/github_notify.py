@@ -795,7 +795,12 @@ class PollWorker(QtCore.QRunnable):
         else:
             result = fetch_notifications(self.token, self.cache_key)
         result["mode"] = self.mode
-        self.emitter.finished.emit(result)
+        try:
+            self.emitter.finished.emit(result)
+        except RuntimeError:
+            # Shutdown race: the app quit while this poll was still in flight, so
+            # the emitter's C++ object is already gone. Nothing left to deliver to.
+            logger.debug("Poll result dropped — emitter deleted during shutdown")
 
 
 class GitHubNotifier(QtCore.QObject):
