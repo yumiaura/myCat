@@ -16,7 +16,6 @@ is always shown. The 🍅 / 🍌 accounting lives in :mod:`mycat.activity` (runs
 graded by length); this class only drives the live tooltip and the rest banner.
 """
 
-import configparser
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -26,13 +25,13 @@ from PySide6 import QtCore
 
 if __package__:
     from . import activity as activity_mod
-    from . import activity_store, paths, secret_store
+    from . import activity_store, config_store, paths
 else:
     import importlib
 
     activity_mod = importlib.import_module("mycat.activity")
     activity_store = importlib.import_module("mycat.activity_store")
-    secret_store = importlib.import_module("mycat.secret_store")
+    config_store = importlib.import_module("mycat.config_store")
     paths = importlib.import_module("mycat.paths")
 
 logger = logging.getLogger(__name__)
@@ -74,37 +73,28 @@ class FocusSettings:
 def load_focus_settings(cfg_file: Path = CFG_FILE) -> FocusSettings:
     """Read the ``[focus]`` section; every field falls back to the default."""
     settings = FocusSettings()
-    if not cfg_file.exists():
+    config = config_store.read_config(cfg_file)
+    if config is None or "focus" not in config:
         return settings
     try:
-        config = configparser.ConfigParser()
-        config.read(cfg_file)
-        if "focus" not in config:
-            return settings
         section = config["focus"]
         settings.focus_minutes = section.getint("focus_minutes", fallback=settings.focus_minutes)
         settings.tooltip_enabled = section.getboolean("tooltip_enabled", fallback=settings.tooltip_enabled)
-    except Exception as exc:  # noqa: BLE001 - never let a bad config crash the app
+    except (ValueError, TypeError) as exc:  # a malformed value -> keep the defaults
         logger.error("Failed to load focus settings: %s", exc)
     return settings
 
 
 def save_focus_settings(settings: FocusSettings, cfg_file: Path = CFG_FILE) -> None:
-    """Persist the ``[focus]`` section (Pomodoro goal + tooltip), creating the file if needed."""
-    try:
-        cfg_file.parent.mkdir(parents=True, exist_ok=True)
-        config = configparser.ConfigParser()
-        if cfg_file.exists():
-            config.read(cfg_file)
-        if "focus" not in config:
-            config.add_section("focus")
-        config["focus"]["focus_minutes"] = str(settings.focus_minutes)
-        config["focus"]["tooltip_enabled"] = "true" if settings.tooltip_enabled else "false"
-        with open(cfg_file, "w") as fh:
-            config.write(fh)
-        secret_store.secure_file(cfg_file)
-    except Exception as exc:  # noqa: BLE001 - never let a bad config crash the app
-        logger.error("Failed to save focus settings: %s", exc)
+    """Persist the ``[focus]`` section (Pomodoro goal + tooltip)."""
+    config_store.write_section(
+        "focus",
+        {
+            "focus_minutes": settings.focus_minutes,
+            "tooltip_enabled": config_store.bool_str(settings.tooltip_enabled),
+        },
+        cfg_file,
+    )
 
 
 class FocusController(QtCore.QObject):

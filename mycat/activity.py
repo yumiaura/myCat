@@ -30,7 +30,6 @@ The two COUNT tracks switch independently (``mouse_enabled`` = click counts,
 the diary is on — the cat's eyes track the cursor anyway — so it has no toggle.
 """
 
-import configparser
 import logging
 import threading
 from dataclasses import dataclass
@@ -40,12 +39,12 @@ from pathlib import Path
 from PySide6 import QtCore, QtGui
 
 if __package__:
-    from . import activity_store, key_heatmap, paths, secret_store
+    from . import activity_store, config_store, key_heatmap, paths
 else:
     import importlib
 
     activity_store = importlib.import_module("mycat.activity_store")
-    secret_store = importlib.import_module("mycat.secret_store")
+    config_store = importlib.import_module("mycat.config_store")
     key_heatmap = importlib.import_module("mycat.key_heatmap")
     paths = importlib.import_module("mycat.paths")
 
@@ -115,43 +114,33 @@ def counts_available() -> bool:
 
 def load_activity_settings(cfg_file: Path = CFG_FILE) -> ActivitySettings:
     settings = ActivitySettings()
-    if not cfg_file.exists():
+    config = config_store.read_config(cfg_file)
+    if config is None or "activity" not in config:
         return settings
     try:
-        config = configparser.ConfigParser()
-        config.read(cfg_file)
-        if "activity" not in config:
-            return settings
         section = config["activity"]
         settings.enabled = section.getboolean("enabled", fallback=True)
         settings.mouse_enabled = section.getboolean("mouse_enabled", fallback=True)
         settings.keyboard_enabled = section.getboolean("keyboard_enabled", fallback=True)
         settings.key_heatmap_enabled = section.getboolean("key_heatmap_enabled", fallback=False)
         settings.retention_days = section.getint("retention_days", fallback=DEFAULT_RETENTION_DAYS)
-    except Exception as exc:  # noqa: BLE001 - never let a bad config crash the app
+    except (ValueError, TypeError) as exc:  # a malformed value -> keep the defaults
         logger.error("Failed to load [activity] settings: %s", exc)
     return settings
 
 
 def save_activity_settings(settings: ActivitySettings, cfg_file: Path = CFG_FILE) -> None:
-    try:
-        cfg_file.parent.mkdir(parents=True, exist_ok=True)
-        config = configparser.ConfigParser()
-        if cfg_file.exists():
-            config.read(cfg_file)
-        if "activity" not in config:
-            config.add_section("activity")
-        section = config["activity"]
-        section["enabled"] = "true" if settings.enabled else "false"
-        section["mouse_enabled"] = "true" if settings.mouse_enabled else "false"
-        section["keyboard_enabled"] = "true" if settings.keyboard_enabled else "false"
-        section["key_heatmap_enabled"] = "true" if settings.key_heatmap_enabled else "false"
-        section["retention_days"] = str(settings.retention_days)
-        with open(cfg_file, "w") as fh:
-            config.write(fh)
-        secret_store.secure_file(cfg_file)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Failed to save [activity] settings: %s", exc)
+    config_store.write_section(
+        "activity",
+        {
+            "enabled": config_store.bool_str(settings.enabled),
+            "mouse_enabled": config_store.bool_str(settings.mouse_enabled),
+            "keyboard_enabled": config_store.bool_str(settings.keyboard_enabled),
+            "key_heatmap_enabled": config_store.bool_str(settings.key_heatmap_enabled),
+            "retention_days": settings.retention_days,
+        },
+        cfg_file,
+    )
 
 
 # -- collector -------------------------------------------------------------------
