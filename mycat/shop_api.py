@@ -173,14 +173,14 @@ class ShopClient:
         except urllib.error.HTTPError as exc:
             if exc.code == 304:
                 logger.debug("Catalog 304 Not Modified — using cached copy")
-                return self._load_cached_catalog(cache_file)
-            cached = self._maybe_load_cached_catalog(cache_file)
+                return self.load_cached_catalog(cache_file)
+            cached = self.maybe_load_cached_catalog(cache_file)
             if cached is not None:
                 logger.warning("Catalog HTTP %s; falling back to cache: %s", exc.code, exc)
                 return cached
             raise ShopError(f"Server returned HTTP {exc.code}: {exc.reason}") from exc
         except urllib.error.URLError as exc:
-            cached = self._maybe_load_cached_catalog(cache_file)
+            cached = self.maybe_load_cached_catalog(cache_file)
             if cached is not None:
                 logger.warning("Catalog network error; falling back to cache: %s", exc.reason)
                 return cached
@@ -188,17 +188,17 @@ class ShopClient:
         except json.JSONDecodeError as exc:
             raise ShopError(f"Catalog response is not valid JSON: {exc}") from exc
 
-        return self._load_cached_catalog(cache_file)
+        return self.load_cached_catalog(cache_file)
 
-    def _maybe_load_cached_catalog(self, cache_file: Path) -> Catalog | None:
+    def maybe_load_cached_catalog(self, cache_file: Path) -> Catalog | None:
         if not cache_file.exists():
             return None
         try:
-            return self._load_cached_catalog(cache_file)
+            return self.load_cached_catalog(cache_file)
         except ShopError:
             return None
 
-    def _load_cached_catalog(self, cache_file: Path) -> Catalog:
+    def load_cached_catalog(self, cache_file: Path) -> Catalog:
         try:
             return Catalog.from_dict(json.loads(cache_file.read_text(encoding="utf-8")))
         except (OSError, json.JSONDecodeError) as exc:
@@ -255,7 +255,7 @@ class ShopClient:
         """
         dest_dir.mkdir(parents=True, exist_ok=True)
         final_path = dest_dir / f"{char.id}.zip"
-        url = self._resolve_download_url(char)
+        url = self.resolve_download_url(char)
 
         headers = {"User-Agent": "mycat-client", "Accept": "application/zip, */*"}
         if auth_token:
@@ -315,22 +315,22 @@ class ShopClient:
             logger.info("Downloaded %s (%d bytes) -> %s", char.id, downloaded, final_path)
             return final_path
         except urllib.error.HTTPError as exc:
-            self._cleanup(tmp, tmp_path)
+            self.cleanup(tmp, tmp_path)
             raise ShopError(f"HTTP {exc.code} downloading {char.id}: {exc.reason}") from exc
         except urllib.error.URLError as exc:
-            self._cleanup(tmp, tmp_path)
+            self.cleanup(tmp, tmp_path)
             raise ShopError(f"Network error downloading {char.id}: {exc.reason}") from exc
         except OSError as exc:
-            self._cleanup(tmp, tmp_path)
+            self.cleanup(tmp, tmp_path)
             raise ShopError(f"I/O error downloading {char.id}: {exc}") from exc
         except ShopError:
-            self._cleanup(tmp, tmp_path)
+            self.cleanup(tmp, tmp_path)
             raise
         except Exception as exc:
-            self._cleanup(tmp, tmp_path)
+            self.cleanup(tmp, tmp_path)
             raise ShopError(f"Unexpected error downloading {char.id}: {exc}") from exc
 
-    def _resolve_download_url(self, char: CharEntry) -> str:
+    def resolve_download_url(self, char: CharEntry) -> str:
         url = char.download_url
         if url.startswith("http://") or url.startswith("https://"):
             return url
@@ -339,7 +339,7 @@ class ShopClient:
         return self.base_url + url
 
     @staticmethod
-    def _cleanup(tmp_file, tmp_path: Path) -> None:
+    def cleanup(tmp_file, tmp_path: Path) -> None:
         try:
             tmp_file.close()
         except Exception:
