@@ -68,7 +68,7 @@ LOCAL_PROMPT = (
     "full body, standing, centered, school form, simple plain background, "
     "soft shading, no shadows"
 )
-LOCAL_NEGATIVE = ""
+LOCAL_NEGATIVE = "shadows"
 
 
 # OpenAI keeps its prose default; these are just the *initial* text — the dialog
