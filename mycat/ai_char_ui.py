@@ -201,7 +201,9 @@ class AICharDialog(QtWidgets.QDialog):
         remove_btn = QtWidgets.QPushButton("Remove selected")
         add_btn.clicked.connect(self.add_references)
         remove_btn.clicked.connect(self.remove_selected)
-        photo_buttons = QtWidgets.QHBoxLayout()
+        # Stacked, so the reference column stays within its 1/3 and never pushes
+        # the prompt column below 2/3 (side-by-side buttons are too wide for 1/3).
+        photo_buttons = QtWidgets.QVBoxLayout()
         photo_buttons.addWidget(add_btn)
         photo_buttons.addWidget(remove_btn)
         photo_buttons.addStretch(1)
@@ -235,10 +237,6 @@ class AICharDialog(QtWidgets.QDialog):
             "border: 1px solid #cfcfcf; border-radius: 8px; color: #9a9a9a; background: #fafafa;"
         )
 
-        top_row = QtWidgets.QHBoxLayout()
-        top_row.addLayout(block1, 2)  # left 2/3
-        top_row.addWidget(self.preview_label, 1)  # right 1/3, height = block 1
-
         # Prompts (bottom-left, 2/3).
         prompt_col = QtWidgets.QVBoxLayout()
         prompt_col.addWidget(QtWidgets.QLabel("Prompt"))
@@ -254,9 +252,15 @@ class AICharDialog(QtWidgets.QDialog):
         ref_col.addLayout(photo_buttons)
         ref_col.addStretch(1)
 
-        bottom_row = QtWidgets.QHBoxLayout()
-        bottom_row.addLayout(prompt_col, 2)
-        bottom_row.addLayout(ref_col, 1)
+        # One grid so the two rows share column widths: left stays 2/3 (block 1
+        # and the prompts line up), right stays 1/3 (preview over references).
+        grid = QtWidgets.QGridLayout()
+        grid.setColumnStretch(0, 2)
+        grid.setColumnStretch(1, 1)
+        grid.addLayout(block1, 0, 0)
+        grid.addWidget(self.preview_label, 0, 1)  # height = block 1
+        grid.addLayout(prompt_col, 1, 0)
+        grid.addLayout(ref_col, 1, 1)
 
         self.generate_btn = QtWidgets.QPushButton("Generate")
         self.save_btn = QtWidgets.QPushButton("Save")
@@ -274,8 +278,7 @@ class AICharDialog(QtWidgets.QDialog):
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(intro)
-        layout.addLayout(top_row)
-        layout.addLayout(bottom_row)
+        layout.addLayout(grid)
         layout.addStretch(1)
         layout.addWidget(self.status_label)
         layout.addLayout(buttons)
