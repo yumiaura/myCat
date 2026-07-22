@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 ## [0.1.26] - Unreleased
 
 ### Added
-- **Preview a generated char before saving it.** The "Generate a custom char with AI" dialog now has a two-column layout — settings on the left, a tall preview on the right. **Generate** produces an image and shows it in the preview without saving or closing; **Save** installs the previewed char and closes (Save is disabled until there's something to save). You can regenerate as many times as you like before committing.
+- **Preview a generated char before saving it.** The "Generate a custom char with AI" dialog is now a compact 2×2 grid: identity + backend settings top-left, a preview (matching that block's height) top-right, prompts bottom-left (2/3 width), and reference photos bottom-right. **Generate** produces an image and shows it in the preview without saving or closing; **Save** installs the previewed char and closes (Save is disabled until there's something to save). You can regenerate as many times as you like before committing.
 - **Click a generation error to copy it.** The red status line in the "Generate a custom char with AI" dialog is now clickable when it shows an error — a click copies the full message to the clipboard (handy for pasting a server's 500 into a bug report).
 
 ### Changed

@@ -216,36 +216,47 @@ class AICharDialog(QtWidgets.QDialog):
         self.status_label.setWordWrap(True)
         self.status_label.clicked.connect(self.copy_status)
 
-        # Left column: every setting, stacked (the old single-column body).
-        settings_col = QtWidgets.QVBoxLayout()
-        settings_col.addWidget(intro)
-        settings_col.addLayout(top_form)
-        settings_col.addWidget(self.openai_group)
-        settings_col.addWidget(self.local_group)
-        settings_col.addWidget(QtWidgets.QLabel("Prompt"))
-        settings_col.addWidget(self.prompt_edit)
-        settings_col.addWidget(self.negative_label)
-        settings_col.addWidget(self.negative_edit)
-        settings_col.addWidget(QtWidgets.QLabel("Reference photos (maximum 3)"))
-        settings_col.addWidget(self.reference_list)
-        settings_col.addLayout(photo_buttons)
-        settings_col.addStretch(1)
+        # Block 1 (top-left): identity + the backend settings group.
+        block1 = QtWidgets.QVBoxLayout()
+        block1.addLayout(top_form)  # Character name, Generate with, Mode
+        block1.addWidget(self.openai_group)
+        block1.addWidget(self.local_group)
+        block1.addStretch(1)
 
-        # Right column: a tall preview of the generated char (before it's saved).
+        # Preview (top-right): its height tracks block 1, not the whole window.
         self.preview_label = QtWidgets.QLabel("The generated char\nwill appear here.")
         self.preview_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.preview_label.setWordWrap(True)
-        self.preview_label.setMinimumSize(240, 300)
+        self.preview_label.setMinimumSize(160, 120)
         self.preview_label.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Expanding
+            QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Expanding
         )
         self.preview_label.setStyleSheet(
             "border: 1px solid #cfcfcf; border-radius: 8px; color: #9a9a9a; background: #fafafa;"
         )
 
-        columns = QtWidgets.QHBoxLayout()
-        columns.addLayout(settings_col, 1)
-        columns.addWidget(self.preview_label)
+        top_row = QtWidgets.QHBoxLayout()
+        top_row.addLayout(block1, 2)  # left 2/3
+        top_row.addWidget(self.preview_label, 1)  # right 1/3, height = block 1
+
+        # Prompts (bottom-left, 2/3).
+        prompt_col = QtWidgets.QVBoxLayout()
+        prompt_col.addWidget(QtWidgets.QLabel("Prompt"))
+        prompt_col.addWidget(self.prompt_edit)
+        prompt_col.addWidget(self.negative_label)
+        prompt_col.addWidget(self.negative_edit)
+        prompt_col.addStretch(1)
+
+        # Reference photos (bottom-right, 1/3, under the preview).
+        ref_col = QtWidgets.QVBoxLayout()
+        ref_col.addWidget(QtWidgets.QLabel("Reference photos (maximum 3)"))
+        ref_col.addWidget(self.reference_list)
+        ref_col.addLayout(photo_buttons)
+        ref_col.addStretch(1)
+
+        bottom_row = QtWidgets.QHBoxLayout()
+        bottom_row.addLayout(prompt_col, 2)
+        bottom_row.addLayout(ref_col, 1)
 
         self.generate_btn = QtWidgets.QPushButton("Generate")
         self.save_btn = QtWidgets.QPushButton("Save")
@@ -262,7 +273,10 @@ class AICharDialog(QtWidgets.QDialog):
         buttons.addWidget(close_btn)
 
         layout = QtWidgets.QVBoxLayout(self)
-        layout.addLayout(columns)
+        layout.addWidget(intro)
+        layout.addLayout(top_row)
+        layout.addLayout(bottom_row)
+        layout.addStretch(1)
         layout.addWidget(self.status_label)
         layout.addLayout(buttons)
 
