@@ -59,3 +59,18 @@ def write_section(name: str, values: dict, cfg_file: Path) -> None:
         secret_store.secure_file(cfg_file)
     except (OSError, configparser.Error) as exc:
         logger.error("Failed to save [%s] to %s: %s", name, cfg_file, exc)
+
+
+def remove_section(name: str, cfg_file: Path) -> None:
+    """Drop the whole ``[name]`` section from ``cfg_file`` (no-op if absent)."""
+    try:
+        if not cfg_file.exists():
+            return
+        config = configparser.ConfigParser()
+        config.read(cfg_file)
+        if config.remove_section(name):
+            with open(cfg_file, "w") as fh:
+                config.write(fh)
+            secret_store.secure_file(cfg_file)
+    except (OSError, configparser.Error) as exc:
+        logger.error("Failed to clear [%s] in %s: %s", name, cfg_file, exc)
