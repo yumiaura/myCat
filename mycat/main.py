@@ -1136,11 +1136,11 @@ class PixelCatWindow(QtWidgets.QWidget):
 
         # "Chat" appears only once Ollama is configured (a controller exists),
         # and is greyed out while the LLM is disabled.
-        toggle_chat = getattr(self, "_toggle_llm_chat", None)
+        toggle_chat = getattr(self, "toggle_llm_chat", None)
         if callable(toggle_chat):
             chat_action = menu.addAction("Chat")
             chat_action.triggered.connect(toggle_chat)
-            llm_is_enabled = getattr(self, "_is_llm_enabled", None)
+            llm_is_enabled = getattr(self, "is_llm_enabled", None)
             if callable(llm_is_enabled):
                 chat_action.setEnabled(bool(llm_is_enabled()))
             menu.addSeparator()
@@ -2091,7 +2091,7 @@ def setup_tray(app, window):
             show_window()
 
     menu = QtWidgets.QMenu(window)
-    toggle_chat = getattr(window, "_toggle_llm_chat", None)
+    toggle_chat = getattr(window, "toggle_llm_chat", None)
     if callable(toggle_chat):
         menu.addAction("Chat", toggle_chat)
     # Same order as the context menu: LLM, Calendar, Reminder, GitHub, Activity.

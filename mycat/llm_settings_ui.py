@@ -164,7 +164,7 @@ class LLMSettingsDialog(QtWidgets.QDialog):
     # -- state --------------------------------------------------------------
 
     def controller(self):
-        return getattr(self.host_window, "_llm_controller", None)
+        return getattr(self.host_window, "llm_controller", None)
 
     def current_enabled(self) -> bool:
         controller = self.controller()
