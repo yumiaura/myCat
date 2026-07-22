@@ -40,10 +40,11 @@ from pathlib import Path
 from PySide6 import QtCore
 
 if __package__:
-    from . import paths, secret_store
+    from . import config_store, paths, secret_store
 else:
     import importlib
 
+    config_store = importlib.import_module("mycat.config_store")
     secret_store = importlib.import_module("mycat.secret_store")
     paths = importlib.import_module("mycat.paths")
 
@@ -148,13 +149,10 @@ class GitHubSettings:
 
 def load_github_settings(cfg_file: Path = CFG_FILE) -> GitHubSettings:
     settings = GitHubSettings()
-    if not cfg_file.exists():
+    config = config_store.read_config(cfg_file)
+    if config is None or "github" not in config:
         return settings
     try:
-        config = configparser.ConfigParser()
-        config.read(cfg_file)
-        if "github" not in config:
-            return settings
         section = config["github"]
         settings.enabled = section.getboolean("enabled", fallback=False)
         settings.token = section.get("token", "")
@@ -168,7 +166,7 @@ def load_github_settings(cfg_file: Path = CFG_FILE) -> GitHubSettings:
         raw = section.get("categories", "") or section.get("reasons", ",".join(DEFAULT_CATEGORIES))
         categories = tuple(item.strip() for item in raw.split(",") if item.strip())
         settings.categories = categories or DEFAULT_CATEGORIES
-    except Exception as exc:  # noqa: BLE001 - never let a bad config crash the app
+    except (ValueError, TypeError) as exc:  # a malformed value -> keep the defaults
         logger.error("Failed to load [github] settings: %s", exc)
     return settings
 

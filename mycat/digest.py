@@ -10,7 +10,6 @@ session. The last delivered date is remembered in the config so a restart
 never re-delivers the same paper.
 """
 
-import configparser
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -19,11 +18,12 @@ from PySide6 import QtCore, QtGui
 
 if __package__:
     from . import activity as activity_mod
-    from . import paths
+    from . import config_store, paths
 else:
     import importlib
 
     activity_mod = importlib.import_module("mycat.activity")
+    config_store = importlib.import_module("mycat.config_store")
     paths = importlib.import_module("mycat.paths")
 
 logger = logging.getLogger(__name__)
@@ -38,29 +38,14 @@ TICK_SECONDS = 60
 
 
 def load_digest_date(cfg_file: Path = CFG_FILE) -> str:
-    if not cfg_file.exists():
+    config = config_store.read_config(cfg_file)
+    if config is None:
         return ""
-    try:
-        config = configparser.ConfigParser()
-        config.read(cfg_file)
-        return config.get("activity", "digest_date", fallback="")
-    except Exception:  # noqa: BLE001
-        return ""
+    return config.get("activity", "digest_date", fallback="")
 
 
 def save_digest_date(day_iso: str, cfg_file: Path = CFG_FILE) -> None:
-    try:
-        cfg_file.parent.mkdir(parents=True, exist_ok=True)
-        config = configparser.ConfigParser()
-        if cfg_file.exists():
-            config.read(cfg_file)
-        if "activity" not in config:
-            config.add_section("activity")
-        config["activity"]["digest_date"] = day_iso
-        with open(cfg_file, "w") as fh:
-            config.write(fh)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Failed to save digest date: %s", exc)
+    config_store.write_section("activity", {"digest_date": day_iso}, cfg_file)
 
 
 def compose_digest(summary: dict) -> str:
