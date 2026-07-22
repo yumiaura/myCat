@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.25] - Unreleased
+
+### Fixed
+- **The autostart entry shows "myCat", not "mycat".** The XDG autostart `.desktop` wrote `Name=mycat` while the app-menu entry wrote `Name=myCat`, so the same app showed two different names.
+- **Switching char no longer half-updates the window on a bad char.** `_load_image` mutated the window's state and resized it inside the same `try` that decodes the GIF, so a decode failure left the window half-switched; it now decodes into locals first and commits only on success.
+
+### Changed
+- **Internal maintainability refactor (no behaviour change).** A single source of truth for the config path (`paths.py`) and shared config load/save plumbing (`config_store.py`) replace the per-feature copy-paste, and every single-underscore identifier across the codebase was renamed to a plain public name (house style). Also corrects stale contributor paths in `CLAUDE.md` (`chars/` and the "Chars" menu) and drops a dead `prompted` config field (branch `chore/maintainability-phase-0`).
+
 ## [0.1.24] - 2026-07-21
 
 ### Fixed
