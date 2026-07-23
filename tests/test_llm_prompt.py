@@ -1,11 +1,39 @@
 """Tests for config persistence: Ollama url/model and the LLM enabled flag."""
 
+import os
+import stat
+import sys
+
+import pytest
+
 from mycat import llm_prompt
 
 
 def use_tmp_config(monkeypatch, tmp_path):
     monkeypatch.setattr(llm_prompt, "CFG_DIR", tmp_path)
     monkeypatch.setattr(llm_prompt, "CFG_FILE", tmp_path / "config.ini")
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="POSIX file modes")
+def test_restrict_permissions_sets_owner_only(tmp_path):
+    path = tmp_path / "history.txt"
+    path.write_text("private chat\n")
+    os.chmod(path, 0o644)
+    llm_prompt.restrict_permissions(path)
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+def test_restrict_permissions_missing_path_is_noop(tmp_path):
+    llm_prompt.restrict_permissions(tmp_path / "nope.txt")  # must not raise
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="POSIX file modes")
+def test_ensure_history_file_is_created_owner_only(monkeypatch, tmp_path):
+    monkeypatch.setattr(llm_prompt, "CFG_DIR", tmp_path)
+    monkeypatch.setattr(llm_prompt, "HISTORY_FILE", tmp_path / "history.txt")
+    path = llm_prompt.ensure_history_file()
+    assert path.exists()
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600  # chat history is private (chmod 600)
 
 
 def test_save_ollama_settings_roundtrip(monkeypatch, tmp_path):
