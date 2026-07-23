@@ -65,10 +65,10 @@ IMG2IMG_DENOISE = 0.62           # keep some of the photo, but become a cat
 # them in the dialog if they want.
 LOCAL_PROMPT = (
     "masterpiece, best quality, anime, chibi, attractive woman, cute big eyes, "
-    "full body, standing, centered, school uniform, simple background, "
-    "soft shading, no shadows"
+    "full body, standing, centered, school uniform, white background, "
+    "simple background, flat color"
 )
-LOCAL_NEGATIVE = "(no ground shadow:1.4), (no contact shadow:1.4), (no floor:1.4), (floating:1.3)"
+LOCAL_NEGATIVE = "(shadow:1.4), (cast shadow:1.4), (drop shadow:1.3), (floor:1.3), (ground:1.3), reflection"
 
 
 # OpenAI keeps its prose default; these are just the *initial* text — the dialog
