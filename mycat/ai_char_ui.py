@@ -183,9 +183,11 @@ class AICharDialog(QtWidgets.QDialog):
 
         # Editable prompt (per backend style) + negative (self-hosted only).
         self.prompt_edit = QtWidgets.QPlainTextEdit()
+        self.prompt_edit.setMinimumHeight(60)
         self.prompt_edit.setMaximumHeight(90)
         self.negative_label = QtWidgets.QLabel("Negative prompt")
         self.negative_edit = QtWidgets.QPlainTextEdit()
+        self.negative_edit.setMinimumHeight(48)  # never let the negative box collapse out of view
         self.negative_edit.setMaximumHeight(70)
         self.negative_edit.setToolTip(
             "Things to avoid. OpenAI has no negative field, so it's folded into the "
@@ -196,7 +198,10 @@ class AICharDialog(QtWidgets.QDialog):
 
         self.reference_list = QtWidgets.QListWidget()
         self.reference_list.setIconSize(QtCore.QSize(56, 56))
-        self.reference_list.setFixedHeight(110)
+        self.reference_list.setMinimumHeight(90)
+        self.reference_list.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Expanding
+        )
         add_btn = QtWidgets.QPushButton("Add photos…")
         remove_btn = QtWidgets.QPushButton("Remove selected")
         add_btn.clicked.connect(self.add_references)
@@ -206,7 +211,6 @@ class AICharDialog(QtWidgets.QDialog):
         photo_buttons = QtWidgets.QVBoxLayout()
         photo_buttons.addWidget(add_btn)
         photo_buttons.addWidget(remove_btn)
-        photo_buttons.addStretch(1)
 
         top_form = QtWidgets.QFormLayout()
         top_form.addRow("Character name", self.name_edit)
@@ -245,12 +249,12 @@ class AICharDialog(QtWidgets.QDialog):
         prompt_col.addWidget(self.negative_edit)
         prompt_col.addStretch(1)
 
-        # Reference photos (bottom-right, 1/3, under the preview).
+        # Reference photos (bottom-right, 1/3, under the preview). The list fills
+        # the height so this block matches the prompt block; buttons sit beneath it.
         ref_col = QtWidgets.QVBoxLayout()
         ref_col.addWidget(QtWidgets.QLabel("Reference photos (maximum 3)"))
         ref_col.addWidget(self.reference_list)
         ref_col.addLayout(photo_buttons)
-        ref_col.addStretch(1)
 
         # One grid so the two rows share column widths: left stays 2/3 (block 1
         # and the prompts line up), right stays 1/3 (preview over references).
@@ -270,9 +274,9 @@ class AICharDialog(QtWidgets.QDialog):
         self.save_btn.clicked.connect(self.save_character)
         close_btn.clicked.connect(self.reject)
         buttons = QtWidgets.QHBoxLayout()
-        buttons.addWidget(self.reset_prompt_btn)
-        buttons.addStretch(1)
         buttons.addWidget(self.generate_btn)
+        buttons.addStretch(1)
+        buttons.addWidget(self.reset_prompt_btn)
         buttons.addWidget(self.save_btn)
         buttons.addWidget(close_btn)
 
