@@ -288,13 +288,13 @@ class AICharDialog(QtWidgets.QDialog):
         grid.addWidget(self.preview_label, 0, 1)  # height = block 1
         grid.addLayout(prompt_col, 1, 0)
         grid.addLayout(ref_col, 1, 1)
-        grid.addLayout(generate_row, 2, 0)
-        grid.addLayout(right_buttons, 2, 1)
+        grid.addWidget(self.status_label, 2, 0, 1, 2)  # notifications above the buttons, full width
+        grid.addLayout(generate_row, 3, 0)
+        grid.addLayout(right_buttons, 3, 1)
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(intro)
         layout.addLayout(grid)
-        layout.addWidget(self.status_label)
 
         # Fix the height to the tallest (self-hosted) layout up front, so switching
         # backends never resizes the window or clips fields — and no scroll area,
