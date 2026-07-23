@@ -230,7 +230,7 @@ class AICharDialog(QtWidgets.QDialog):
         block1.addStretch(1)
 
         # Preview (top-right): its height tracks block 1, not the whole window.
-        self.preview_label = QtWidgets.QLabel("The generated char\nwill appear here.")
+        self.preview_label = ClickableLabel("The generated char\nwill appear here.")
         self.preview_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.preview_label.setWordWrap(True)
         self.preview_label.setMinimumSize(160, 120)
@@ -240,6 +240,7 @@ class AICharDialog(QtWidgets.QDialog):
         self.preview_label.setStyleSheet(
             "border: 1px solid #cfcfcf; border-radius: 8px; color: #9a9a9a; background: #fafafa;"
         )
+        self.preview_label.clicked.connect(self.copy_preview)
 
         # Prompts (bottom-left, 2/3).
         prompt_col = QtWidgets.QVBoxLayout()
@@ -522,6 +523,19 @@ class AICharDialog(QtWidgets.QDialog):
                 QtCore.Qt.TransformationMode.SmoothTransformation,
             )
         )
+        self.preview_label.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.preview_label.setToolTip("Click to copy the image")
+
+    def copy_preview(self) -> None:
+        """Copy the generated image to the clipboard (a click on the preview)."""
+        if self.generated_image is None:
+            return
+        image = QtGui.QImage()
+        image.loadFromData(self.generated_image)
+        if image.isNull():
+            return
+        QtWidgets.QApplication.clipboard().setImage(image)
+        self.set_status("Image copied to clipboard.")
 
     def save_character(self) -> None:
         """Install the previewed image as a char and close."""

@@ -84,3 +84,24 @@ def test_save_without_a_generation_does_nothing(qapp):
     dialog.name_edit.setText("Nope")
     dialog.save_character()  # generated_image is None → no-op
     assert dialog.result() != QtWidgets.QDialog.DialogCode.Accepted
+
+
+def test_clicking_the_preview_copies_the_full_image(qapp):
+    dialog = AICharDialog()
+    dialog.show()
+    qapp.processEvents()
+    QtWidgets.QApplication.clipboard().clear()
+    dialog.on_generated(png_bytes())
+
+    assert dialog.preview_label.cursor().shape() == QtCore.Qt.CursorShape.PointingHandCursor
+    dialog.preview_label.clicked.emit()
+    clip = QtWidgets.QApplication.clipboard().image()
+    assert not clip.isNull()
+    assert (clip.width(), clip.height()) == (400, 600)  # the full image, not the thumbnail
+
+
+def test_clicking_the_empty_preview_copies_nothing(qapp):
+    dialog = AICharDialog()
+    QtWidgets.QApplication.clipboard().clear()
+    dialog.preview_label.clicked.emit()  # nothing generated yet
+    assert QtWidgets.QApplication.clipboard().image().isNull()
