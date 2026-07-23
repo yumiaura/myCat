@@ -183,8 +183,10 @@ class AICharDialog(QtWidgets.QDialog):
 
         # Editable prompt (per backend style) + negative (self-hosted only).
         self.prompt_edit = QtWidgets.QPlainTextEdit()
-        self.prompt_edit.setMinimumHeight(60)
-        self.prompt_edit.setMaximumHeight(90)
+        self.prompt_edit.setMinimumHeight(90)
+        self.prompt_edit.setSizePolicy(  # grows so the prompt block ends level with references
+            QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Expanding
+        )
         self.negative_label = QtWidgets.QLabel("Negative prompt")
         self.negative_edit = QtWidgets.QPlainTextEdit()
         self.negative_edit.setMinimumHeight(48)  # never let the negative box collapse out of view
@@ -193,7 +195,7 @@ class AICharDialog(QtWidgets.QDialog):
             "Things to avoid. OpenAI has no negative field, so it's folded into the "
             "prompt as 'the image must not contain: …'."
         )
-        self.reset_prompt_btn = QtWidgets.QPushButton("Reset to default")
+        self.reset_prompt_btn = QtWidgets.QPushButton("Reset")
         self.reset_prompt_btn.clicked.connect(self.reset_prompts)
 
         self.reference_list = QtWidgets.QListWidget()
@@ -242,13 +244,13 @@ class AICharDialog(QtWidgets.QDialog):
         )
         self.preview_label.clicked.connect(self.copy_preview)
 
-        # Prompts (bottom-left, 2/3).
+        # Prompts (bottom-left, 2/3). The positive prompt box expands so this block
+        # ends level with the reference block (list + Add/Remove).
         prompt_col = QtWidgets.QVBoxLayout()
         prompt_col.addWidget(QtWidgets.QLabel("Prompt"))
         prompt_col.addWidget(self.prompt_edit)
         prompt_col.addWidget(self.negative_label)
         prompt_col.addWidget(self.negative_edit)
-        prompt_col.addStretch(1)
 
         # Reference photos (bottom-right, 1/3, under the preview). The list fills
         # the height so this block matches the prompt block; buttons sit beneath it.
@@ -257,16 +259,6 @@ class AICharDialog(QtWidgets.QDialog):
         ref_col.addWidget(self.reference_list)
         ref_col.addLayout(photo_buttons)
 
-        # One grid so the two rows share column widths: left stays 2/3 (block 1
-        # and the prompts line up), right stays 1/3 (preview over references).
-        grid = QtWidgets.QGridLayout()
-        grid.setColumnStretch(0, 2)
-        grid.setColumnStretch(1, 1)
-        grid.addLayout(block1, 0, 0)
-        grid.addWidget(self.preview_label, 0, 1)  # height = block 1
-        grid.addLayout(prompt_col, 1, 0)
-        grid.addLayout(ref_col, 1, 1)
-
         self.generate_btn = QtWidgets.QPushButton("Generate")
         self.save_btn = QtWidgets.QPushButton("Save")
         self.save_btn.setEnabled(False)  # nothing to save until a generation lands
@@ -274,19 +266,35 @@ class AICharDialog(QtWidgets.QDialog):
         self.generate_btn.clicked.connect(self.generate)
         self.save_btn.clicked.connect(self.save_character)
         close_btn.clicked.connect(self.reject)
-        buttons = QtWidgets.QHBoxLayout()
-        buttons.addWidget(self.generate_btn)
-        buttons.addStretch(1)
-        buttons.addWidget(self.reset_prompt_btn)
-        buttons.addWidget(self.save_btn)
-        buttons.addWidget(close_btn)
+
+        # Generate sits under the prompts (left); Reset+Save+Close share the right
+        # column equally, so together they span the reference column's width.
+        generate_row = QtWidgets.QHBoxLayout()
+        generate_row.addWidget(self.generate_btn)
+        generate_row.addStretch(1)
+        right_buttons = QtWidgets.QHBoxLayout()
+        right_buttons.addWidget(self.reset_prompt_btn, 1)
+        right_buttons.addWidget(self.save_btn, 1)
+        right_buttons.addWidget(close_btn, 1)
+
+        # One grid so all three rows share column widths: left 2/3 (block 1, the
+        # prompts, Generate line up), right 1/3 (preview, references, the button
+        # cluster line up — the cluster spans the same width as "Remove selected").
+        grid = QtWidgets.QGridLayout()
+        grid.setColumnStretch(0, 2)
+        grid.setColumnStretch(1, 1)
+        grid.setRowStretch(1, 1)  # the prompt/reference row takes any extra height
+        grid.addLayout(block1, 0, 0)
+        grid.addWidget(self.preview_label, 0, 1)  # height = block 1
+        grid.addLayout(prompt_col, 1, 0)
+        grid.addLayout(ref_col, 1, 1)
+        grid.addLayout(generate_row, 2, 0)
+        grid.addLayout(right_buttons, 2, 1)
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(intro)
         layout.addLayout(grid)
-        layout.addStretch(1)
         layout.addWidget(self.status_label)
-        layout.addLayout(buttons)
 
         # Fix the height to the tallest (self-hosted) layout up front, so switching
         # backends never resizes the window or clips fields — and no scroll area,
