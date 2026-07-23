@@ -64,11 +64,14 @@ IMG2IMG_DENOISE = 0.62           # keep some of the photo, but become a cat
 # better than OpenAI's prose. The negatives default to empty — the user fills
 # them in the dialog if they want.
 LOCAL_PROMPT = (
-    "masterpiece, best quality, anime, chibi, kawaii chibi girl, cute big eyes, "
-    "full body, standing, centered, school form, simple plain background, "
+    "masterpiece, best quality, anime, chibi, attractive woman, cute big eyes, "
+    "full body, standing, centered, school uniform, simple background, "
     "soft shading, no shadows"
 )
-LOCAL_NEGATIVE = "shadows"
+LOCAL_NEGATIVE = (
+    "ground shadow, contact shadow, drop shadow, floor shadow, cast shadow, "
+    "shadow under feet, standing on floor, ground, floor"
+)
 
 
 # OpenAI keeps its prose default; these are just the *initial* text — the dialog
