@@ -12,6 +12,7 @@ pip install PySide6
 import argparse
 import configparser
 import getpass
+import hashlib
 import io
 import logging
 import math
@@ -2037,14 +2038,29 @@ def install_desktop_entry() -> None:
     source_icon = assets_dir() / "icon.png"
     if not source_icon.is_file():
         return
-    # Copy the icon to a stable path and reference it ABSOLUTELY in Icon= — the
-    # themed `Icon=mycat` form needs the user icon dir to be a full hicolor theme
-    # (index.theme + right size folder) and a refreshed cache, which often isn't
-    # there; an absolute path just works.
-    icon_target = share / "mycat" / "icon.png"
+    # Copy the icon and reference it ABSOLUTELY in Icon= — the themed `Icon=mycat`
+    # form needs the user icon dir to be a full hicolor theme (index.theme + right
+    # size folder) and a refreshed cache, which often isn't there; an absolute
+    # path just works.
+    #
+    # Name the copy after its content hash (icon-<hash>.png). A single stable path
+    # overwritten in place is invisible to desktop icon caches (GNOME/KDE keep
+    # serving the old bitmap for that path), so an updated app kept showing the
+    # old launcher icon. A fresh filename whenever the image changes sidesteps the
+    # cache entirely.
+    icon_dir = share / "mycat"
     try:
-        icon_target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source_icon, icon_target)
+        digest = hashlib.sha256(source_icon.read_bytes()).hexdigest()[:12]
+        icon_target = icon_dir / f"icon-{digest}.png"
+        icon_dir.mkdir(parents=True, exist_ok=True)
+        if not icon_target.is_file():
+            shutil.copyfile(source_icon, icon_target)
+        # Drop older copies (previous hashes and the legacy stable-path icon.png)
+        # so the folder does not accumulate stale icons.
+        for stale in icon_dir.glob("icon-*.png"):
+            if stale != icon_target:
+                stale.unlink(missing_ok=True)
+        (icon_dir / "icon.png").unlink(missing_ok=True)
         user_desktop.parent.mkdir(parents=True, exist_ok=True)
         user_desktop.write_text(
             "[Desktop Entry]\n"
