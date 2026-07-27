@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Changed
+- **New app icon — a fuller, cleaner cat head.** The icon art (`packaging/mycat.png`) was redrawn as the whole head, including the ears, and its background is now fully transparent (the previous render carried a faint glow haze that showed as a grey halo on light backgrounds). The three shipped assets — the colour `mycat/assets/icon.png` and the two theme-adaptive monochrome tray silhouettes `icon-w.png` (dark panels) / `icon-b.png` (light panels) — are regenerated from it at 442×442, tight-cropped to fill the frame. Everything downstream picks it up automatically: the window/taskbar/tray icon, the Windows `.ico` and macOS `.icns` (built from `icon.png` by `mycat.spec`), and the `.deb` / AppImage / `.desktop` icons (branch `chore/new-app-icon`).
+
 ## [0.1.26] - 2026-07-22
 
 ### Added
