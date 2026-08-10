@@ -1,4 +1,4 @@
-[EN](https://github.com/yumiaura/myCat/blob/main/README.md) | [RU](https://github.com/yumiaura/myCat/blob/main/docs/README_RU.md) | [中文](https://github.com/yumiaura/myCat/blob/main/docs/README_CN.md) | ID
+[EN](https://github.com/yumiaura/myCat/blob/main/README.md) | [RU](https://github.com/yumiaura/myCat/blob/main/docs/README_RU.md) | [中文](https://github.com/yumiaura/myCat/blob/main/docs/README_CN.md) | ID | [KO](https://github.com/yumiaura/myCat/blob/main/docs/README_KO.md)
 
 # Kucing Desktop: Aplikasi Mengambang QT 🐱
 

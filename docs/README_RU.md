@@ -1,4 +1,4 @@
-[EN](https://github.com/yumiaura/myCat/blob/main/README.md) | RU | [CN](https://github.com/yumiaura/myCat/blob/main/docs/README_CN.md) | [ID](https://github.com/yumiaura/myCat/blob/main/docs/README_ID.md)
+[EN](https://github.com/yumiaura/myCat/blob/main/README.md) | RU | [CN](https://github.com/yumiaura/myCat/blob/main/docs/README_CN.md) | [ID](https://github.com/yumiaura/myCat/blob/main/docs/README_ID.md) | [KO](https://github.com/yumiaura/myCat/blob/main/docs/README_KO.md)
 
 # Десктопный котик: оверлей на QT 🐱
 
