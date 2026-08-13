@@ -4,6 +4,8 @@ from pathlib import Path
 
 from PySide6 import QtWidgets
 
+from . import menu_config
+
 logger = logging.getLogger(__name__)
 
 class SettingsDialog(QtWidgets.QDialog):
@@ -33,6 +35,18 @@ class SettingsDialog(QtWidgets.QDialog):
         wait_layout.addWidget(wait_label)
         wait_layout.addWidget(self.wait_spinbox)
         layout.addLayout(wait_layout)
+
+        # Which feature entries show in the right-click / tray menu.
+        menu_group = QtWidgets.QGroupBox("Show in menu")
+        menu_group_layout = QtWidgets.QVBoxLayout(menu_group)
+        visible = menu_config.load_menu_visibility(self.config_path)
+        self.menu_checkboxes = {}
+        for key, label in menu_config.MENU_ITEMS:
+            checkbox = QtWidgets.QCheckBox(label.replace("…", ""))
+            checkbox.setChecked(visible.get(key, True))
+            self.menu_checkboxes[key] = checkbox
+            menu_group_layout.addWidget(checkbox)
+        layout.addWidget(menu_group)
 
         # Buttons
         button_box = QtWidgets.QDialogButtonBox(
@@ -70,5 +84,14 @@ class SettingsDialog(QtWidgets.QDialog):
             except Exception as e:
                 logger.error(f"Error saving settings to INI file: {e}")
                 QtWidgets.QMessageBox.critical(self, "Error", f"Failed to save settings:\n{e}")
+
+        # Persist which feature entries appear in the cat / tray menus.
+        try:
+            menu_config.save_menu_visibility(
+                {key: box.isChecked() for key, box in self.menu_checkboxes.items()},
+                self.config_path,
+            )
+        except Exception as e:
+            logger.error(f"Error saving menu visibility: {e}")
 
         super().accept()

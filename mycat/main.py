@@ -41,6 +41,7 @@ if __package__:
         github_api,
         github_notify,
         llm,
+        menu_config,
         paths,
         reminder,
         secret_store,
@@ -53,6 +54,7 @@ else:
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
     llm = importlib.import_module("mycat.llm")
+    menu_config = importlib.import_module("mycat.menu_config")
     paths = importlib.import_module("mycat.paths")
     char_catalog = importlib.import_module("mycat.char_catalog")
     reminder = importlib.import_module("mycat.reminder")
@@ -1136,11 +1138,12 @@ class PixelCatWindow(QtWidgets.QWidget):
     def show_context_menu(self, pos: QtCore.QPoint) -> None:
         """Show context menu at the given position."""
         menu = QtWidgets.QMenu(self)
+        visible = menu_config.load_menu_visibility()
 
         # "Chat" appears only once Ollama is configured (a controller exists),
         # and is greyed out while the LLM is disabled.
         toggle_chat = getattr(self, "toggle_llm_chat", None)
-        if callable(toggle_chat):
+        if callable(toggle_chat) and visible["chat"]:
             chat_action = menu.addAction("Chat")
             chat_action.triggered.connect(toggle_chat)
             llm_is_enabled = getattr(self, "is_llm_enabled", None)
@@ -1148,22 +1151,18 @@ class PixelCatWindow(QtWidgets.QWidget):
                 chat_action.setEnabled(bool(llm_is_enabled()))
             menu.addSeparator()
 
-        # Settings entries, in the agreed order: LLM, Calendar, Reminder,
-        # GitHub, Activity.
-        llm_action = menu.addAction("LLM…")
-        llm_action.triggered.connect(self.open_llm_settings)
-
-        calendar_action = menu.addAction("Calendar…")
-        calendar_action.triggered.connect(self.open_calendar_settings)
-
-        reminder_action = menu.addAction("Reminder…")
-        reminder_action.triggered.connect(self.open_reminder)
-
-        github_action = menu.addAction("GitHub…")
-        github_action.triggered.connect(self.open_github_settings)
-
-        activity_action = menu.addAction("Activity…")
-        activity_action.triggered.connect(self.open_activity_dialog)
+        # Feature entries, in the agreed order: LLM, Calendar, Reminder,
+        # GitHub, Activity. Each can be hidden from the Settings dialog.
+        if visible["llm"]:
+            menu.addAction("LLM…").triggered.connect(self.open_llm_settings)
+        if visible["calendar"]:
+            menu.addAction("Calendar…").triggered.connect(self.open_calendar_settings)
+        if visible["reminder"]:
+            menu.addAction("Reminder…").triggered.connect(self.open_reminder)
+        if visible["github"]:
+            menu.addAction("GitHub…").triggered.connect(self.open_github_settings)
+        if visible["activity"]:
+            menu.addAction("Activity…").triggered.connect(self.open_activity_dialog)
 
         # Shop temporarily hidden from the menu (work in progress). The dialog
         # and its handler stay in the codebase; re-enable by uncommenting:
@@ -1175,7 +1174,7 @@ class PixelCatWindow(QtWidgets.QWidget):
 
         # Rebuild the list every time so freshly-installed chars appear without restart.
         self.available_images = char_catalog.scan_all()
-        if len(self.available_images) > 0:
+        if len(self.available_images) > 0 and visible["chars"]:
             images_menu = menu.addMenu("Chars")
             create_action = images_menu.addAction("Generate…")
             create_action.triggered.connect(self.open_ai_char)
@@ -1195,6 +1194,11 @@ class PixelCatWindow(QtWidgets.QWidget):
                     action.setChecked(True)
                 action.triggered.connect(lambda checked, name=img_name: self.load_image(name))
             menu.addSeparator()
+
+        # Settings is always shown (never hideable) — it's how hidden entries
+        # are brought back.
+        settings_action = menu.addAction("Settings…")
+        settings_action.triggered.connect(self.open_settings)
 
         reset_action = menu.addAction("Reset")
         reset_action.triggered.connect(self.reset_position)
@@ -1218,6 +1222,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         else:
             quit_action = menu.addAction("Quit")
             quit_action.triggered.connect(QtWidgets.QApplication.quit)
+        tidy_separators(menu)
         menu.exec(self.mapToGlobal(pos))
 
     def open_ai_char(self) -> None:
@@ -1270,6 +1275,21 @@ class PixelCatWindow(QtWidgets.QWidget):
             logger.exception("Failed to import LLM settings dialog")
             return
         dialog = LLMSettingsDialog(self, parent=self)
+        dialog.exec()
+
+    def open_settings(self) -> None:
+        """Open the general Settings dialog (wait time + which menu entries show)."""
+        try:
+            if __package__:
+                from .settings_ui import SettingsDialog
+            else:
+                import importlib
+
+                SettingsDialog = importlib.import_module("mycat.settings_ui").SettingsDialog
+        except Exception:
+            logger.exception("Failed to import Settings dialog")
+            return
+        dialog = SettingsDialog(self, config_path=CFG_FILE, main_window=self)
         dialog.exec()
 
     def open_github_settings(self) -> None:
@@ -1957,6 +1977,22 @@ def ensure_emoji_font(app) -> None:
     logger.info("No system emoji font — using the bundled %s fallback", bundled[0])
 
 
+def tidy_separators(menu: QtWidgets.QMenu) -> None:
+    """Drop leading, trailing and doubled separators left after hiding entries."""
+    prev_was_separator = True  # treat the top as a separator -> removes a leading one
+    for action in menu.actions():
+        if action.isSeparator():
+            if prev_was_separator:
+                menu.removeAction(action)
+            else:
+                prev_was_separator = True
+        else:
+            prev_was_separator = False
+    trailing = menu.actions()
+    if trailing and trailing[-1].isSeparator():
+        menu.removeAction(trailing[-1])
+
+
 def assets_dir() -> Path:
     """The bundled ``mycat/assets`` directory.
 
@@ -2109,40 +2145,47 @@ def setup_tray(app, window):
             show_window()
 
     menu = QtWidgets.QMenu(window)
-    toggle_chat = getattr(window, "toggle_llm_chat", None)
-    if callable(toggle_chat):
-        menu.addAction("Chat", toggle_chat)
-    # Same order as the context menu: LLM, Calendar, Reminder, GitHub, Activity.
-    menu.addAction("LLM…", window.open_llm_settings)
-    menu.addAction("Calendar…", window.open_calendar_settings)
-    menu.addAction("Reminder…", window.open_reminder)
-    menu.addAction("GitHub…", window.open_github_settings)
-    menu.addAction("Activity…", window.open_activity_dialog)
 
-    # Focus is fully automatic now (earned from activity) — no tray toggle.
+    def populate_tray_menu():
+        """Rebuild the tray menu each time it opens, honouring the hidden-entry
+        settings and showing the correct Open/Close label."""
+        menu.clear()
+        visible = menu_config.load_menu_visibility()
+        toggle_chat = getattr(window, "toggle_llm_chat", None)
+        if callable(toggle_chat) and visible["chat"]:
+            menu.addAction("Chat", toggle_chat)
+        # Same order as the context menu: LLM, Calendar, Reminder, GitHub, Activity.
+        if visible["llm"]:
+            menu.addAction("LLM…", window.open_llm_settings)
+        if visible["calendar"]:
+            menu.addAction("Calendar…", window.open_calendar_settings)
+        if visible["reminder"]:
+            menu.addAction("Reminder…", window.open_reminder)
+        if visible["github"]:
+            menu.addAction("GitHub…", window.open_github_settings)
+        if visible["activity"]:
+            menu.addAction("Activity…", window.open_activity_dialog)
 
-    menu.addAction("Reset", window.reset_position)
-    menu.addAction("Update…", window.open_update)
-    if autostart.is_supported():
+        # Settings is always shown — it's how hidden entries are brought back.
+        menu.addAction("Settings…", window.open_settings)
+        menu.addAction("Reset", window.reset_position)
+        menu.addAction("Update…", window.open_update)
+        if autostart.is_supported():
+            menu.addSeparator()
+            login_action = menu.addAction("Autostart")
+            login_action.setCheckable(True)
+            login_action.setChecked(autostart.is_enabled())
+            login_action.toggled.connect(autostart.set_enabled)
         menu.addSeparator()
-        login_action = menu.addAction("Autostart")
-        login_action.setCheckable(True)
-        login_action.setChecked(autostart.is_enabled())
-        login_action.toggled.connect(autostart.set_enabled)
-    menu.addSeparator()
-    toggle_action = menu.addAction("Close")
-    toggle_action.triggered.connect(toggle_window)
-    menu.addAction("Quit", QtWidgets.QApplication.quit)
-    # Dynamic label: "Open" when the cat is hidden, "Close" when it's on screen.
-    menu.aboutToShow.connect(
-        lambda: toggle_action.setText("Open" if not window.isVisible() else "Close")
-    )
+        # Dynamic label: "Open" when the cat is hidden, "Close" when on screen.
+        toggle_action = menu.addAction("Close" if window.isVisible() else "Open")
+        toggle_action.triggered.connect(toggle_window)
+        menu.addAction("Quit", QtWidgets.QApplication.quit)
+        tidy_separators(menu)
+
+    populate_tray_menu()
+    menu.aboutToShow.connect(populate_tray_menu)
     tray.setContextMenu(menu)
-
-    def sync_toggle_label():
-        toggle_action.setText("Close" if window.isVisible() else "Open")
-
-    menu.aboutToShow.connect(sync_toggle_label)
 
     def on_activated(reason):
         if reason == QtWidgets.QSystemTrayIcon.ActivationReason.DoubleClick:
