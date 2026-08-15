@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import configparser
 import logging
-import os
 from pathlib import Path
+
+from PySide6 import QtWidgets
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +112,6 @@ _TRANSLATIONS = {
     "Export CSV…": "导出 CSV…",
     "Delete all…": "全部删除…",
     "Save": "保存",
-    "Close": "关闭",
     "Current: {status}": "当前：{status}",
     "Current: idle — start working and a 🍅 builds after 25 min.":
         "当前：空闲 — 开始工作，坚持 25 分钟后即可获得一个 🍅。",
@@ -187,7 +187,8 @@ _TRANSLATIONS = {
     "auto-filled when you verify a token": "验证令牌后自动填写",
     "Enter your username, list accounts, or paste a token.": "请输入用户名、列出账号，或粘贴令牌。",
     "Checking…": "正在检查…",
-    "Token rejected — check the PAT (read-only Notifications scope).": "令牌被拒绝 — 请检查 PAT（只读 Notifications 权限）。",
+    "Token rejected — check the PAT (read-only Notifications scope).":
+        "令牌被拒绝 — 请检查 PAT（只读 Notifications 权限）。",
     "OK · verified as {login} · {text}": "正常 · 已验证为 {login} · {text}",
     "OK · verified as {login} · no notifications.": "正常 · 已验证为 {login} · 没有通知。",
     "OK · {text}": "正常 · {text}",
@@ -227,7 +228,6 @@ _TRANSLATIONS = {
     "Right → Left": "右 → 左",
     "In": "在",
     "At": "于",
-    "now": "现在",
     "When": "时间",
     "Repeat daily": "每天重复",
     " px": " 像素",
@@ -459,7 +459,7 @@ def set_language(code: str, config_path: Path | None = None) -> str:
     return code
 
 
-def build_language_menu(parent, config_path: Path | None = None) -> "QMenu":
+def build_language_menu(parent, config_path: Path | None = None) -> QtWidgets.QMenu:
     """Append a 'Language' submenu (English / 简体中文 radio actions) to ``parent``.
 
     ``parent`` should be a QMenu. When a language is chosen, the language is

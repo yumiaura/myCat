@@ -6,8 +6,7 @@ import logging
 from PySide6 import QtCore, QtWidgets
 
 if __package__:
-    from . import calendar_ics
-    from . import i18n
+    from . import calendar_ics, i18n
     from .ui_theme import LIGHT_QSS
 else:
     import importlib

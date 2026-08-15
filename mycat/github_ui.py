@@ -13,8 +13,7 @@ import os
 from PySide6 import QtCore, QtWidgets
 
 if __package__:
-    from . import github_notify
-    from . import i18n
+    from . import github_notify, i18n
     from .ui_theme import LIGHT_QSS
 else:
     import importlib

@@ -12,8 +12,7 @@ from __future__ import annotations
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from . import activity as activity_mod
-from . import i18n
-from . import key_heatmap
+from . import i18n, key_heatmap
 from .ui_theme import LIGHT_QSS
 
 tr = i18n.tr

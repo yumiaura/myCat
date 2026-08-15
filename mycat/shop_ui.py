@@ -12,8 +12,7 @@ from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from . import char_catalog
-from . import i18n
+from . import char_catalog, i18n
 from .shop_api import (
     Catalog,
     CharEntry,

@@ -10,8 +10,7 @@ from typing import TYPE_CHECKING
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from . import i18n
-from . import llm_prompt
+from . import i18n, llm_prompt
 
 if TYPE_CHECKING:
     from .llm import LLMContext

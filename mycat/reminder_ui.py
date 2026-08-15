@@ -21,8 +21,8 @@ from pathlib import Path
 from PySide6 import QtCore, QtGui, QtWidgets
 
 if __package__:
-    from . import reminder as reminder_mod
     from . import i18n
+    from . import reminder as reminder_mod
 else:
     import importlib
 
