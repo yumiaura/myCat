@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Hide menu entries you don't use.** A new **Settings…** entry (right-click / tray) opens the Settings dialog, where a *Show in menu* section lets you hide feature entries — Chat, LLM, Calendar, Reminder, GitHub, Activity, Chars — from both the cat's right-click menu and the tray menu. Hiding an entry only removes the shortcut; the feature keeps running. Settings, Quit and Close are always shown (branch `feat/menu-toggles`).
+
 ## [0.1.28] - 2026-07-27
 
 ### Fixed
