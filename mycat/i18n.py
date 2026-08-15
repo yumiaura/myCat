@@ -300,6 +300,7 @@ _TRANSLATIONS = {
     "Error: {message}": "错误：{message}",
 
     # --- AI character generator ---
+    "Generate": "生成",
     "Generate a custom char with AI": "使用 AI 生成自定义角色",
     "Turn 1–3 photos of the same person into a custom char, or generate one "
     "from the prompt. Reference photos are not stored by myCat.":
