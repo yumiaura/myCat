@@ -14,14 +14,17 @@ from PySide6 import QtCore, QtWidgets
 
 if __package__:
     from . import github_notify
+    from . import i18n
     from .ui_theme import LIGHT_QSS
 else:
     import importlib
 
     github_notify = importlib.import_module("mycat.github_notify")
+    i18n = importlib.import_module("mycat.i18n")
     LIGHT_QSS = importlib.import_module("mycat.ui_theme").LIGHT_QSS
 
 logger = logging.getLogger(__name__)
+tr = i18n.tr
 
 INBOX_CHOICES = [(key, github_notify.CATEGORY_LABELS[key]) for key in github_notify.INBOX_CATEGORIES]
 PUBLIC_CHOICES = [(key, github_notify.CATEGORY_LABELS[key]) for key in github_notify.PUBLIC_CATEGORIES]
@@ -33,7 +36,7 @@ class GitHubDialog(QtWidgets.QDialog):
     def __init__(self, notifier, parent=None) -> None:
         super().__init__(parent)
         self.notifier = notifier
-        self.setWindowTitle("GitHub notifications")
+        self.setWindowTitle(tr("GitHub notifications"))
         self.setModal(False)
         self.resize(400, 500)
         self.setStyleSheet(LIGHT_QSS)
@@ -43,24 +46,24 @@ class GitHubDialog(QtWidgets.QDialog):
         self.has_token = bool(settings.resolve_token())
         layout = QtWidgets.QVBoxLayout(self)
 
-        self.enabled_box = QtWidgets.QCheckBox("Enabled — announces GitHub activity")
+        self.enabled_box = QtWidgets.QCheckBox(tr("Enabled — announces GitHub activity"))
         self.enabled_box.setChecked(settings.enabled)
         layout.addWidget(self.enabled_box)
 
         form = QtWidgets.QFormLayout()
         self.me_edit = QtWidgets.QLineEdit(settings.me_login)
-        self.me_edit.setPlaceholderText("auto-filled when you verify a token")
-        form.addRow("GitHub username:", self.me_edit)
+        self.me_edit.setPlaceholderText(tr("auto-filled when you verify a token"))
+        form.addRow(tr("GitHub username:"), self.me_edit)
         self.token_edit = QtWidgets.QLineEdit(settings.token)
         self.token_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
         self.token_edit.setPlaceholderText(f"empty → ${settings.token_env}")
         self.token_edit.textChanged.connect(self.on_token_changed)
-        form.addRow("Token (optional):", self.token_edit)
+        form.addRow(tr("Token (optional):"), self.token_edit)
         layout.addLayout(form)
 
         self.category_boxes: dict = {}
 
-        public_box = QtWidgets.QGroupBox("Public options")
+        public_box = QtWidgets.QGroupBox(tr("Public options"))
         public_layout = QtWidgets.QVBoxLayout(public_box)
         for key, label in PUBLIC_CHOICES:
             box = QtWidgets.QCheckBox(label)
@@ -69,7 +72,7 @@ class GitHubDialog(QtWidgets.QDialog):
             public_layout.addWidget(box)
         layout.addWidget(public_box)
 
-        self.inbox_box = QtWidgets.QGroupBox("Private options (token required)")
+        self.inbox_box = QtWidgets.QGroupBox(tr("Private options (token required)"))
         inbox_layout = QtWidgets.QVBoxLayout(self.inbox_box)
         for key, label in INBOX_CHOICES:
             box = QtWidgets.QCheckBox(label)
@@ -77,8 +80,8 @@ class GitHubDialog(QtWidgets.QDialog):
             self.category_boxes[key] = box
             inbox_layout.addWidget(box)
         self.inbox_box.setToolTip(
-            "Enter a token to configure these options; Test verifies it. They are served only with a\n"
-            "token (read-only Notifications scope is enough); requests go straight to api.github.com."
+            tr("Enter a token to configure these options; Test verifies it. They are served only with a\n"
+               "token (read-only Notifications scope is enough); requests go straight to api.github.com.")
         )
         layout.addWidget(self.inbox_box)
         self.set_inbox_enabled(self.has_token)
@@ -90,9 +93,9 @@ class GitHubDialog(QtWidgets.QDialog):
         # Test (left) · Save, Close (right). Save applies without closing,
         # so the flow "save, then test" works in one open dialog.
         button_row = QtWidgets.QHBoxLayout()
-        self.test_button = QtWidgets.QPushButton("Test")
-        self.save_button = QtWidgets.QPushButton("Save")
-        self.close_button = QtWidgets.QPushButton("Close")
+        self.test_button = QtWidgets.QPushButton(tr("Test"))
+        self.save_button = QtWidgets.QPushButton(tr("Save"))
+        self.close_button = QtWidgets.QPushButton(tr("Close"))
         self.test_button.clicked.connect(self.run_test)
         self.save_button.clicked.connect(self.save_settings)
         self.close_button.clicked.connect(self.reject)
@@ -145,12 +148,18 @@ class GitHubDialog(QtWidgets.QDialog):
         public_on = sum(1 for key, label in PUBLIC_CHOICES if self.category_boxes[key].isChecked())
         private_on = sum(1 for key, label in INBOX_CHOICES if self.category_boxes[key].isChecked())
         state = "on" if settings.enabled else "off"
-        who = settings.me_login or "no username"
-        token_note = "token verified" if self.token_verified else (
-            "token not verified" if settings.resolve_token() else "no token"
+        who = settings.me_login or tr("no username")
+        token_note = tr("token verified") if self.token_verified else (
+            tr("token not verified") if settings.resolve_token() else tr("no token")
         )
         self.set_status(
-            f"Saved ({state}): {who} · {public_on} public + {private_on} private options · {token_note}.",
+            tr("Saved ({state}): {who} · {public} public + {private} private options · {token}.").format(
+                state=state,
+                who=who,
+                public=public_on,
+                private=private_on,
+                token=token_note,
+            ),
             ok=True,
         )
 
@@ -159,9 +168,9 @@ class GitHubDialog(QtWidgets.QDialog):
         token = settings.resolve_token()
         accounts = list(self.sample_accounts(settings))
         if not token and not accounts:
-            self.set_status("Enter your username, list accounts, or paste a token.", ok=False)
+            self.set_status(tr("Enter your username, list accounts, or paste a token."), ok=False)
             return
-        self.set_status("Checking…")
+        self.set_status(tr("Checking…"))
         self.test_button.setEnabled(False)
 
         if token:
@@ -193,7 +202,7 @@ class GitHubDialog(QtWidgets.QDialog):
             if result.get("error") or int(result.get("status", 0)) != 200:
                 self.token_verified = False
                 self.set_inbox_enabled(bool(self.collect_settings().resolve_token()))
-                self.set_status("Token rejected — check the PAT (read-only Notifications scope).", ok=False)
+                self.set_status(tr("Token rejected — check the PAT (read-only Notifications scope)."), ok=False)
                 return
             login = str(result.get("login", ""))
             self.token_verified = True
@@ -203,15 +212,19 @@ class GitHubDialog(QtWidgets.QDialog):
             items = list(result.get("items", []))
             if items:
                 text = github_notify.notification_text(items[0])
-                self.set_status(f"OK · verified as {login} · {text}", ok=True)
+                self.set_status(
+                    tr("OK · verified as {login} · {text}").format(login=login, text=text), ok=True
+                )
                 url = github_notify.subject_html_url(items[0].get("subject") or {}, items[0].get("repository") or {})
                 self.fly_sample(text, url)
             else:
-                self.set_status(f"OK · verified as {login} · no notifications.", ok=True)
+                self.set_status(
+                    tr("OK · verified as {login} · no notifications.").format(login=login), ok=True
+                )
             return
 
         if result.get("error"):
-            self.set_status(f"Failed: {result['error']}", ok=False)
+            self.set_status(tr("Failed: {error}").format(error=result["error"]), ok=False)
             return
 
         items = list(result.get("items", []))
@@ -225,10 +238,10 @@ class GitHubDialog(QtWidgets.QDialog):
             latest = items[0]  # quiet feed: show the newest event of any kind
         if latest is not None:
             text = github_notify.event_text(latest)
-            self.set_status(f"OK · {text}", ok=True)
+            self.set_status(tr("OK · {text}").format(text=text), ok=True)
             self.fly_sample(text, github_notify.event_html_url(latest))
         else:
-            self.set_status("OK — public mode, no recent activity.", ok=True)
+            self.set_status(tr("OK — public mode, no recent activity."), ok=True)
 
 
 __all__ = ["GitHubDialog"]

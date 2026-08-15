@@ -9,10 +9,12 @@ import time
 
 from PySide6 import QtCore, QtWidgets
 
+from . import i18n
 from . import llm_ollama, llm_openai_compat, llm_prompt, llm_vendors
 from .ui_theme import LIGHT_QSS
 
 logger = logging.getLogger(__name__)
+tr = i18n.tr
 
 STATUS_OK = "color: #1c7c2f;"
 STATUS_ERR = "color: #c0392b;"
@@ -88,7 +90,7 @@ class LLMSettingsDialog(QtWidgets.QDialog):
     def __init__(self, window: QtWidgets.QWidget, parent=None) -> None:
         super().__init__(parent)
         self.host_window = window
-        self.setWindowTitle("Chat / LLM settings")
+        self.setWindowTitle(tr("Chat / LLM settings"))
         self.setMinimumWidth(460)
         self.setStyleSheet(LIGHT_QSS)
         self.pool = QtCore.QThreadPool(self)
@@ -96,39 +98,39 @@ class LLMSettingsDialog(QtWidgets.QDialog):
         self.vendors = llm_vendors.load_vendors()
         self.current_api_key_env = ""
 
-        self.enabled_box = QtWidgets.QCheckBox("LLM enabled")
+        self.enabled_box = QtWidgets.QCheckBox(tr("LLM enabled"))
         self.enabled_box.setChecked(self.current_enabled())
 
         self.vendor_combo = QtWidgets.QComboBox()
         self.name_edit = QtWidgets.QLineEdit()
         self.kind_combo = QtWidgets.QComboBox()
-        self.kind_combo.addItem("Ollama (local)", llm_vendors.KIND_OLLAMA)
-        self.kind_combo.addItem("OpenAI-compatible", llm_vendors.KIND_OPENAI)
+        self.kind_combo.addItem(tr("Ollama (local)"), llm_vendors.KIND_OLLAMA)
+        self.kind_combo.addItem(tr("OpenAI-compatible"), llm_vendors.KIND_OPENAI)
         self.base_url_edit = QtWidgets.QLineEdit()
         self.key_edit = QtWidgets.QLineEdit()
         self.key_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
-        self.key_label = QtWidgets.QLabel("API key")
+        self.key_label = QtWidgets.QLabel(tr("API key"))
         self.model_combo = QtWidgets.QComboBox()
         self.model_combo.setEditable(True)
-        self.load_btn = QtWidgets.QPushButton("Load models")
+        self.load_btn = QtWidgets.QPushButton(tr("Load models"))
         self.load_btn.setAutoDefault(False)
         self.status_label = QtWidgets.QLabel("")
         self.status_label.setWordWrap(True)
-        self.test_btn = QtWidgets.QPushButton("Test")
-        self.save_btn = QtWidgets.QPushButton("Save")
-        close_btn = QtWidgets.QPushButton("Close")
+        self.test_btn = QtWidgets.QPushButton(tr("Test"))
+        self.save_btn = QtWidgets.QPushButton(tr("Save"))
+        close_btn = QtWidgets.QPushButton(tr("Close"))
 
         form = QtWidgets.QFormLayout()
         form.addRow(self.enabled_box)
-        form.addRow("Vendor", self.vendor_combo)
-        form.addRow("Name", self.name_edit)
-        form.addRow("Type", self.kind_combo)
-        form.addRow("Base URL", self.base_url_edit)
+        form.addRow(tr("Vendor"), self.vendor_combo)
+        form.addRow(tr("Name"), self.name_edit)
+        form.addRow(tr("Type"), self.kind_combo)
+        form.addRow(tr("Base URL"), self.base_url_edit)
         form.addRow(self.key_label, self.key_edit)
         model_row = QtWidgets.QHBoxLayout()
         model_row.addWidget(self.model_combo, 1)
         model_row.addWidget(self.load_btn)
-        form.addRow("Model", model_row)
+        form.addRow(tr("Model"), model_row)
 
         # Test (left) · Save, Close (right) — same order in every dialog.
         buttons = QtWidgets.QHBoxLayout()
@@ -145,7 +147,7 @@ class LLMSettingsDialog(QtWidgets.QDialog):
         # Populate the vendor dropdown: presets/custom first, then "Add custom…".
         for name, vendor in self.vendors.items():
             self.vendor_combo.addItem(vendor.label or name, name)
-        self.vendor_combo.addItem(ADD_CUSTOM, None)
+        self.vendor_combo.addItem(tr(ADD_CUSTOM), None)
 
         self.vendor_combo.currentIndexChanged.connect(self.on_vendor_changed)
         self.kind_combo.currentIndexChanged.connect(self.refresh_key_visibility)
@@ -241,10 +243,10 @@ class LLMSettingsDialog(QtWidgets.QDialog):
     def on_load(self) -> None:
         base_url = self.base_url_edit.text().strip()
         if not base_url:
-            self.set_status("Enter a base URL first.", STATUS_ERR)
+            self.set_status(tr("Enter a base URL first."), STATUS_ERR)
             return
         self.load_btn.setEnabled(False)
-        self.set_status("Loading models…", STATUS_INFO)
+        self.set_status(tr("Loading models…"), STATUS_INFO)
         worker = ModelsWorker(self.kind_value(), base_url, self.effective_key(), 10.0)
         worker.signals.models.connect(self.on_models)
         worker.signals.error.connect(self.on_load_error)
@@ -263,12 +265,12 @@ class LLMSettingsDialog(QtWidgets.QDialog):
         if keep:
             self.model_combo.setCurrentText(keep)
         self.model_combo.blockSignals(False)
-        self.set_status(f"Found {len(names)} model(s).", STATUS_OK)
+        self.set_status(tr("Found {count} model(s).").format(count=len(names)), STATUS_OK)
         self.on_model_changed()
 
     def on_load_error(self, message: str) -> None:
         self.load_btn.setEnabled(True)
-        self.set_status(f"Could not load models: {message}", STATUS_ERR)
+        self.set_status(tr("Could not load models: {message}").format(message=message), STATUS_ERR)
 
     # -- model / actions ----------------------------------------------------
 
@@ -285,7 +287,7 @@ class LLMSettingsDialog(QtWidgets.QDialog):
         if not model:
             return
         self.test_btn.setEnabled(False)
-        self.set_status(f"Testing {model}…", STATUS_INFO)
+        self.set_status(tr("Testing {model}…").format(model=model), STATUS_INFO)
         worker = TestWorker(
             self.kind_value(),
             self.base_url_edit.text().strip(),
@@ -302,18 +304,18 @@ class LLMSettingsDialog(QtWidgets.QDialog):
         short = reply.strip().replace("\n", " ")
         if len(short) > 40:
             short = short[:40] + "…"
-        self.set_status(f"OK — {elapsed:.2f} s (reply: {short})", STATUS_OK)
+        self.set_status(tr("OK — {elapsed:.2f} s (reply: {reply})").format(elapsed=elapsed, reply=short), STATUS_OK)
 
     def on_test_error(self, message: str) -> None:
         self.test_btn.setEnabled(True)
-        self.set_status(f"Test failed: {message}", STATUS_ERR)
+        self.set_status(tr("Test failed: {message}").format(message=message), STATUS_ERR)
 
     # -- save ---------------------------------------------------------------
 
     def build_vendor(self) -> llm_vendors.Vendor | None:
         name = self.name_edit.text().strip()
         if not name:
-            self.set_status("Enter a vendor name.", STATUS_ERR)
+            self.set_status(tr("Enter a vendor name."), STATUS_ERR)
             return None
         base = self.vendors.get(name)
         return llm_vendors.Vendor(
@@ -331,23 +333,28 @@ class LLMSettingsDialog(QtWidgets.QDialog):
         if vendor is None:
             return
         if not vendor.model:
-            self.set_status("Pick a model first.", STATUS_ERR)
+            self.set_status(tr("Pick a model first."), STATUS_ERR)
             return
         enabled = self.enabled_box.isChecked()
         try:
             llm_vendors.save_vendor(vendor, make_active=True)
             llm_prompt.save_llm_enabled(enabled)
         except OSError as exc:
-            self.set_status(f"Could not save: {exc}", STATUS_ERR)
+            self.set_status(tr("Could not save: {exc}").format(exc=exc), STATUS_ERR)
             return
         try:
             self.apply_live(vendor, enabled)
         except Exception as exc:  # noqa: BLE001 - config is saved regardless
             logger.exception("Failed to apply LLM settings live")
-            self.set_status(f"Saved, but live apply failed: {exc}", STATUS_ERR)
+            self.set_status(tr("Saved, but live apply failed: {exc}").format(exc=exc), STATUS_ERR)
             return
         state = "on" if enabled else "off"
-        self.set_status(f"Saved ✓ ({state}): {vendor.name} · {vendor.model}", STATUS_OK)
+        self.set_status(
+            tr("Saved ✓ ({state}): {name} · {model}").format(
+                state=state, name=vendor.name, model=vendor.model
+            ),
+            STATUS_OK,
+        )
 
     def apply_live(self, vendor: llm_vendors.Vendor, enabled: bool) -> None:
         from . import llm, llm_ui

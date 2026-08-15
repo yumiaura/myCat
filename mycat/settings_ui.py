@@ -4,12 +4,14 @@ from pathlib import Path
 
 from PySide6 import QtWidgets
 
+from .i18n import tr
+
 logger = logging.getLogger(__name__)
 
 class SettingsDialog(QtWidgets.QDialog):
     def __init__(self, parent=None, config_path: Path = None, main_window=None):
         super().__init__(parent)
-        self.setWindowTitle("Settings")
+        self.setWindowTitle(tr("Settings"))
         self.config_path = config_path
         self.main_window = main_window
         self.setMinimumWidth(300)
@@ -19,7 +21,7 @@ class SettingsDialog(QtWidgets.QDialog):
 
         # Wait Time
         wait_layout = QtWidgets.QHBoxLayout()
-        wait_label = QtWidgets.QLabel("Animation Wait Time (s):")
+        wait_label = QtWidgets.QLabel(tr("Animation Wait Time (s):"))
         self.wait_spinbox = QtWidgets.QDoubleSpinBox()
         self.wait_spinbox.setRange(0.5, 60.0)
         self.wait_spinbox.setSingleStep(0.5)
@@ -69,6 +71,8 @@ class SettingsDialog(QtWidgets.QDialog):
 
             except Exception as e:
                 logger.error(f"Error saving settings to INI file: {e}")
-                QtWidgets.QMessageBox.critical(self, "Error", f"Failed to save settings:\n{e}")
+                QtWidgets.QMessageBox.critical(
+                    self, tr("Error"), tr("Failed to save settings:\n{e}").format(e=e)
+                )
 
         super().accept()

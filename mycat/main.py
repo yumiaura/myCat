@@ -40,6 +40,7 @@ if __package__:
         focus,
         github_api,
         github_notify,
+        i18n,
         llm,
         paths,
         reminder,
@@ -68,6 +69,7 @@ else:
     digest = importlib.import_module("mycat.digest")
     update_check = importlib.import_module("mycat.update_check")
     updater = importlib.import_module("mycat.updater")
+    i18n = importlib.import_module("mycat.i18n")
 
 from PySide6 import QtCore, QtGui, QtNetwork, QtWidgets
 
@@ -89,6 +91,7 @@ LOGGING = {
 }
 logging.basicConfig(**LOGGING)
 logger = logging.getLogger(__name__)
+tr = i18n.tr
 logger.debug("LLM integration module path: %s", getattr(llm, "__file__", "builtin"))
 
 # Config paths — single source of truth in paths.py (stays ~/.config/mycat).
@@ -447,8 +450,8 @@ def offer_autostart_on_first_run(window: QtWidgets.QWidget) -> None:
     answer = QtWidgets.QMessageBox.question(
         window,
         "mycat",
-        "Keep mycat on screen every time you log in?\n\n"
-        "You can change this any time from the right-click menu → Autostart.",
+        tr("Keep mycat on screen every time you log in?\n\n"
+           "You can change this any time from the right-click menu → Autostart."),
         QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
         QtWidgets.QMessageBox.StandardButton.Yes,
     )
@@ -1141,7 +1144,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         # and is greyed out while the LLM is disabled.
         toggle_chat = getattr(self, "toggle_llm_chat", None)
         if callable(toggle_chat):
-            chat_action = menu.addAction("Chat")
+            chat_action = menu.addAction(tr("Chat"))
             chat_action.triggered.connect(toggle_chat)
             llm_is_enabled = getattr(self, "is_llm_enabled", None)
             if callable(llm_is_enabled):
@@ -1150,19 +1153,19 @@ class PixelCatWindow(QtWidgets.QWidget):
 
         # Settings entries, in the agreed order: LLM, Calendar, Reminder,
         # GitHub, Activity.
-        llm_action = menu.addAction("LLM…")
+        llm_action = menu.addAction(tr("LLM…"))
         llm_action.triggered.connect(self.open_llm_settings)
 
-        calendar_action = menu.addAction("Calendar…")
+        calendar_action = menu.addAction(tr("Calendar…"))
         calendar_action.triggered.connect(self.open_calendar_settings)
 
-        reminder_action = menu.addAction("Reminder…")
+        reminder_action = menu.addAction(tr("Reminder…"))
         reminder_action.triggered.connect(self.open_reminder)
 
-        github_action = menu.addAction("GitHub…")
+        github_action = menu.addAction(tr("GitHub…"))
         github_action.triggered.connect(self.open_github_settings)
 
-        activity_action = menu.addAction("Activity…")
+        activity_action = menu.addAction(tr("Activity…"))
         activity_action.triggered.connect(self.open_activity_dialog)
 
         # Shop temporarily hidden from the menu (work in progress). The dialog
@@ -1176,12 +1179,12 @@ class PixelCatWindow(QtWidgets.QWidget):
         # Rebuild the list every time so freshly-installed chars appear without restart.
         self.available_images = char_catalog.scan_all()
         if len(self.available_images) > 0:
-            images_menu = menu.addMenu("Chars")
-            create_action = images_menu.addAction("Generate…")
+            images_menu = menu.addMenu(tr("Chars"))
+            create_action = images_menu.addAction(tr("Generate…"))
             create_action.triggered.connect(self.open_ai_char)
             generated_chars = char_catalog.ai_generated_chars()
             if generated_chars:
-                delete_menu = images_menu.addMenu("Delete…")
+                delete_menu = images_menu.addMenu(tr("Delete…"))
                 for custom_id in generated_chars:
                     delete_action = delete_menu.addAction(custom_id)
                     delete_action.triggered.connect(
@@ -1196,27 +1199,31 @@ class PixelCatWindow(QtWidgets.QWidget):
                 action.triggered.connect(lambda checked, name=img_name: self.load_image(name))
             menu.addSeparator()
 
-        reset_action = menu.addAction("Reset")
+        reset_action = menu.addAction(tr("Reset"))
         reset_action.triggered.connect(self.reset_position)
 
-        update_action = menu.addAction("Update…")
+        update_action = menu.addAction(tr("Update…"))
         update_action.triggered.connect(self.open_update)
 
         if autostart.is_supported():
-            login_action = menu.addAction("Autostart")
+            login_action = menu.addAction(tr("Autostart"))
             login_action.setCheckable(True)
             login_action.setChecked(autostart.is_enabled())
             login_action.toggled.connect(autostart.set_enabled)
+
+        # Language switcher (English / 简体中文) — retranslates the tray menu live.
+        menu.addSeparator()
+        i18n.build_language_menu(menu, CFG_FILE)
 
         # With a system tray, "Close" from the cat menu only hides it to the tray
         # (reopen from the tray's Open, or a tray double-click); the real Quit
         # lives only in the tray menu. Without a tray there's nowhere to hide, so
         # keep a real Quit here.
         if getattr(self, "tray_icon", None) is not None:
-            close_action = menu.addAction("Close")
+            close_action = menu.addAction(tr("Close"))
             close_action.triggered.connect(self.hide)
         else:
-            quit_action = menu.addAction("Quit")
+            quit_action = menu.addAction(tr("Quit"))
             quit_action.triggered.connect(QtWidgets.QApplication.quit)
         menu.exec(self.mapToGlobal(pos))
 
@@ -1234,20 +1241,24 @@ class PixelCatWindow(QtWidgets.QWidget):
             dialog.exec()
         except Exception as exc:  # noqa: BLE001 - keep the desktop companion alive
             logger.exception("Failed to open AI character generator")
-            QtWidgets.QMessageBox.warning(self, "AI character", str(exc))
+            QtWidgets.QMessageBox.warning(self, tr("AI character"), str(exc))
 
     def delete_ai_char(self, char_id: str) -> None:
         """Delete a generated pack locally; this never makes an API request."""
         answer = QtWidgets.QMessageBox.question(
             self,
-            "Delete custom character?",
-            f'Delete "{char_id}" from this computer? This cannot be undone.',
+            tr("Delete custom character?"),
+            tr('Delete "{char_id}" from this computer? This cannot be undone.').format(
+                char_id=char_id
+            ),
         )
         if answer != QtWidgets.QMessageBox.StandardButton.Yes:
             return
         was_active = self.file_name == char_id
         if not char_catalog.remove_installed(char_id):
-            QtWidgets.QMessageBox.warning(self, "Delete custom character", "The character could not be deleted.")
+            QtWidgets.QMessageBox.warning(
+                self, tr("Delete custom character"), tr("The character could not be deleted.")
+            )
             return
         self.available_images = char_catalog.scan_all()
         if was_active:
@@ -1396,8 +1407,8 @@ class PixelCatWindow(QtWidgets.QWidget):
         box.setText(text)
         box.setInformativeText(informative)
         box.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
-        releases_button = box.addButton("Releases", QtWidgets.QMessageBox.ButtonRole.ActionRole)
-        update_button = box.addButton("Update", QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        releases_button = box.addButton(tr("Releases"), QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        update_button = box.addButton(tr("Update"), QtWidgets.QMessageBox.ButtonRole.ActionRole)
         update_button.setEnabled(can_update)
         box.addButton(QtWidgets.QMessageBox.StandardButton.Close)
         box.exec()
@@ -1415,19 +1426,21 @@ class PixelCatWindow(QtWidgets.QWidget):
             # this IP). Don't claim we're up to date — say the check failed.
             self.update_box(
                 "myCat",
-                f"Current: {current}",
-                "Couldn't reach GitHub — try again in a bit.",
+                tr("Current: {current}").format(current=current),
+                tr("Couldn't reach GitHub — try again in a bit."),
                 kind,
                 can_update=False,
             )
             return
-        versions = f"Current: {current}\nLatest: {latest}"
+        versions = tr("Current: {current}\nLatest: {latest}").format(
+            current=current, latest=latest
+        )
         if update_check.parse_version(latest) <= update_check.parse_version(current):
             # Up to date — nothing to update, so Update stays greyed out.
             self.update_box(
                 "myCat",
                 versions,
-                "No update needed — you're on the latest version. 🐱",
+                tr("No update needed — you're on the latest version. 🐱"),
                 kind,
                 can_update=False,
             )
@@ -1437,7 +1450,9 @@ class PixelCatWindow(QtWidgets.QWidget):
             self.update_box(
                 "myCat",
                 versions,
-                f"Update available. Update with:\n\n    {updater.update_hint(kind)}",
+                tr("Update available. Update with:\n\n    {hint}").format(
+                    hint=updater.update_hint(kind)
+                ),
                 kind,
                 can_update=False,
             )
@@ -1446,15 +1461,15 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.update_box(
             "myCat",
             versions,
-            "Update available — click Update to download and restart.",
+            tr("Update available — click Update to download and restart."),
             kind,
             can_update=True,
         )
 
     def download_update(self, kind: str) -> None:
         signals = self.update_signals
-        dialog = QtWidgets.QProgressDialog("Downloading update…", "Cancel", 0, 100, self)
-        dialog.setWindowTitle("Updating myCat")
+        dialog = QtWidgets.QProgressDialog(tr("Downloading update…"), tr("Cancel"), 0, 100, self)
+        dialog.setWindowTitle(tr("Updating myCat"))
         dialog.setMinimumDuration(0)
         dialog.setAutoClose(False)
         dialog.setAutoReset(False)
@@ -1465,7 +1480,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         signals.progress.connect(
             lambda done, total: dialog.setValue(int(done * 100 / total) if total else 0)
         )
-        signals.applied.connect(lambda: (dialog.setLabelText("Restarting…"), self.finish_update()))
+        signals.applied.connect(lambda: (dialog.setLabelText(tr("Restarting…")), self.finish_update()))
         signals.failed.connect(lambda message: (dialog.close(), self.on_update_failed(message)))
 
         def worker() -> None:
@@ -1502,7 +1517,9 @@ class PixelCatWindow(QtWidgets.QWidget):
 
     def on_update_failed(self, message: str) -> None:
         logger.warning("Update failed: %s", message)
-        QtWidgets.QMessageBox.warning(self, "Update failed", f"Couldn't update: {message}")
+        QtWidgets.QMessageBox.warning(
+            self, tr("Update failed"), tr("Couldn't update: {message}").format(message=message)
+        )
 
     def on_char_installed(self, _char_id: str) -> None:
         self.available_images = char_catalog.scan_all()
@@ -1511,7 +1528,57 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.available_images = char_catalog.scan_all()
         if self.file_name == char_id and self.available_images:
             self.load_image(self.available_images[0])
-    
+
+    def build_tray_menu(self):
+        """(Re)build the system-tray context menu in the current language."""
+        tray = getattr(self, "tray_icon", None)
+        if tray is None:
+            return None
+        menu = QtWidgets.QMenu(self)
+        toggle_chat = getattr(self, "toggle_llm_chat", None)
+        if callable(toggle_chat):
+            menu.addAction(tr("Chat"), toggle_chat)
+        # Same order as the context menu: LLM, Calendar, Reminder, GitHub, Activity.
+        menu.addAction(tr("LLM…"), self.open_llm_settings)
+        menu.addAction(tr("Calendar…"), self.open_calendar_settings)
+        menu.addAction(tr("Reminder…"), self.open_reminder)
+        menu.addAction(tr("GitHub…"), self.open_github_settings)
+        menu.addAction(tr("Activity…"), self.open_activity_dialog)
+
+        # Focus is fully automatic now (earned from activity) — no tray toggle.
+
+        menu.addAction(tr("Reset"), self.reset_position)
+        menu.addAction(tr("Update…"), self.open_update)
+        if autostart.is_supported():
+            menu.addSeparator()
+            login_action = menu.addAction(tr("Autostart"))
+            login_action.setCheckable(True)
+            login_action.setChecked(autostart.is_enabled())
+            login_action.toggled.connect(autostart.set_enabled)
+        menu.addSeparator()
+        i18n.build_language_menu(menu, CFG_FILE)
+        toggle_action = menu.addAction(tr("Close"))
+        toggle_action.triggered.connect(self.toggle_tray_window)
+        menu.addAction(tr("Quit"), QtWidgets.QApplication.quit)
+        # Dynamic label: "Open" when the cat is hidden, "Close" when it's on screen.
+        menu.aboutToShow.connect(
+            lambda: toggle_action.setText(tr("Open") if not self.isVisible() else tr("Close"))
+        )
+        tray.setContextMenu(menu)
+        return menu
+
+    def toggle_tray_window(self) -> None:
+        if self.isVisible():
+            self.hide()
+        else:
+            self.show()
+            self.raise_()
+
+    def rebuild_menus(self) -> None:
+        """Retranslate the tray menu after a language switch."""
+        if getattr(self, "tray_icon", None) is not None:
+            self.build_tray_menu()
+
     def schedule_next_animation(self) -> None:
         """Schedule the next PNG -> GIF transition with a single-shot timer."""
         delay_ms = max(0, int(self.wait_time * 1000))
@@ -2102,47 +2169,8 @@ def setup_tray(app, window):
         window.show()
         window.raise_()
 
-    def toggle_window():
-        if window.isVisible():
-            window.hide()
-        else:
-            show_window()
-
-    menu = QtWidgets.QMenu(window)
-    toggle_chat = getattr(window, "toggle_llm_chat", None)
-    if callable(toggle_chat):
-        menu.addAction("Chat", toggle_chat)
-    # Same order as the context menu: LLM, Calendar, Reminder, GitHub, Activity.
-    menu.addAction("LLM…", window.open_llm_settings)
-    menu.addAction("Calendar…", window.open_calendar_settings)
-    menu.addAction("Reminder…", window.open_reminder)
-    menu.addAction("GitHub…", window.open_github_settings)
-    menu.addAction("Activity…", window.open_activity_dialog)
-
-    # Focus is fully automatic now (earned from activity) — no tray toggle.
-
-    menu.addAction("Reset", window.reset_position)
-    menu.addAction("Update…", window.open_update)
-    if autostart.is_supported():
-        menu.addSeparator()
-        login_action = menu.addAction("Autostart")
-        login_action.setCheckable(True)
-        login_action.setChecked(autostart.is_enabled())
-        login_action.toggled.connect(autostart.set_enabled)
-    menu.addSeparator()
-    toggle_action = menu.addAction("Close")
-    toggle_action.triggered.connect(toggle_window)
-    menu.addAction("Quit", QtWidgets.QApplication.quit)
-    # Dynamic label: "Open" when the cat is hidden, "Close" when it's on screen.
-    menu.aboutToShow.connect(
-        lambda: toggle_action.setText("Open" if not window.isVisible() else "Close")
-    )
-    tray.setContextMenu(menu)
-
-    def sync_toggle_label():
-        toggle_action.setText("Close" if window.isVisible() else "Open")
-
-    menu.aboutToShow.connect(sync_toggle_label)
+    # Menu is built (and rebuilt) by the window so a language switch retranslates it.
+    window.build_tray_menu()
 
     def on_activated(reason):
         if reason == QtWidgets.QSystemTrayIcon.ActivationReason.DoubleClick:
@@ -2161,6 +2189,9 @@ def setup_tray(app, window):
 def main() -> None:
     """Main entry point."""
     args = parse_args()
+
+    # Restore the persisted UI language before any window/menu is built.
+    i18n.load_language(CFG_FILE)
 
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)

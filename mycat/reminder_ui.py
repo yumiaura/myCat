@@ -22,12 +22,15 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 if __package__:
     from . import reminder as reminder_mod
+    from . import i18n
 else:
     import importlib
 
     reminder_mod = importlib.import_module("mycat.reminder")
+    i18n = importlib.import_module("mycat.i18n")
 
 Reminder = reminder_mod.Reminder
+tr = i18n.tr
 
 
 def has_no_x11_compositor() -> bool:
@@ -186,7 +189,7 @@ class FlybyWindow(QtWidgets.QWidget):
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         self.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
-        self.setToolTip("Drag to move • Right-click for options")
+        self.setToolTip(tr("Drag to move • Right-click for options"))
 
         # Drag state — clicking the plane pauses the flight and lets the user
         # park it; right-click brings up a resume/close menu.
@@ -216,7 +219,7 @@ class FlybyWindow(QtWidgets.QWidget):
         # attach a URL; a double-click or the context menu opens it.
         self.link_url = str(getattr(reminder, "url", "") or "")
         if self.link_url:
-            self.setToolTip("Double-click to open • Drag to move • Right-click for options")
+            self.setToolTip(tr("Double-click to open • Drag to move • Right-click for options"))
 
         self.text = (reminder.text or reminder_mod.DEFAULT_TEXT).strip() or reminder_mod.DEFAULT_TEXT
         self.ltr = reminder.normalized_direction() != DIRECTION_RTL
@@ -670,14 +673,14 @@ class FlybyWindow(QtWidgets.QWidget):
 
         menu = QtWidgets.QMenu(self)
         if self.link_url:
-            menu.addAction("Open link", self.open_link)
+            menu.addAction(tr("Open link"), self.open_link)
             menu.addSeparator()
         if main_paused or exit_paused or self.anim.state() == QtCore.QAbstractAnimation.State.Stopped:
-            menu.addAction("Resume flight", self.resume_flight)
+            menu.addAction(tr("Resume flight"), self.resume_flight)
         elif main_running or exit_running:
-            menu.addAction("Pause flight", self.pause_flight)
+            menu.addAction(tr("Pause flight"), self.pause_flight)
         menu.addSeparator()
-        menu.addAction("Close", self.close)
+        menu.addAction(tr("Close"), self.close)
         menu.exec(event.globalPos())
 
     def open_link(self) -> None:
@@ -781,7 +784,7 @@ class ReminderDialog(QtWidgets.QDialog):
     def __init__(self, controller, reminder, parent=None) -> None:
         super().__init__(parent)
         self.controller = controller
-        self.setWindowTitle("Reminder")
+        self.setWindowTitle(tr("Reminder"))
         self.setMinimumWidth(380)
         # Force a complete light theme on the whole dialog. Styling only the input
         # fields left the dialog background, labels, group box and buttons to the
@@ -816,16 +819,16 @@ class ReminderDialog(QtWidgets.QDialog):
         form.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
 
         self.text_edit = QtWidgets.QLineEdit(existing.text)
-        self.text_edit.setPlaceholderText("What should the cat remind you about?")
+        self.text_edit.setPlaceholderText(tr("What should the cat remind you about?"))
         self.text_edit.setMaxLength(120)
-        form.addRow("Message", self.text_edit)
+        form.addRow(tr("Message"), self.text_edit)
 
         self.direction = QtWidgets.QComboBox()
-        self.direction.addItem("Left → Right", DIRECTION_LTR)
-        self.direction.addItem("Right → Left", DIRECTION_RTL)
+        self.direction.addItem(tr("Left → Right"), DIRECTION_LTR)
+        self.direction.addItem(tr("Right → Left"), DIRECTION_RTL)
         idx = self.direction.findData(existing.normalized_direction())
         self.direction.setCurrentIndex(max(0, idx))
-        form.addRow("Direction", self.direction)
+        form.addRow(tr("Direction"), self.direction)
 
         self.plane_combo = QtWidgets.QComboBox()
         self.plane_combo.setIconSize(QtCore.QSize(48, 24))
@@ -846,7 +849,7 @@ class ReminderDialog(QtWidgets.QDialog):
             self.plane_combo.addItem(icon, name.capitalize(), name)
         idx = self.plane_combo.findData(existing.plane)
         self.plane_combo.setCurrentIndex(max(0, idx))
-        form.addRow("Plane", self.plane_combo)
+        form.addRow(tr("Plane"), self.plane_combo)
 
         self.color = QtWidgets.QComboBox()
         for name, qcolor in PLANE_COLORS.items():
@@ -855,30 +858,30 @@ class ReminderDialog(QtWidgets.QDialog):
             self.color.addItem(QtGui.QIcon(swatch), name.capitalize(), name)
         idx = self.color.findData(existing.plane_color)
         self.color.setCurrentIndex(max(0, idx))
-        form.addRow("Plane color", self.color)
+        form.addRow(tr("Plane color"), self.color)
 
         self.plane_width_spin = QtWidgets.QSpinBox()
         self.plane_width_spin.setRange(120, 500)
-        self.plane_width_spin.setSuffix(" px")
+        self.plane_width_spin.setSuffix(tr(" px"))
         # Height follows the sprite's aspect ratio — only the width is user-set.
         self.plane_width_spin.setValue(max(120, int(existing.plane_width)))
-        form.addRow("Plane width", self.plane_width_spin)
+        form.addRow(tr("Plane width"), self.plane_width_spin)
 
         layout.addLayout(form)
 
         # Timing: "in N minutes" or "at HH:MM".
-        timing_box = QtWidgets.QGroupBox("When")
+        timing_box = QtWidgets.QGroupBox(tr("When"))
         timing_layout = QtWidgets.QGridLayout(timing_box)
 
-        self.in_radio = QtWidgets.QRadioButton("In")
+        self.in_radio = QtWidgets.QRadioButton(tr("In"))
         self.in_spin = QtWidgets.QSpinBox()
         self.in_spin.setRange(0, 1440)
-        self.in_spin.setSuffix(" min")
+        self.in_spin.setSuffix(tr(" min"))
         # 0 = fire on the very next scheduler tick (within ~1s).
-        self.in_spin.setSpecialValueText("now")
+        self.in_spin.setSpecialValueText(tr("now"))
         self.in_spin.setValue(max(0, existing.in_minutes))
 
-        self.at_radio = QtWidgets.QRadioButton("At")
+        self.at_radio = QtWidgets.QRadioButton(tr("At"))
         self.at_time = QtWidgets.QTimeEdit()
         self.at_time.setDisplayFormat("HH:mm")
         if existing.mode == "at" and existing.fire_at is not None:
@@ -891,7 +894,7 @@ class ReminderDialog(QtWidgets.QDialog):
         timing_layout.addWidget(self.at_radio, 1, 0)
         timing_layout.addWidget(self.at_time, 1, 1)
 
-        self.repeat = QtWidgets.QCheckBox("Repeat daily")
+        self.repeat = QtWidgets.QCheckBox(tr("Repeat daily"))
         self.repeat.setChecked(existing.repeat_daily)
         timing_layout.addWidget(self.repeat, 2, 0, 1, 2)
 
@@ -907,10 +910,10 @@ class ReminderDialog(QtWidgets.QDialog):
         # Buttons: Test, Reset (left) · Save, Close (right) — same order as
         # every other mycat dialog.
         buttons = QtWidgets.QHBoxLayout()
-        test_btn = QtWidgets.QPushButton("Test")
-        reset_btn = QtWidgets.QPushButton("Reset")
-        close_btn = QtWidgets.QPushButton("Close")
-        save_btn = QtWidgets.QPushButton("Save")
+        test_btn = QtWidgets.QPushButton(tr("Test"))
+        reset_btn = QtWidgets.QPushButton(tr("Reset"))
+        close_btn = QtWidgets.QPushButton(tr("Close"))
+        save_btn = QtWidgets.QPushButton(tr("Save"))
         save_btn.setDefault(True)
         test_btn.clicked.connect(self.on_test)
         reset_btn.clicked.connect(self.on_clear)
@@ -951,13 +954,15 @@ class ReminderDialog(QtWidgets.QDialog):
             self.status_label.clear()
             return
         if remaining >= 60:
-            left = f"{(remaining + 59) // 60} min"  # ceil, so 10:00 shows "10 min"
+            left = f"{(remaining + 59) // 60} {tr('min')}"  # ceil, so 10:00 shows "10 min"
         else:
-            left = f"{remaining} sec"
+            left = f"{remaining} {tr('sec')}"
         at = reminder.fire_at.strftime("%H:%M")
-        daily = ", daily" if reminder.repeat_daily else ""
+        daily = tr(", daily") if reminder.repeat_daily else ""
         self.status_label.setStyleSheet("color: #1c7c2f;")
-        self.status_label.setText(f"Reminder in {left}. ({at}{daily})")
+        self.status_label.setText(
+            tr("Reminder in {left}. ({at}{daily})").format(left=left, at=at, daily=daily)
+        )
 
     def sync_timing_enabled(self) -> None:
         in_mode = self.in_radio.isChecked()
@@ -1034,7 +1039,7 @@ class ReminderDialog(QtWidgets.QDialog):
         self.at_time.setTime(QtCore.QTime.currentTime().addSecs(600))
         self.sync_timing_enabled()
         self.status_label.setStyleSheet("color: #777777;")
-        self.status_label.setText("Reminder cleared.")
+        self.status_label.setText(tr("Reminder cleared."))
 
     def on_save(self) -> None:
         reminder = self.build_reminder()
@@ -1046,4 +1051,4 @@ class ReminderDialog(QtWidgets.QDialog):
             self.countdown.start()
         else:
             self.status_label.setStyleSheet("color: #1c7c2f;")
-            self.status_label.setText("Reminder set.")
+            self.status_label.setText(tr("Reminder set."))
