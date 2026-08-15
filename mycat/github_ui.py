@@ -66,7 +66,7 @@ class GitHubDialog(QtWidgets.QDialog):
         public_box = QtWidgets.QGroupBox(tr("Public options"))
         public_layout = QtWidgets.QVBoxLayout(public_box)
         for key, label in PUBLIC_CHOICES:
-            box = QtWidgets.QCheckBox(label)
+            box = QtWidgets.QCheckBox(tr(label))
             box.setChecked(key in settings.categories)
             self.category_boxes[key] = box
             public_layout.addWidget(box)
@@ -75,7 +75,7 @@ class GitHubDialog(QtWidgets.QDialog):
         self.inbox_box = QtWidgets.QGroupBox(tr("Private options (token required)"))
         inbox_layout = QtWidgets.QVBoxLayout(self.inbox_box)
         for key, label in INBOX_CHOICES:
-            box = QtWidgets.QCheckBox(label)
+            box = QtWidgets.QCheckBox(tr(label))
             box.setChecked(key in settings.categories)
             self.category_boxes[key] = box
             inbox_layout.addWidget(box)

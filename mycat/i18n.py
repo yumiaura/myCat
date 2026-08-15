@@ -202,6 +202,16 @@ _TRANSLATIONS = {
     "token (read-only Notifications scope is enough); requests go straight to api.github.com.":
         "输入令牌以配置这些选项；点击“测试”验证。它们仅在提供令牌时才会启用\n"
         "（只读 Notifications 权限即可）；请求将直接发往 api.github.com。",
+    "Review requested": "请求评审",
+    "Mentions": "@提及",
+    "Assigned to me": "分配给我",
+    "CI status": "CI 状态",
+    "Issue activity": "Issue 活动",
+    "PR activity": "PR 活动",
+    "Star on my repo": "我的仓库被点赞",
+    "Fork of my repo": "我的仓库被 Fork",
+    "New follower": "新关注者",
+    "My stars & follows": "我的点赞与关注",
 
     # --- reminder dialog ---
     "Reminder": "提醒",
@@ -231,6 +241,7 @@ _TRANSLATIONS = {
     "Resume flight": "继续飞行",
     "Pause flight": "暂停飞行",
     "What should the cat remind you about?": "希望小猫提醒你什么？",
+    "Do you feed mycat?": "你喂过 mycat 了吗？",
 
     # --- keyboard heatmap ---
     "Keyboard heatmap": "键盘热力图",
@@ -243,6 +254,15 @@ _TRANSLATIONS = {
     # --- settings dialog ---
     "Error": "错误",
 
+    # --- focus tooltip / rest banner ---
+    "🍅 earned — time to rest": "🍅 达成 — 该休息一下了。",
+    "Still at it — time to rest 🍅": "继续加油 — 该休息一下了 🍅",
+    "🍅 {count} today · idle": "🍅 今日 {count} 个 · 空闲",
+
+    # --- morning digest ---
+    "best focus {min} min": "最长专注 {min} 分钟",
+    "Yesterday: ": "昨日： ",
+
     # --- LLM settings dialog ---
     "Chat / LLM settings": "聊天 / LLM 设置",
     "LLM enabled": "启用 LLM",
@@ -252,6 +272,7 @@ _TRANSLATIONS = {
     "Base URL": "基础地址",
     "Model": "模型",
     "API key": "API 密钥",
+    "leave empty to use ${env}": "留空则使用 ${env}",
     "Ollama (local)": "Ollama（本地）",
     "OpenAI-compatible": "OpenAI 兼容",
     "Load models": "加载模型",
@@ -368,9 +389,6 @@ _TRANSLATIONS = {
     "unknown": "未知",
 }
 
-# Runtime-updated strings (messages that are built dynamically).
-_runtime = {}
-
 
 def current_language() -> str:
     """Return the active language code ("en" or "zh")."""
@@ -384,13 +402,8 @@ def is_chinese() -> bool:
 def tr(text: str) -> str:
     """Return ``text`` translated to the current language (English fallback)."""
     if _current == "zh":
-        return _TRANSLATIONS.get(text, _runtime.get(text, text))
+        return _TRANSLATIONS.get(text, text)
     return text
-
-
-def register(key: str, zh: str) -> None:
-    """Register a runtime translation for a dynamically-built string key."""
-    _runtime[key] = zh
 
 
 def config_file() -> Path:
@@ -455,7 +468,7 @@ def build_language_menu(parent, config_path: Path | None = None) -> "QMenu":
     """
     from PySide6 import QtGui, QtWidgets  # local import to keep module import-light
 
-    menu = QtWidgets.QMenu("Language", parent)
+    menu = QtWidgets.QMenu(tr("Language"), parent)
     radio_group = QtGui.QActionGroup(menu)
     radio_group.setExclusive(True)
     for code, label in LANGUAGES.items():
@@ -487,7 +500,6 @@ __all__ = [
     "current_language",
     "is_chinese",
     "tr",
-    "register",
     "load_language",
     "set_language",
     "build_language_menu",

@@ -221,7 +221,8 @@ class FlybyWindow(QtWidgets.QWidget):
         if self.link_url:
             self.setToolTip(tr("Double-click to open • Drag to move • Right-click for options"))
 
-        self.text = (reminder.text or reminder_mod.DEFAULT_TEXT).strip() or reminder_mod.DEFAULT_TEXT
+        default_text = tr(reminder_mod.DEFAULT_TEXT)
+        self.text = (reminder.text or default_text).strip() or default_text
         self.ltr = reminder.normalized_direction() != DIRECTION_RTL
         self.progress = 0.0
         # Set on start(); paintEvent reads monotonic time so the flag ripple and

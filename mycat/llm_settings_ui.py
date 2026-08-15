@@ -206,7 +206,7 @@ class LLMSettingsDialog(QtWidgets.QDialog):
             self.base_url_edit.setText("")
             self.base_url_edit.setPlaceholderText("https://api.example.com/v1")
             self.key_edit.setText("")
-            self.key_edit.setPlaceholderText("API key")
+            self.key_edit.setPlaceholderText(tr("API key"))
             self.current_api_key_env = ""
         else:
             vendor = self.vendors[self.vendor_combo.currentData()]
@@ -218,7 +218,9 @@ class LLMSettingsDialog(QtWidgets.QDialog):
             self.current_api_key_env = vendor.api_key_env
             self.key_edit.setText(vendor.api_key)
             self.key_edit.setPlaceholderText(
-                f"leave empty to use ${vendor.api_key_env}" if vendor.api_key_env else "API key"
+                tr("leave empty to use ${env}").format(env=vendor.api_key_env)
+                if vendor.api_key_env
+                else tr("API key")
             )
         # Drop the previous vendor's model list so stale entries (e.g. Ollama
         # models) don't linger if the new vendor's load fails or hasn't run yet.
