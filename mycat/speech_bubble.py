@@ -32,7 +32,7 @@ TAIL_H = 14              # tail length; its width follows from the 15° apex
 TAIL_W = 2 * TAIL_H * math.tan(math.radians(TAIL_ANGLE_DEG / 2))
 TAIL_TIP_MARGIN = 2      # the drawn apex sits this far inside the window's bottom
 CORNER = 16              # bubble corner radius
-HEAD_GAP = 3             # the drawn tail tip stops 3px above the cat's ears
+HEAD_GAP = 8             # the drawn tail tip stops 8px above the cat's ears
 
 
 def bubble_mode_enabled(cfg_file=None) -> bool:
