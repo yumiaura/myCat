@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [0.1.29] - 2026-08-18
 
 ### Added
 - **Switch the interface language — English, 简体中文 (Simplified Chinese) or Русский.** Every visible string is translatable; pick a language from the **Language** entry right under *Settings…* in the cat's right-click / tray menu, and it's remembered. Translations live in plain, readable `mycat/locale/<code>.json` files that are scanned at startup, so adding a language is just dropping in a new file — no code change. Untranslated strings fall back to English (Chinese wrapping by @astrnox, #121; folder-based loader + Russian; branch `feat/i18n-trilingual`).
