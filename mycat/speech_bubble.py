@@ -26,6 +26,7 @@ CONFIG_KEY = "speech_bubble"
 TYPE_INTERVAL_MS = 35    # per revealed character
 HOLD_SECONDS = 10.0      # how long the finished bubble lingers
 MAX_TEXT_WIDTH = 280     # wrap long messages to this width
+MIN_WIDTH = 120          # the bubble body is never narrower than this
 PAD_X, PAD_Y = 8, 4      # tight text padding (≤5px above/below the glyphs)
 TAIL_ANGLE_DEG = 25      # apex angle of the pointer aimed at the cat
 TAIL_H = 14              # tail length; its width follows from the 15° apex
@@ -132,7 +133,7 @@ class BubbleWindow(QtWidgets.QWidget):
 
     def relayout(self) -> None:
         rect = self.measured_text_rect(self.revealed_text() or " ")
-        self.body_w = max(rect.width(), 24) + 2 * PAD_X
+        self.body_w = max(rect.width() + 2 * PAD_X, MIN_WIDTH)
         self.body_h = max(rect.height(), 20) + 2 * PAD_Y
         self.resize(self.body_w, self.body_h + TAIL_H)
         self.reposition()
