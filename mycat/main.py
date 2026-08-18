@@ -1195,15 +1195,18 @@ class PixelCatWindow(QtWidgets.QWidget):
                     action.setCheckable(True)
                     action.setChecked(True)
                 action.triggered.connect(lambda checked, name=img_name: self.load_image(name))
-            menu.addSeparator()
 
-        # Settings is always shown (never hideable) — it's how hidden entries
-        # are brought back.
+        # Chars, Settings and Language share one block (no separators between
+        # them). Settings is always shown — it's how hidden entries are brought
+        # back.
         settings_action = menu.addAction(i18n.tr("Settings…"))
         settings_action.triggered.connect(self.open_settings)
 
         # Language picker sits right under Settings.
         menu.addMenu(i18n.build_language_menu(CFG_FILE))
+
+        # Close the Chars / Settings / Language block before the utilities.
+        menu.addSeparator()
 
         reset_action = menu.addAction(i18n.tr("Reset"))
         reset_action.triggered.connect(self.reset_position)
@@ -2171,10 +2174,13 @@ def setup_tray(app, window):
         if visible["activity"]:
             menu.addAction(i18n.tr("Activity…"), window.open_activity_dialog)
 
-        # Settings is always shown — it's how hidden entries are brought back.
+        # Settings and Language share one block. Settings is always shown — it's
+        # how hidden entries are brought back.
+        menu.addSeparator()
         menu.addAction(i18n.tr("Settings…"), window.open_settings)
         # Language picker sits right under Settings.
         menu.addMenu(i18n.build_language_menu(CFG_FILE))
+        menu.addSeparator()
         menu.addAction(i18n.tr("Reset"), window.reset_position)
         menu.addAction(i18n.tr("Update…"), window.open_update)
         if autostart.is_supported():
