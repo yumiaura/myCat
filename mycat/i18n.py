@@ -1,507 +1,129 @@
-"""Lightweight i18n for mycat: English (default) and Simplified Chinese.
+"""File-based internationalization for myCat.
 
-Language is chosen from the main interface (right-click menu / tray →
-Language) and persisted in the config file under ``[settings] language``.
-Short strings are looked up through :func:`tr`; the English source string is
-the dictionary key, so untranslated strings simply fall through to English.
+Every language lives in its own JSON file under ``mycat/locale/<code>.json``:
+
+    {
+      "language": {"code": "ru", "name": "Русский"},
+      "strings": {
+        "Chat": "Чат",
+        "Reminder…": "Напоминание…"
+      }
+    }
+
+The folder is scanned once at import time, so adding a language is just dropping
+a new file in there — no code change. The available languages and their display
+names come from the files; :func:`tr` looks a string up in the active language
+and falls back to the English source string when a translation is missing.
+
+The active language is chosen from **right-click / tray menu → under Settings →
+Language** and persisted in ``config.ini`` under ``[settings] language``.
 """
 
 from __future__ import annotations
 
-import configparser
+import json
 import logging
 from pathlib import Path
 
-from PySide6 import QtWidgets
+from PySide6 import QtGui, QtWidgets
+
+from . import config_store, paths
 
 logger = logging.getLogger(__name__)
 
-# Language code -> display name shown in the Language submenu.
-LANGUAGES = {
-    "en": "English",
-    "zh": "简体中文",
-}
+# Bundled locale files live next to this module (i18n.py is a package module, so
+# __file__ keeps the mycat/ prefix and resolves correctly in the frozen exe too).
+LOCALE_DIR = Path(__file__).resolve().parent / "locale"
 
+CONFIG_SECTION = "settings"
 CONFIG_KEY = "language"
 DEFAULT_LANGUAGE = "en"
 
-_current = DEFAULT_LANGUAGE
+
+def scan_locales() -> tuple[dict, dict]:
+    """Read ``mycat/locale/*.json`` -> ({code: display name}, {code: {en: text}})."""
+    languages: dict = {}
+    catalogs: dict = {}
+    if LOCALE_DIR.is_dir():
+        for path in sorted(LOCALE_DIR.glob("*.json")):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                logger.warning("Skipping locale %s: %s", path.name, exc)
+                continue
+            meta = data.get("language", {})
+            code = meta.get("code") or path.stem
+            languages[code] = meta.get("name") or code
+            catalogs[code] = data.get("strings", {}) or {}
+    # English is the source language and always available, even with no file.
+    languages.setdefault(DEFAULT_LANGUAGE, "English")
+    catalogs.setdefault(DEFAULT_LANGUAGE, {})
+    return languages, catalogs
 
 
-# English source string -> Simplified Chinese translation.
-_TRANSLATIONS = {
-    # --- main context menu / tray ---
-    "Chat": "聊天",
-    "LLM…": "LLM…",
-    "Calendar…": "日历…",
-    "Reminder…": "提醒…",
-    "GitHub…": "GitHub…",
-    "Activity…": "活动…",
-    "Chars": "角色",
-    "Generate…": "生成…",
-    "Delete…": "删除…",
-    "Reset": "重置位置",
-    "Update…": "更新…",
-    "Autostart": "开机自启",
-    "Close": "关闭",
-    "Close to tray": "关闭到托盘",
-    "Quit": "退出",
-    "Open": "显示",
-    "Language": "语言",
-    "English": "English",
-    "简体中文": "简体中文",
+LANGUAGES, CATALOGS = scan_locales()
+active_code = DEFAULT_LANGUAGE
 
-    # --- first-run autostart prompt ---
-    "Keep mycat on screen every time you log in?\n\n"
-    "You can change this any time from the right-click menu → Autostart.":
-        "每次登录时都让 mycat 显示在屏幕上吗？\n\n"
-        "你可以随时通过右键菜单 → 开机自启 来更改。",
 
-    # --- AI character generator ---
-    "AI character": "AI 角色",
-    "Delete custom character?": "删除自定义角色？",
-    "Delete custom character": "删除自定义角色",
-    'Delete "{char_id}" from this computer? This cannot be undone.':
-        '确定从这台电脑上删除 "{char_id}" 吗？此操作无法撤销。',
-    "The character could not be deleted.": "无法删除该角色。",
-
-    # --- update dialog ---
-    "Current: {current}": "当前版本：{current}",
-    "Current: {current}\nLatest: {latest}": "当前版本：{current}\n最新版本：{latest}",
-    "Couldn't reach GitHub — try again in a bit.": "无法连接 GitHub，请稍后再试。",
-    "No update needed — you're on the latest version. 🐱": "无需更新，你已是最新版本。🐱",
-    "Update available. Update with:\n\n    {hint}": "有可用更新。请执行以下命令更新：\n\n    {hint}",
-    "Update available — click Update to download and restart.": "有可用更新 — 点击“更新”即可下载并重启。",
-    "Releases": "发行版",
-    "Update": "更新",
-    "Downloading update…": "正在下载更新…",
-    "Updating myCat": "正在更新 myCat",
-    "Cancel": "取消",
-    "Restarting…": "正在重启…",
-    "Update failed": "更新失败",
-    "Couldn't update: {message}": "更新失败：{message}",
-
-    # --- settings dialog ---
-    "Settings": "设置",
-    "Animation Wait Time (s):": "动画等待时间（秒）：",
-    "Failed to save settings:\n{e}": "保存设置失败：\n{e}",
-
-    # --- activity dialog ---
-    "Activity": "活动",
-    "Tracking": "视线追踪",
-    "Mouse": "鼠标",
-    "Keyboard": "键盘",
-    "Heatmap": "热力图",
-    "Tooltip": "悬停提示",
-    "Enable:": "启用：",
-    "Show:": "显示：",
-    "Today": "今天",
-    "Yesterday": "昨天",
-    "Pomodoro goal:": "番茄钟目标：",
-    "History:": "历史记录：",
-    " min": " 分钟",
-    " days": " 天",
-    "Session": "时段",
-    "Duration": "时长",
-    "Keys": "按键",
-    "Active": "活跃",
-    "rest": "休息",
-    "active": "活跃",
-    "future": "未来",
-    "now": "现在",
-    "Export CSV…": "导出 CSV…",
-    "Delete all…": "全部删除…",
-    "Save": "保存",
-    "Current: {status}": "当前：{status}",
-    "Current: idle — start working and a 🍅 builds after 25 min.":
-        "当前：空闲 — 开始工作，坚持 25 分钟后即可获得一个 🍅。",
-    "Could not read the activity database.": "无法读取活动数据库。",
-    "TOTAL 🍅 {tomatoes}": "总计 🍅 {tomatoes}",
-    "Delete activity history": "删除活动历史",
-    "Delete ALL recorded activity and focus sessions from this computer?\n"
-    "This cannot be undone.": "确定删除这台电脑上记录的所有活动和专注时段？\n此操作无法撤销。",
-    "Export activity to CSV": "将活动导出为 CSV",
-    "CSV files (*.csv)": "CSV 文件 (*.csv)",
-    "Could not write the CSV file.": "无法写入 CSV 文件。",
-    "Exported {count} periods to {name}.": "已将 {count} 个时段导出到 {name}。",
-    "Open a live keyboard heatmap of key presses this session.":
-        "打开本次会话按键的实时键盘热力图。",
-    "The cat's eyes follow your cursor; off, it looks at its own nose.\n"
-    "Purely visual — it records nothing.":
-        "开启后小猫的眼睛会跟随你的光标；关闭时它会看向自己的鼻子。\n纯视觉效果，不记录任何数据。",
-    "Mouse click count in the private diary (never targets).":
-        "在私人日记中记录鼠标点击次数（绝不涉及目标内容）。",
-    "Keystroke count in the diary (never which keys).":
-        "在日记中记录按键次数（绝不记录具体按键）。",
-    "Count key presses per key for the Heatmap window. Aggregate counts only —\n"
-    "never the order, timing or text — kept in memory and gone on restart.":
-        "为热力图窗口统计每个按键的按压次数。仅聚合计数——\n不记录顺序、时机或内容，仅保存在内存中，重启后即消失。",
-    "Show the live focus/activity stats when you hover over the cat.":
-        "悬停在小猫上方时显示实时的专注/活动统计。",
-    "Key/click counts aren't available here (needs X11, or macOS Input "
-    "Monitoring permission) — the cursor path still records.":
-        "此处无法统计按键/点击次数（需要 X11，或 macOS 的输入监控权限）——光标轨迹仍会记录。",
-    "Saved: activity on · mouse {mouse} · keyboard {keyboard} · "
-    "goal {goal} min · tooltip {tooltip}, keep {days} days.":
-        "已保存：活动已开启 · 鼠标 {mouse} · 键盘 {keyboard} · "
-        "目标 {goal} 分钟 · 悬停提示 {tooltip}，保留 {days} 天。",
-    "Saved: activity off · goal {goal} min · tooltip {tooltip}, "
-    "keep {days} days.":
-        "已保存：活动已关闭 · 目标 {goal} 分钟 · 悬停提示 {tooltip}，保留 {days} 天。",
-
-    # --- calendar dialog ---
-    "Calendar": "日历",
-    "Enabled — announces upcoming events": "启用 — 播报即将到来的事件",
-    "ICS URL:": "ICS 地址：",
-    "Remind:": "提前提醒：",
-    "Refresh every:": "刷新间隔：",
-    " min before": " 分钟前",
-    "Test": "测试",
-    "Paste the secret ICS URL first.": "请先粘贴私密的 ICS 地址。",
-    "Fetching…": "正在获取…",
-    "Failed: {error}": "失败：{error}",
-    "OK — feed reachable, no events in the next 24 h.": "正常 — 源可访问，未来 24 小时内没有事件。",
-    "OK — {count} event(s) in 24 h · {text}": "正常 — 24 小时内 {count} 个事件 · {text}",
-    "URL set": "地址已设置",
-    "no URL": "未设置地址",
-    "Saved ({state}): {url_note}, remind {min} min before, "
-    "refresh every {poll} min.":
-        "已保存（{state}）：{url_note}，提前 {min} 分钟提醒，每 {poll} 分钟刷新。",
-    "Google Calendar → Settings → <i>Secret address in iCal format</i>. "
-    "Apple/Outlook: any private calendar link works.<br>"
-    "Treat the URL as a password — it's stored in the owner-only config. "
-    "Calendar banners fly even during a focus session.":
-        "Google 日历 → 设置 → <i>以 iCal 格式查看私密地址</i>。"
-        "Apple/Outlook：任何私有日历链接均可使用。<br>"
-        "请把这个地址当作密码保管——它会被保存在仅限本人的配置中。"
-        "即使在专注时段，日历横幅也会正常播报。",
-    "📅 {summary} — at {when}": "📅 {summary} — 于 {when}",
-
-    # --- github dialog ---
-    "GitHub notifications": "GitHub 通知",
-    "Enabled — announces GitHub activity": "启用 — 播报 GitHub 活动",
-    "GitHub username:": "GitHub 用户名：",
-    "Token (optional):": "令牌（可选）：",
-    "Public options": "公开选项",
-    "Private options (token required)": "私有选项（需要令牌）",
-    "auto-filled when you verify a token": "验证令牌后自动填写",
-    "Enter your username, list accounts, or paste a token.": "请输入用户名、列出账号，或粘贴令牌。",
-    "Checking…": "正在检查…",
-    "Token rejected — check the PAT (read-only Notifications scope).":
-        "令牌被拒绝 — 请检查 PAT（只读 Notifications 权限）。",
-    "OK · verified as {login} · {text}": "正常 · 已验证为 {login} · {text}",
-    "OK · verified as {login} · no notifications.": "正常 · 已验证为 {login} · 没有通知。",
-    "OK · {text}": "正常 · {text}",
-    "OK — public mode, no recent activity.": "正常 — 公开模式，暂无最近活动。",
-    "no username": "未设置用户名",
-    "no token": "无令牌",
-    "token verified": "令牌已验证",
-    "token not verified": "令牌未验证",
-    "Saved ({state}): {who} · {public} public + {private} private options · {token}.":
-        "已保存（{state}）：{who} · {public} 个公开 + {private} 个私有选项 · {token}。",
-    "Enter a token to configure these options; Test verifies it. They are served only with a\n"
-    "token (read-only Notifications scope is enough); requests go straight to api.github.com.":
-        "输入令牌以配置这些选项；点击“测试”验证。它们仅在提供令牌时才会启用\n"
-        "（只读 Notifications 权限即可）；请求将直接发往 api.github.com。",
-    "Review requested": "请求评审",
-    "Mentions": "@提及",
-    "Assigned to me": "分配给我",
-    "CI status": "CI 状态",
-    "Issue activity": "Issue 活动",
-    "PR activity": "PR 活动",
-    "Star on my repo": "我的仓库被点赞",
-    "Fork of my repo": "我的仓库被 Fork",
-    "New follower": "新关注者",
-    "My stars & follows": "我的点赞与关注",
-
-    # --- reminder dialog ---
-    "Reminder": "提醒",
-    "Drag to move • Right-click for options": "拖拽移动 • 右键查看选项",
-    "Double-click to open • Drag to move • Right-click for options":
-        "双击打开 • 拖拽移动 • 右键查看选项",
-    "Message": "内容",
-    "Direction": "方向",
-    "Plane": "飞机",
-    "Plane color": "飞机颜色",
-    "Plane width": "飞机宽度",
-    "Left → Right": "左 → 右",
-    "Right → Left": "右 → 左",
-    "In": "在",
-    "At": "于",
-    "When": "时间",
-    "Repeat daily": "每天重复",
-    " px": " 像素",
-    "min": "分钟",
-    "sec": "秒",
-    ", daily": "，每天",
-    "Reminder in {left}. ({at}{daily})": "提醒时间：{left} 后（{at}{daily}）",
-    "Reminder cleared.": "提醒已清除。",
-    "Reminder set.": "提醒已设置。",
-    "Open link": "打开链接",
-    "Resume flight": "继续飞行",
-    "Pause flight": "暂停飞行",
-    "What should the cat remind you about?": "希望小猫提醒你什么？",
-    "Do you feed mycat?": "你喂过 mycat 了吗？",
-
-    # --- keyboard heatmap ---
-    "Keyboard heatmap": "键盘热力图",
-    "Collection is off — tick “Heatmap” in the Activity window and Save.":
-        "采集已关闭 — 请在“活动”窗口中勾选“热力图”并保存。",
-    "Key counting isn't available here (needs X11, or macOS Input Monitoring "
-    "permission), so nothing can be collected.":
-        "此处无法统计按键次数（需要 X11，或 macOS 的输入监控权限），因此无法采集任何数据。",
-
-    # --- settings dialog ---
-    "Error": "错误",
-
-    # --- focus tooltip / rest banner ---
-    "🍅 earned — time to rest": "🍅 达成 — 该休息一下了。",
-    "Still at it — time to rest 🍅": "继续加油 — 该休息一下了 🍅",
-    "🍅 {count} today · idle": "🍅 今日 {count} 个 · 空闲",
-
-    # --- morning digest ---
-    "best focus {min} min": "最长专注 {min} 分钟",
-    "Yesterday: ": "昨日： ",
-
-    # --- LLM settings dialog ---
-    "Chat / LLM settings": "聊天 / LLM 设置",
-    "LLM enabled": "启用 LLM",
-    "Vendor": "服务商",
-    "Name": "名称",
-    "Type": "类型",
-    "Base URL": "基础地址",
-    "Model": "模型",
-    "API key": "API 密钥",
-    "leave empty to use ${env}": "留空则使用 ${env}",
-    "Ollama (local)": "Ollama（本地）",
-    "OpenAI-compatible": "OpenAI 兼容",
-    "Load models": "加载模型",
-    "➕ Add custom…": "➕ 添加自定义…",
-    "Enter a base URL first.": "请先输入基础地址。",
-    "Loading models…": "正在加载模型…",
-    "Found {count} model(s).": "找到 {count} 个模型。",
-    "Could not load models: {message}": "无法加载模型：{message}",
-    "Testing {model}…": "正在测试 {model}…",
-    "OK — {elapsed:.2f} s (reply: {reply})": "正常 — {elapsed:.2f} 秒（回复：{reply}）",
-    "Test failed: {message}": "测试失败：{message}",
-    "Enter a vendor name.": "请输入服务商名称。",
-    "Pick a model first.": "请先选择模型。",
-    "Could not save: {exc}": "无法保存：{exc}",
-    "Saved, but live apply failed: {exc}": "已保存，但实时应用失败：{exc}",
-    "Saved ✓ ({state}): {name} · {model}": "已保存 ✓（{state}）：{name} · {model}",
-
-    # --- chat dialog ---
-    "Chat with a cat ({suffix})": "与小猫聊天（{suffix}）",
-    "Write a message…": "输入消息…",
-    "Write something...": "随便写点什么…",
-    "Send": "发送",
-    "Request": "请求",
-    "Response": "回复",
-    "Error: {message}": "错误：{message}",
-
-    # --- AI character generator ---
-    "Generate": "生成",
-    "Generate a custom char with AI": "使用 AI 生成自定义角色",
-    "Turn 1–3 photos of the same person into a custom char, or generate one "
-    "from the prompt. Reference photos are not stored by myCat.":
-        "用同一个人的 1–3 张照片生成自定义角色，或直接根据提示词生成。参考照片不会被 myCat 保存。",
-    "Example: Mina chibi char": "示例：Mina 的 Q 版角色",
-    "OpenAI (hosted, transparent)": "OpenAI（托管，透明）",
-    "Stable Diffusion — self-hosted": "Stable Diffusion — 自托管",
-    "ComfyUI — self-hosted": "ComfyUI — 自托管",
-    "img2img — turn my photos into a char": "img2img — 把我的照片变成角色",
-    "txt2img — from the prompt only": "txt2img — 仅根据提示词生成",
-    "Remember key in the operating system keyring": "将密钥保存在操作系统钥匙串中",
-    "Install mycat[secure] and configure an OS keyring to enable this.":
-        "安装 mycat[secure] 并配置操作系统钥匙串后即可启用。",
-    "Low — cheaper, good for a mascot": "低 — 更便宜，适合做吉祥物",
-    "Medium — more detail, costs more": "中 — 细节更多，费用更高",
-    "OpenAI API key": "OpenAI API 密钥",
-    "Quality": "质量",
-    "OpenAI": "OpenAI",
-    "Server address": "服务器地址",
-    "Checkpoint": "检查点",
-    "Steps": "步数",
-    "Background": "背景",
-    "Self-hosted server": "自托管服务器",
-    "Keep leaves the opaque image as generated. Remove clears a corner-connected, near-uniform background.":
-        "“保留”会按生成结果保留不透明图像。“移除”会清除与角落相连、颜色接近统一的背景。",
-    "Negative prompt": "负面提示词",
-    "Things to avoid. OpenAI has no negative field, so it's folded into the "
-    "prompt as 'the image must not contain: …'.":
-        "需要避免的内容。OpenAI 没有独立的负面提示词字段，因此会合并到提示词中，"
-        "形如“图像中不得包含：……”。",
-    "Add photos…": "添加照片…",
-    "Remove selected": "移除所选",
-    "Character name": "角色名称",
-    "Generate with": "使用以下方式生成",
-    "Mode": "模式",
-    "The generated char\nwill appear here.": "生成的角色\n将显示在这里。",
-    "Prompt": "提示词",
-    "Reference photos (maximum 3)": "参考照片（最多 3 张）",
-    "Enter the server address first.": "请先输入服务器地址。",
-    "Loaded {count} model(s).": "已加载 {count} 个模型。",
-    "Click to copy this error": "点击复制此错误",
-    "Copied to clipboard.": "已复制到剪贴板。",
-    "You already selected the maximum of 3 photos.": "你已选择了最多 3 张照片。",
-    "Choose reference photos": "选择参考照片",
-    "Images (*.png *.jpg *.jpeg *.webp);;All files (*)": "图片 (*.png *.jpg *.jpeg *.webp);;所有文件 (*)",
-    "Only the first 3 photos were added.": "仅添加了前 3 张照片。",
-    "img2img needs at least one reference photo (or switch to txt2img).":
-        "img2img 至少需要一张参考照片（或切换到 txt2img）。",
-    "Enter an OpenAI API key.": "请输入 OpenAI API 密钥。",
-    "Enter the self-hosted server address.": "请输入自托管服务器地址。",
-    "Enter a prompt.": "请输入提示词。",
-    "The keyring could not save the key. Generation will continue.":
-        "钥匙串无法保存密钥，将继续生成。",
-    " One API request will be charged.": " 将产生一次 API 请求费用。",
-    "Generating… this can take a bit.": "正在生成…可能需要一些时间。",
-    "Generated. Click Save to keep it, or Generate again.":
-        "已生成。点击“保存”保留，或再次点击“生成”。",
-    "Preview unavailable.": "无法显示预览。",
-    "Click to copy the image": "点击复制该图片",
-    "Image copied to clipboard.": "图片已复制到剪贴板。",
-    "Replace character?": "替换角色？",
-    'A character named "{char_id}" already exists. Replace it?':
-        '已存在名为 "{char_id}" 的角色。是否替换？',
-
-    # --- shop dialog ---
-    "myCat Shop": "myCat 商店",
-    "Refresh": "刷新",
-    "Server: {url}": "服务器：{url}",
-    "Catalog": "目录",
-    "My Chars": "我的角色",
-    "Uninstall selected": "卸载所选",
-    "Loading catalog…": "正在加载目录…",
-    "{count} chars available.": "共有 {count} 个角色可用。",
-    "No chars available.": "暂无可用角色。",
-    "⚠ Premium char '{name}' requires a subscription (coming soon).":
-        "⚠ 高级角色“{name}”需要订阅（即将推出）。",
-    "Downloading {name}…": "正在下载 {name}…",
-    "Installed: {id}": "已安装：{id}",
-    "⚠ Failed: {id} — {message}": "⚠ 失败：{id} — {message}",
-    "Uninstalled: {id}": "已卸载：{id}",
-    "⚠ Could not uninstall {id}": "⚠ 无法卸载 {id}",
-    "✓ Installed — Uninstall": "✓ 已安装 — 卸载",
-    "Install": "安装",
-    "Downloading… {kb} KB": "正在下载… {kb} KB",
-    "Retry": "重试",
-    "by {author}": "作者：{author}",
-    "unknown": "未知",
-}
+def available_languages() -> dict:
+    """``{code: display name}`` for every locale found in the folder."""
+    return dict(LANGUAGES)
 
 
 def current_language() -> str:
-    """Return the active language code ("en" or "zh")."""
-    return _current
-
-
-def is_chinese() -> bool:
-    return _current == "zh"
+    return active_code
 
 
 def tr(text: str) -> str:
-    """Return ``text`` translated to the current language (English fallback)."""
-    if _current == "zh":
-        return _TRANSLATIONS.get(text, text)
-    return text
+    """Translate ``text`` into the active language, or return it unchanged."""
+    return CATALOGS.get(active_code, {}).get(text, text)
 
 
 def config_file() -> Path:
-    """Path to the shared ``config.ini`` (same single source of truth as paths.py)."""
-    from mycat import paths
-
     return paths.config_file()
 
 
 def load_language(config_path: Path | None = None) -> str:
-    """Read the persisted language from config (falls back to default)."""
-    global _current
-    path = Path(config_path) if config_path else config_file()
-    try:
-        if path.exists():
-            config = configparser.ConfigParser()
-            config.read(path)
-            value = config.get("settings", CONFIG_KEY, fallback=DEFAULT_LANGUAGE).strip().lower()
-            if value in LANGUAGES:
-                _current = value
-    except Exception as exc:  # noqa: BLE001 - a bad config must not crash startup
-        logger.debug("Could not read language from config: %s", exc)
-    return _current
+    """Read the saved language from config and make it active."""
+    global active_code
+    config = config_store.read_config(config_path or config_file())
+    if config is not None and config.has_option(CONFIG_SECTION, CONFIG_KEY):
+        value = config.get(CONFIG_SECTION, CONFIG_KEY)
+        if value in LANGUAGES:
+            active_code = value
+    return active_code
 
 
 def set_language(code: str, config_path: Path | None = None) -> str:
-    """Switch the active language and persist it to ``[settings] language``."""
-    global _current
-    code = (code or DEFAULT_LANGUAGE).strip().lower()
-    if code not in LANGUAGES:
-        code = DEFAULT_LANGUAGE
-    _current = code
-    path = Path(config_path) if config_path else config_file()
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        config = configparser.ConfigParser()
-        if path.exists():
-            config.read(path)
-        if "settings" not in config:
-            config.add_section("settings")
-        config["settings"][CONFIG_KEY] = code
-        with open(path, "w") as f:
-            config.write(f)
-        try:
-            from mycat import secret_store
-
-            secret_store.secure_file(path)
-        except Exception:  # noqa: BLE001 - securing the file is best-effort
-            pass
-    except Exception as exc:  # noqa: BLE001 - language still applies in-memory
-        logger.error("Could not persist language setting: %s", exc)
-    logger.info("Language set to %s", code)
-    return code
+    """Switch the active language and persist the choice."""
+    global active_code
+    if code in LANGUAGES:
+        active_code = code
+        config_store.write_section(CONFIG_SECTION, {CONFIG_KEY: code}, config_path or config_file())
+    return active_code
 
 
-def build_language_menu(parent, config_path: Path | None = None) -> QtWidgets.QMenu:
-    """Append a 'Language' submenu (English / 简体中文 radio actions) to ``parent``.
+def build_language_menu(config_path: Path | None = None, on_changed=None) -> QtWidgets.QMenu:
+    """A "Language" submenu with one radio entry per available language.
 
-    ``parent`` should be a QMenu. When a language is chosen, the language is
-    persisted and the window's menus are rebuilt via the menu's parent window's
-    ``rebuild_menus`` (attached to the main window) so the switch applies at once.
+    Meant to sit under the Settings entry in the cat / tray menu. Picking a
+    language switches and persists it; ``on_changed`` (if given) is called so the
+    caller can refresh anything already on screen.
     """
-    from PySide6 import QtGui, QtWidgets  # local import to keep module import-light
-
-    menu = QtWidgets.QMenu(tr("Language"), parent)
-    radio_group = QtGui.QActionGroup(menu)
-    radio_group.setExclusive(True)
-    for code, label in LANGUAGES.items():
-        action = menu.addAction(label)
+    menu = QtWidgets.QMenu(tr("Language"))
+    group = QtGui.QActionGroup(menu)
+    group.setExclusive(True)
+    for code, name in LANGUAGES.items():
+        action = menu.addAction(name)
         action.setCheckable(True)
-        action.setChecked(code == _current)
-        radio_group.addAction(action)
-        action.triggered.connect(
-            lambda checked=False, c=code: _on_language_chosen(c, parent, config_path)
-        )
-    parent.addMenu(menu)
+        action.setChecked(code == active_code)
+        group.addAction(action)
+
+        def choose(checked, code=code):
+            if checked:
+                set_language(code, config_path)
+                if callable(on_changed):
+                    on_changed()
+
+        action.triggered.connect(choose)
     return menu
-
-
-def _on_language_chosen(code: str, parent_menu, config_path: Path | None) -> None:
-    set_language(code, config_path)
-    # The menu is created with the main window as its QWidget parent, so
-    # ``parent()`` reliably reaches the window even while the menu is shown as
-    # a top-level popup (``window()`` would return the popup itself).
-    window = getattr(parent_menu, "parent", None)
-    window = window() if callable(window) else None
-    rebuild = getattr(window, "rebuild_menus", None)
-    if callable(rebuild):
-        rebuild()
-
-
-__all__ = [
-    "LANGUAGES",
-    "current_language",
-    "is_chinese",
-    "tr",
-    "load_language",
-    "set_language",
-    "build_language_menu",
-]
