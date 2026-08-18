@@ -279,6 +279,7 @@
     "by {author}": "by {author}",
     "unknown": "unknown",
     "Settings…": "Settings…",
-    "Show in menu": "Show in menu"
+    "Show in menu": "Show in menu",
+    "Speak messages in a bubble (instead of a flying banner)": "Speak messages in a bubble (instead of a flying banner)"
   }
 }

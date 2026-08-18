@@ -214,6 +214,22 @@ class ReminderController(QtCore.QObject):
 
         try:
             if __package__:
+                from . import speech_bubble
+            else:
+                import importlib
+
+                speech_bubble = importlib.import_module("mycat.speech_bubble")
+            if speech_bubble.bubble_mode_enabled():
+                bubble = speech_bubble.BubbleWindow(self.window, reminder.text, url=getattr(reminder, "url", ""))
+                bubble.destroyed.connect(lambda _=None: setattr(self, "flyby", None))
+                self.flyby = bubble
+                bubble.start()
+                return
+        except Exception:
+            logger.exception("Speech bubble failed; falling back to the flyby")
+
+        try:
+            if __package__:
                 from .reminder_ui import FlybyWindow
             else:
                 import importlib

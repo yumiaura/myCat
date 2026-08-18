@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PySide6 import QtWidgets
 
-from . import i18n, menu_config
+from . import i18n, menu_config, speech_bubble
 
 logger = logging.getLogger(__name__)
 tr = i18n.tr
@@ -36,6 +36,12 @@ class SettingsDialog(QtWidgets.QDialog):
         wait_layout.addWidget(wait_label)
         wait_layout.addWidget(self.wait_spinbox)
         layout.addLayout(wait_layout)
+
+        # Speak announcements in a comic bubble above the cat instead of flying a
+        # banner plane across the screen.
+        self.bubble_checkbox = QtWidgets.QCheckBox(tr("Speak messages in a bubble (instead of a flying banner)"))
+        self.bubble_checkbox.setChecked(speech_bubble.bubble_mode_enabled(self.config_path))
+        layout.addWidget(self.bubble_checkbox)
 
         # Which feature entries show in the right-click / tray menu.
         menu_group = QtWidgets.QGroupBox(tr("Show in menu"))
@@ -94,5 +100,10 @@ class SettingsDialog(QtWidgets.QDialog):
             )
         except Exception as e:
             logger.error(f"Error saving menu visibility: {e}")
+
+        try:
+            speech_bubble.set_bubble_mode(self.bubble_checkbox.isChecked(), self.config_path)
+        except Exception as e:
+            logger.error(f"Error saving speech-bubble setting: {e}")
 
         super().accept()

@@ -279,6 +279,7 @@
     "by {author}": "作者：{author}",
     "unknown": "未知",
     "Settings…": "设置…",
-    "Show in menu": "在菜单中显示"
+    "Show in menu": "在菜单中显示",
+    "Speak messages in a bubble (instead of a flying banner)": "用气泡显示消息（而不是飞过的横幅）"
   }
 }
