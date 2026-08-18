@@ -280,6 +280,6 @@
     "unknown": "неизвестно",
     "Settings…": "Настройки…",
     "Show in menu": "Показывать в меню",
-    "Speak messages in a bubble (instead of a flying banner)": "Показывать сообщения в облачке (вместо летящего баннера)"
+    "On: messages fly across the screen. Off: the cat says them in a speech bubble.": "Вкл: сообщения летят по экрану. Выкл: кот говорит их в облачке."
   }
 }

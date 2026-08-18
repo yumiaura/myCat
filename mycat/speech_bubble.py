@@ -20,7 +20,9 @@ from . import config_store, paths
 logger = logging.getLogger(__name__)
 
 SETTINGS_SECTION = "settings"
-CONFIG_KEY = "speech_bubble"
+# The Settings "Reminder" toggle: on (default) -> messages fly a plane across the
+# screen; off -> the cat speaks them in a bubble instead, no plane at all.
+CONFIG_KEY = "reminder_flyby"
 
 TYPE_INTERVAL_MS = 35   # per revealed character
 HOLD_SECONDS = 10.0     # how long the finished bubble lingers
@@ -31,22 +33,27 @@ CORNER = 16             # bubble corner radius
 HEAD_GAP = 6            # gap between the tail tip and the cat's head
 
 
-def bubble_mode_enabled(cfg_file=None) -> bool:
-    """Whether announcements should be spoken in a bubble instead of flown."""
+def reminder_flyby_enabled(cfg_file=None) -> bool:
+    """Whether messages fly a plane (True, the default) rather than drop to a bubble."""
     config = config_store.read_config(cfg_file or paths.config_file())
     if config is not None and config.has_option(SETTINGS_SECTION, CONFIG_KEY):
         try:
             return config.getboolean(SETTINGS_SECTION, CONFIG_KEY)
         except ValueError:
-            return False
-    return False
+            return True
+    return True
 
 
-def set_bubble_mode(enabled: bool, cfg_file=None) -> None:
-    """Persist the speech-bubble toggle."""
+def set_reminder_flyby(enabled: bool, cfg_file=None) -> None:
+    """Persist the Settings 'Reminder' toggle (on = plane, off = bubble)."""
     config_store.write_section(
         SETTINGS_SECTION, {CONFIG_KEY: config_store.bool_str(bool(enabled))}, cfg_file or paths.config_file()
     )
+
+
+def bubble_mode_enabled(cfg_file=None) -> bool:
+    """Bubble mode is on exactly when the Reminder (flyby) toggle is off."""
+    return not reminder_flyby_enabled(cfg_file)
 
 
 class BubbleWindow(QtWidgets.QWidget):

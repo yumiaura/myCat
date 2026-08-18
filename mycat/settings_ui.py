@@ -37,11 +37,15 @@ class SettingsDialog(QtWidgets.QDialog):
         wait_layout.addWidget(self.wait_spinbox)
         layout.addLayout(wait_layout)
 
-        # Speak announcements in a comic bubble above the cat instead of flying a
-        # banner plane across the screen.
-        self.bubble_checkbox = QtWidgets.QCheckBox(tr("Speak messages in a bubble (instead of a flying banner)"))
-        self.bubble_checkbox.setChecked(speech_bubble.bubble_mode_enabled(self.config_path))
-        layout.addWidget(self.bubble_checkbox)
+        # The "Reminder" toggle: on (default) flies a banner plane across the
+        # screen; off makes the cat speak every message in a bubble above its
+        # head instead — no plane.
+        self.reminder_checkbox = QtWidgets.QCheckBox(tr("Reminder"))
+        self.reminder_checkbox.setToolTip(
+            tr("On: messages fly across the screen. Off: the cat says them in a speech bubble.")
+        )
+        self.reminder_checkbox.setChecked(speech_bubble.reminder_flyby_enabled(self.config_path))
+        layout.addWidget(self.reminder_checkbox)
 
         # Which feature entries show in the right-click / tray menu.
         menu_group = QtWidgets.QGroupBox(tr("Show in menu"))
@@ -102,8 +106,8 @@ class SettingsDialog(QtWidgets.QDialog):
             logger.error(f"Error saving menu visibility: {e}")
 
         try:
-            speech_bubble.set_bubble_mode(self.bubble_checkbox.isChecked(), self.config_path)
+            speech_bubble.set_reminder_flyby(self.reminder_checkbox.isChecked(), self.config_path)
         except Exception as e:
-            logger.error(f"Error saving speech-bubble setting: {e}")
+            logger.error(f"Error saving Reminder setting: {e}")
 
         super().accept()

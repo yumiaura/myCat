@@ -280,6 +280,6 @@
     "unknown": "未知",
     "Settings…": "设置…",
     "Show in menu": "在菜单中显示",
-    "Speak messages in a bubble (instead of a flying banner)": "用气泡显示消息（而不是飞过的横幅）"
+    "On: messages fly across the screen. Off: the cat says them in a speech bubble.": "开启：消息飞过屏幕。关闭：小猫用气泡说出它们。"
   }
 }
