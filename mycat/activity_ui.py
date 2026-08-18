@@ -16,15 +16,18 @@ from PySide6 import QtCore, QtGui, QtWidgets
 if __package__:
     from . import activity as activity_mod
     from . import focus as focus_mod
+    from . import i18n
     from .ui_theme import LIGHT_QSS
 else:
     import importlib
 
     activity_mod = importlib.import_module("mycat.activity")
     focus_mod = importlib.import_module("mycat.focus")
+    i18n = importlib.import_module("mycat.i18n")
     LIGHT_QSS = importlib.import_module("mycat.ui_theme").LIGHT_QSS
 
 logger = logging.getLogger(__name__)
+tr = i18n.tr
 
 KIND_ICONS = {"focus": "🍅", "break": "☕", "long_break": "☕", "work": "💻"}
 
@@ -34,7 +37,17 @@ KIND_ICONS = {"focus": "🍅", "break": "☕", "long_break": "☕", "work": "�
 # no text glyph so it stays a colour emoji; the cursor's travel uses a plain path
 # symbol (⤳) that always renders monochrome.
 MONO = "︎"
-TABLE_COLUMNS = ["Session", "Duration", f"⌨{MONO} Keys", f"🖱{MONO} Mouse", "Active"]
+
+
+def table_columns() -> list:
+    """Column headers for the activity table (translated live)."""
+    return [
+        tr("Session"),
+        tr("Duration"),
+        f"⌨{MONO} {tr('Keys')}",
+        f"🖱{MONO} {tr('Mouse')}",
+        tr("Active"),
+    ]
 
 
 def active_pct(active_minutes: int, window_minutes: int) -> str:
@@ -228,7 +241,7 @@ class ActivityDialog(QtWidgets.QDialog):
         super().__init__(parent)
         self.collector = collector
         self.focus_controller = focus_controller
-        self.setWindowTitle("Activity")
+        self.setWindowTitle(tr("Activity"))
         self.setModal(False)
         self.setMinimumWidth(720)
         self.resize(760, 560)
@@ -255,36 +268,36 @@ class ActivityDialog(QtWidgets.QDialog):
 
         # Three independent toggles: Tracking drives only the cat's eyes, while
         # Mouse and Keyboard are the diary count tracks. None greys out the others.
-        self.enabled_box = QtWidgets.QCheckBox("Tracking")
+        self.enabled_box = QtWidgets.QCheckBox(tr("Tracking"))
         self.enabled_box.setToolTip(
-            "The cat's eyes follow your cursor; off, it looks at its own nose.\n"
-            "Purely visual — it records nothing."
+            tr("The cat's eyes follow your cursor; off, it looks at its own nose.\n"
+               "Purely visual — it records nothing.")
         )
         self.enabled_box.setChecked(settings.enabled)
-        self.mouse_box = QtWidgets.QCheckBox("Mouse")
-        self.mouse_box.setToolTip("Mouse click count in the private diary (never targets).")
+        self.mouse_box = QtWidgets.QCheckBox(tr("Mouse"))
+        self.mouse_box.setToolTip(tr("Mouse click count in the private diary (never targets)."))
         self.mouse_box.setChecked(settings.mouse_enabled)
-        self.keyboard_box = QtWidgets.QCheckBox("Keyboard")
-        self.keyboard_box.setToolTip("Keystroke count in the diary (never which keys).")
+        self.keyboard_box = QtWidgets.QCheckBox(tr("Keyboard"))
+        self.keyboard_box.setToolTip(tr("Keystroke count in the diary (never which keys)."))
         self.keyboard_box.setChecked(settings.keyboard_enabled)
         # Opt-in per-key heatmap collection (off by default). Session-only,
         # aggregate counts in memory — feeds the Keyboard heatmap window.
-        self.collect_box = QtWidgets.QCheckBox("Heatmap")
+        self.collect_box = QtWidgets.QCheckBox(tr("Heatmap"))
         self.collect_box.setToolTip(
-            "Count key presses per key for the Heatmap window. Aggregate counts only —\n"
-            "never the order, timing or text — kept in memory and gone on restart."
+            tr("Count key presses per key for the Heatmap window. Aggregate counts only —\n"
+               "never the order, timing or text — kept in memory and gone on restart.")
         )
         self.collect_box.setChecked(settings.key_heatmap_enabled)
         # Independent of the tracking tracks: whether hovering the cat shows the
         # live stats tooltip (driven by the FocusController).
-        self.tooltip_box = QtWidgets.QCheckBox("Tooltip")
-        self.tooltip_box.setToolTip("Show the live focus/activity stats when you hover over the cat.")
+        self.tooltip_box = QtWidgets.QCheckBox(tr("Tooltip"))
+        self.tooltip_box.setToolTip(tr("Show the live focus/activity stats when you hover over the cat."))
         self.tooltip_box.setChecked(self.tooltip_enabled())
         # An "Enable:" label leads the four toggles; the destructive Delete-all
         # lives in the bottom bar (next to Export) so this row never runs out of
         # width.
         toggles_row = QtWidgets.QHBoxLayout()
-        toggles_row.addWidget(QtWidgets.QLabel("Enable:"))
+        toggles_row.addWidget(QtWidgets.QLabel(tr("Enable:")))
         toggles_row.addWidget(self.enabled_box)
         toggles_row.addSpacing(16)
         toggles_row.addWidget(self.mouse_box)
@@ -298,8 +311,8 @@ class ActivityDialog(QtWidgets.QDialog):
         # it's unavailable here. The cursor path and the eyes work without it.
         if not activity_mod.counts_available():
             hint = QtWidgets.QLabel(
-                "Key/click counts aren't available here (needs X11, or macOS Input "
-                "Monitoring permission) — the cursor path still records."
+                tr("Key/click counts aren't available here (needs X11, or macOS Input "
+                   "Monitoring permission) — the cursor path still records.")
             )
             hint.setTextFormat(QtCore.Qt.TextFormat.RichText)
             hint.setWordWrap(True)
@@ -307,25 +320,25 @@ class ActivityDialog(QtWidgets.QDialog):
             layout.addWidget(hint)
 
         controls_row = QtWidgets.QHBoxLayout()
-        controls_row.addWidget(QtWidgets.QLabel("Show:"))
+        controls_row.addWidget(QtWidgets.QLabel(tr("Show:")))
         self.day_combo = QtWidgets.QComboBox()
-        self.day_combo.addItems(["Today", "Yesterday"])
+        self.day_combo.addItems([tr("Today"), tr("Yesterday")])
         self.day_combo.currentIndexChanged.connect(self.refresh_log)
         controls_row.addWidget(self.day_combo)
         controls_row.addSpacing(16)
         # The Pomodoro goal: a run this long earns a 🍅 (persisted to [focus]).
-        controls_row.addWidget(QtWidgets.QLabel("Pomodoro goal:"))
+        controls_row.addWidget(QtWidgets.QLabel(tr("Pomodoro goal:")))
         self.goal_spin = QtWidgets.QSpinBox()
         self.goal_spin.setRange(1, 240)
         self.goal_spin.setValue(self.focus_minutes())
-        self.goal_spin.setSuffix(" min")
+        self.goal_spin.setSuffix(tr(" min"))
         controls_row.addWidget(self.goal_spin)
         controls_row.addSpacing(16)
-        controls_row.addWidget(QtWidgets.QLabel("History:"))
+        controls_row.addWidget(QtWidgets.QLabel(tr("History:")))
         self.retention_spin = QtWidgets.QSpinBox()
         self.retention_spin.setRange(7, 3650)
         self.retention_spin.setValue(settings.retention_days)
-        self.retention_spin.setSuffix(" days")
+        self.retention_spin.setSuffix(tr(" days"))
         controls_row.addWidget(self.retention_spin)
         controls_row.addStretch(1)
         layout.addLayout(controls_row)
@@ -335,10 +348,10 @@ class ActivityDialog(QtWidgets.QDialog):
         self.timeline = DayTimeline()
         layout.addWidget(self.timeline)
         legend = QtWidgets.QLabel(
-            "<span style='color:#8bbf8b'>■</span> rest"
-            "&nbsp;&nbsp;&nbsp;<span style='color:#c0392b'>■</span> active"
-            "&nbsp;&nbsp;&nbsp;<span style='color:#c4c4cc'>■</span> future"
-            "&nbsp;&nbsp;&nbsp;<span style='color:#1f6feb'>│</span> now"
+            f"<span style='color:#8bbf8b'>■</span> {tr('rest')}"
+            f"&nbsp;&nbsp;&nbsp;<span style='color:#c0392b'>■</span> {tr('active')}"
+            f"&nbsp;&nbsp;&nbsp;<span style='color:#c4c4cc'>■</span> {tr('future')}"
+            f"&nbsp;&nbsp;&nbsp;<span style='color:#1f6feb'>│</span> {tr('now')}"
         )
         legend.setTextFormat(QtCore.Qt.TextFormat.RichText)
         legend.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -346,8 +359,8 @@ class ActivityDialog(QtWidgets.QDialog):
         # the swatch squares and the "now" bar are colour-coded (inline spans).
         layout.addWidget(legend)
 
-        self.table = QtWidgets.QTableWidget(0, len(TABLE_COLUMNS))
-        self.table.setHorizontalHeaderLabels(TABLE_COLUMNS)
+        self.table = QtWidgets.QTableWidget(0, len(table_columns()))
+        self.table.setHorizontalHeaderLabels(table_columns())
         self.table.verticalHeader().setVisible(False)
         self.table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
@@ -362,7 +375,7 @@ class ActivityDialog(QtWidgets.QDialog):
 
         # TOTAL as a pinned one-row table under the columns — always visible, and
         # its cells line up under the main table (widths kept in sync below).
-        self.totals_table = QtWidgets.QTableWidget(1, len(TABLE_COLUMNS))
+        self.totals_table = QtWidgets.QTableWidget(1, len(table_columns()))
         self.totals_table.horizontalHeader().setVisible(False)
         self.totals_table.verticalHeader().setVisible(False)
         self.totals_table.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
@@ -377,7 +390,7 @@ class ActivityDialog(QtWidgets.QDialog):
         self.totals_table.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         self.totals_table.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.totals_table.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        for column in range(len(TABLE_COLUMNS)):
+        for column in range(len(table_columns())):
             self.totals_table.horizontalHeader().setSectionResizeMode(column, QtWidgets.QHeaderView.ResizeMode.Fixed)
         self.totals_table.verticalHeader().setDefaultSectionSize(22)
         self.totals_table.setRowHeight(0, 22)
@@ -393,22 +406,22 @@ class ActivityDialog(QtWidgets.QDialog):
 
         # Export · Delete-all (left) · Save, Close (right), same style as the others.
         button_row = QtWidgets.QHBoxLayout()
-        self.export_button = QtWidgets.QPushButton("Export CSV…")
+        self.export_button = QtWidgets.QPushButton(tr("Export CSV…"))
         self.export_button.clicked.connect(self.export_csv)
         button_row.addWidget(self.export_button)
-        self.delete_button = QtWidgets.QPushButton("Delete all…")
+        self.delete_button = QtWidgets.QPushButton(tr("Delete all…"))
         self.delete_button.clicked.connect(self.delete_all)
         button_row.addWidget(self.delete_button)
         button_row.addStretch(1)
-        self.keyboard_button = QtWidgets.QPushButton("Heatmap")
-        self.keyboard_button.setToolTip("Open a live keyboard heatmap of key presses this session.")
+        self.keyboard_button = QtWidgets.QPushButton(tr("Heatmap"))
+        self.keyboard_button.setToolTip(tr("Open a live keyboard heatmap of key presses this session."))
         # Only usable once the Heatmap toggle is on — nothing is collected otherwise.
         self.keyboard_button.setEnabled(self.collect_box.isChecked())
         self.collect_box.toggled.connect(self.keyboard_button.setEnabled)
         self.keyboard_button.clicked.connect(self.open_keyboard_heatmap)
         button_row.addWidget(self.keyboard_button)
-        self.save_button = QtWidgets.QPushButton("Save")
-        self.close_button = QtWidgets.QPushButton("Close")
+        self.save_button = QtWidgets.QPushButton(tr("Save"))
+        self.close_button = QtWidgets.QPushButton(tr("Close"))
         self.save_button.clicked.connect(self.save_settings)
         self.close_button.clicked.connect(self.reject)
         button_row.addWidget(self.save_button)
@@ -425,9 +438,11 @@ class ActivityDialog(QtWidgets.QDialog):
         controller = self.focus_controller
         status = controller.status_text() if controller is not None else ""
         if status:
-            self.now_label.setText(f"Current: {status}")
+            self.now_label.setText(tr("Current: {status}").format(status=status))
         else:
-            self.now_label.setText("Current: idle — start working and a 🍅 builds after 25 min.")
+            self.now_label.setText(
+                tr("Current: idle — start working and a 🍅 builds after 25 min.")
+            )
 
         # On the Today view, rebuild every second so the live current row and
         # the timeline stay current (the table is small — a rebuild is cheap).
@@ -513,7 +528,7 @@ class ActivityDialog(QtWidgets.QDialog):
             runs = activity_mod.graded_runs(store, day, self.focus_minutes())
         except Exception:  # noqa: BLE001 - a broken DB shows an empty table, not a crash
             logger.exception("Failed to build activity table")
-            self.set_totals(["Could not read the activity database.", "", "", "", "", ""])
+            self.set_totals([tr("Could not read the activity database."), "", "", "", ""])
             return
 
         now = self.collector.now_fn()
@@ -598,7 +613,7 @@ class ActivityDialog(QtWidgets.QDialog):
         # columns, so it stays visible even when the rows scroll.
         self.set_totals(
             [
-                f"TOTAL 🍅 {tomatoes}",
+                tr("TOTAL 🍅 {tomatoes}").format(tomatoes=tomatoes),
                 format_hm(totals["active"] * 60),
                 f"{totals['keys']:,}",
                 f"{totals['clicks']:,} / {format_meters(totals['mouse_px'], self.dpi)}",
@@ -732,7 +747,7 @@ class ActivityDialog(QtWidgets.QDialog):
         day = self.selected_day()
         default_name = f"mycat-activity-{day.isoformat()}.csv"
         path, chosen = QtWidgets.QFileDialog.getSaveFileName(
-            self, "Export activity to CSV", default_name, "CSV files (*.csv)"
+            self, tr("Export activity to CSV"), default_name, tr("CSV files (*.csv)")
         )
         if not path:
             return
@@ -742,10 +757,15 @@ class ActivityDialog(QtWidgets.QDialog):
             count = self.write_csv(path)
         except OSError:
             logger.exception("Failed to export activity CSV")
-            self.set_status("Could not write the CSV file.", ok=False)
+            self.set_status(tr("Could not write the CSV file."), ok=False)
             return
         logger.info("Activity exported to CSV (%d periods) -> %s", count, path)
-        self.set_status(f"Exported {count} periods to {Path(path).name}.", ok=True)
+        self.set_status(
+            tr("Exported {count} periods to {name}.").format(
+                count=count, name=Path(path).name
+            ),
+            ok=True,
+        )
 
     def set_status(self, text: str, ok: bool | None = None) -> None:
         """Status line above the buttons: green when ok, red when not."""
@@ -756,8 +776,9 @@ class ActivityDialog(QtWidgets.QDialog):
     def delete_all(self) -> None:
         answer = QtWidgets.QMessageBox.question(
             self,
-            "Delete activity history",
-            "Delete ALL recorded activity and focus sessions from this computer?\nThis cannot be undone.",
+            tr("Delete activity history"),
+            tr("Delete ALL recorded activity and focus sessions from this computer?\n"
+               "This cannot be undone."),
             QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
             QtWidgets.QMessageBox.StandardButton.No,
         )
@@ -825,14 +846,24 @@ class ActivityDialog(QtWidgets.QDialog):
         if settings.enabled:
             mouse = "✓" if settings.mouse_enabled else "✗"
             keyboard = "✓" if settings.keyboard_enabled else "✗"
-            status = (
-                f"Saved: activity on · mouse {mouse} · keyboard {keyboard} · "
-                f"goal {goal} min · tooltip {tooltip}, keep {settings.retention_days} days."
+            status = tr(
+                "Saved: activity on · mouse {mouse} · keyboard {keyboard} · "
+                "goal {goal} min · tooltip {tooltip}, keep {days} days."
+            ).format(
+                mouse=mouse,
+                keyboard=keyboard,
+                goal=goal,
+                tooltip=tooltip,
+                days=settings.retention_days,
             )
         else:
-            status = (
-                f"Saved: activity off · goal {goal} min · tooltip {tooltip}, "
-                f"keep {settings.retention_days} days."
+            status = tr(
+                "Saved: activity off · goal {goal} min · tooltip {tooltip}, "
+                "keep {days} days."
+            ).format(
+                goal=goal,
+                tooltip=tooltip,
+                days=settings.retention_days,
             )
         self.set_status(status, ok=True)
 

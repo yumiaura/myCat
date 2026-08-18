@@ -10,12 +10,13 @@ from typing import TYPE_CHECKING
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from . import llm_prompt
+from . import i18n, llm_prompt
 
 if TYPE_CHECKING:
     from .llm import LLMContext
 
 logger = logging.getLogger(__name__)
+tr = i18n.tr
 
 
 def attach_chat(window: QtWidgets.QWidget, context: LLMContext, enabled: bool = True) -> None:
@@ -142,7 +143,7 @@ class ChatDialog(QtWidgets.QDialog):
             | QtCore.Qt.WindowType.WindowStaysOnTopHint
         )
         title_suffix = controller.context.backend_name.capitalize()
-        self.setWindowTitle(f"Chat with a cat ({title_suffix})")
+        self.setWindowTitle(tr("Chat with a cat ({suffix})").format(suffix=title_suffix))
         self.resize(360, 420)
         self.setMinimumSize(320, 260)
         self.setSizeGripEnabled(True)
@@ -195,7 +196,7 @@ class ChatDialog(QtWidgets.QDialog):
             }
         """
         self.input_field = QtWidgets.QLineEdit()
-        self.input_field.setPlaceholderText("Write a message…")
+        self.input_field.setPlaceholderText(tr("Write a message…"))
         self.input_field.setMinimumHeight(34)
         self.input_field.setStyleSheet(
             """
@@ -217,7 +218,7 @@ class ChatDialog(QtWidgets.QDialog):
         )
         input_layout.addWidget(self.input_field, 1)
 
-        self.send_button = QtWidgets.QPushButton("Send")
+        self.send_button = QtWidgets.QPushButton(tr("Send"))
         self.send_button.setMinimumHeight(34)
         self.send_button.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.send_button.setStyleSheet(button_style)
@@ -240,7 +241,7 @@ class ChatDialog(QtWidgets.QDialog):
     def show_welcome_message(self) -> None:
         self.messages = []
         self.clear_message_widgets()
-        label = QtWidgets.QLabel("Write something...")
+        label = QtWidgets.QLabel(tr("Write something..."))
         label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         label.setStyleSheet("color: #888; font-style: italic; margin-top: 40px;")
         self.messages_layout.addWidget(label)
@@ -296,7 +297,7 @@ class ChatDialog(QtWidgets.QDialog):
 
     def on_ai_error(self, message: str) -> None:
         logger.error("LLM backend error: %s", message)
-        self.append_message("cat", f"Error: {message}")
+        self.append_message("cat", tr("Error: {message}").format(message=message))
         self.schedule_scroll()
         self.log_request_summary(message, success=False)
 
@@ -455,7 +456,7 @@ class MessageBubble(QtWidgets.QWidget):
         inner.setContentsMargins(6, 4, 6, 4)
         inner.setSpacing(2)
 
-        header = QtWidgets.QLabel("Request" if role == "user" else "Response")
+        header = QtWidgets.QLabel(tr("Request") if role == "user" else tr("Response"))
         header.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
         header.setStyleSheet("font-size: 13px; color: #1c1c1c;")
 

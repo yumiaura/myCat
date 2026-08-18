@@ -18,15 +18,17 @@ from PySide6 import QtCore, QtGui
 
 if __package__:
     from . import activity as activity_mod
-    from . import config_store, paths
+    from . import config_store, i18n, paths
 else:
     import importlib
 
     activity_mod = importlib.import_module("mycat.activity")
     config_store = importlib.import_module("mycat.config_store")
+    i18n = importlib.import_module("mycat.i18n")
     paths = importlib.import_module("mycat.paths")
 
 logger = logging.getLogger(__name__)
+tr = i18n.tr
 
 CFG_DIR = paths.config_dir()
 CFG_FILE = paths.config_file()
@@ -58,10 +60,10 @@ def compose_digest(summary: dict) -> str:
     if summary["focus_count"]:
         parts.append(f"🍅 {summary['focus_count']}")
     if summary["best_focus_minutes"]:
-        parts.append(f"best focus {summary['best_focus_minutes']} min")
+        parts.append(tr("best focus {min} min").format(min=summary["best_focus_minutes"]))
     if not parts:
         return ""
-    return "Yesterday: " + " · ".join(parts)
+    return tr("Yesterday: ") + " · ".join(parts)
 
 
 def screen_dpi() -> float:

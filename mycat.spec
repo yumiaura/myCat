@@ -63,6 +63,12 @@ if assets_dir.is_dir():
             if font.is_file():
                 datas.append((str(font), "mycat/assets/fonts"))
 
+# UI translation files (i18n scans mycat/locale/*.json at startup).
+locale_dir = Path("mycat") / "locale"
+if locale_dir.is_dir():
+    for locale_file in sorted(locale_dir.glob("*.json")):
+        datas.append((str(locale_file), "mycat/locale"))
+
 
 a = Analysis(
     ['mycat/main.py'],
