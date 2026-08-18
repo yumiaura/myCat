@@ -7,6 +7,9 @@ All notable changes to this project are documented in this file.
 ### Added
 - **Korean interface — 한국어.** The UI is now also available in Korean, joining English, Русский and 简体中文. Pick it under *Settings… → Language*. As with the other languages, it's just a `mycat/locale/ko.json` file the app scans at startup — no code change (branch `feat/i18n-korean`).
 
+### Changed
+- **Chat, LLM and Calendar are hidden from the menu by default.** They're opt-in (most people don't set up Ollama or a calendar), so the menu starts tidier; turn any of them back on under *Settings… → Show in menu*. Reminder, GitHub, Activity and Chars still show by default.
+
 ## [0.1.29] - 2026-08-18
 
 ### Added
