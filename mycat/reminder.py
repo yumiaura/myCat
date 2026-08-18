@@ -198,6 +198,9 @@ class ReminderController(QtCore.QObject):
         dialog.setModal(False)
         dialog.finished.connect(lambda result: setattr(self, "settings_dialog", None))
         self.settings_dialog = dialog
+        place_beside_cat = getattr(self.window, "place_beside_cat", None)
+        if callable(place_beside_cat):
+            place_beside_cat(dialog)
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()

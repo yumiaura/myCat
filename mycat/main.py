@@ -1234,6 +1234,34 @@ class PixelCatWindow(QtWidgets.QWidget):
         tidy_separators(menu)
         menu.exec(self.mapToGlobal(pos))
 
+    def place_beside_cat(self, dialog) -> None:
+        """Open a pop-up beside the cat, on the side facing the screen centre, so
+        it never covers the cat (or the speech bubble above it).
+
+        Cat on the right half of the screen → the dialog opens to its left; cat on
+        the left half → to its right. If that side is too tight the dialog flips to
+        the other side, then clamps onto the screen as a last resort. Vertically it
+        sits centred on the cat.
+        """
+        dialog.adjustSize()
+        dw, dh = dialog.width(), dialog.height()
+        cat = self.frameGeometry()
+        screen = self.screen() or QtWidgets.QApplication.primaryScreen()
+        area = screen.availableGeometry() if screen is not None else cat
+        gap = 12
+        if cat.center().x() >= area.center().x():
+            x = cat.left() - gap - dw            # cat on the right → open left
+        else:
+            x = cat.right() + gap                # cat on the left → open right
+        if x < area.left():                      # too tight that side → flip over
+            x = cat.right() + gap
+        elif x + dw > area.right():
+            x = cat.left() - gap - dw
+        x = max(area.left(), min(x, area.right() - dw))
+        y = cat.center().y() - dh // 2
+        y = max(area.top(), min(y, area.bottom() - dh))
+        dialog.move(x, y)
+
     def open_ai_char(self) -> None:
         """Open the reference-photo generator and select its saved result."""
         try:
@@ -1245,6 +1273,7 @@ class PixelCatWindow(QtWidgets.QWidget):
                 AICharDialog = importlib.import_module("mycat.ai_char_ui").AICharDialog
             dialog = AICharDialog(self)
             dialog.character_created.connect(self.load_image)
+            self.place_beside_cat(dialog)
             dialog.exec()
         except Exception as exc:  # noqa: BLE001 - keep the desktop companion alive
             logger.exception("Failed to open AI character generator")
@@ -1284,6 +1313,7 @@ class PixelCatWindow(QtWidgets.QWidget):
             logger.exception("Failed to import LLM settings dialog")
             return
         dialog = LLMSettingsDialog(self, parent=self)
+        self.place_beside_cat(dialog)
         dialog.exec()
 
     def open_settings(self) -> None:
@@ -1299,6 +1329,7 @@ class PixelCatWindow(QtWidgets.QWidget):
             logger.exception("Failed to import Settings dialog")
             return
         dialog = SettingsDialog(self, config_path=CFG_FILE, main_window=self)
+        self.place_beside_cat(dialog)
         dialog.exec()
 
     def open_github_settings(self) -> None:
@@ -1316,6 +1347,7 @@ class PixelCatWindow(QtWidgets.QWidget):
             logger.exception("Failed to import GitHub settings UI")
             return
         dialog = GitHubDialog(notifier, parent=self)
+        self.place_beside_cat(dialog)
         dialog.show()
         dialog.raise_()
 
@@ -1334,6 +1366,7 @@ class PixelCatWindow(QtWidgets.QWidget):
             logger.exception("Failed to import calendar settings UI")
             return
         dialog = CalendarDialog(controller, parent=self)
+        self.place_beside_cat(dialog)
         dialog.show()
         dialog.raise_()
 
@@ -1352,6 +1385,7 @@ class PixelCatWindow(QtWidgets.QWidget):
             logger.exception("Failed to import activity UI")
             return
         dialog = ActivityDialog(collector, focus_controller=getattr(self, "focus_controller", None), parent=self)
+        self.place_beside_cat(dialog)
         dialog.show()
         dialog.raise_()
 
@@ -1383,6 +1417,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         dialog.char_installed.connect(self.on_char_installed)
         dialog.char_uninstalled.connect(self.on_char_uninstalled)
         self.shop_dialog = dialog
+        self.place_beside_cat(dialog)
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
@@ -1429,6 +1464,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         update_button = box.addButton("Update", QtWidgets.QMessageBox.ButtonRole.ActionRole)
         update_button.setEnabled(can_update)
         box.addButton(QtWidgets.QMessageBox.StandardButton.Close)
+        self.place_beside_cat(box)
         box.exec()
         clicked = box.clickedButton()
         if clicked is releases_button:
@@ -1516,6 +1552,7 @@ class PixelCatWindow(QtWidgets.QWidget):
                     signals.failed.emit(str(exc))
 
         threading.Thread(target=worker, name="mycat-update", daemon=True).start()
+        self.place_beside_cat(dialog)
         dialog.exec()
 
     def finish_update(self) -> None:

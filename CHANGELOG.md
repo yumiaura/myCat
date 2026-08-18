@@ -10,6 +10,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 - **Chat, LLM and Calendar are hidden from the menu by default.** They're opt-in (most people don't set up Ollama or a calendar), so the menu starts tidier; turn any of them back on under *Settings… → Show in menu*. Reminder, GitHub, Activity and Chars still show by default.
+- **Dialogs open beside the cat, towards the screen centre.** Every pop-up (Settings, LLM, Calendar, Reminder, GitHub, Activity, Update, Generate) now opens next to the cat on the side facing the centre of the screen — cat on the right half opens to its left, on the left half to its right — instead of centred on the cat. So the window no longer covers the cat, and the speech bubble above the cat's head stays clear of it (branch `feat/reminder-speech-bubble`).
 
 ## [0.1.29] - 2026-08-18
 
