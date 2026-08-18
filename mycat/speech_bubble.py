@@ -229,7 +229,7 @@ class BubbleWindow(QtWidgets.QWidget):
         painter.drawText(
             text_area,
             int(QtCore.Qt.TextFlag.TextWordWrap)
-            | int(QtCore.Qt.AlignmentFlag.AlignLeft)
+            | int(QtCore.Qt.AlignmentFlag.AlignHCenter)
             | int(QtCore.Qt.AlignmentFlag.AlignVCenter),
             self.revealed_text(),
         )
