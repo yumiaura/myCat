@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
-- **Speech-bubble mode — the cat can *say* its messages.** Settings gained a **Show messages in a speech bubble** toggle: off by default (messages fly a banner plane, as before); turn it on and every announcement (reminders, GitHub, digest, calendar, activity) is spoken in a rounded comic bubble above the cat — typed out letter by letter (the bubble grows as it types), held ~10 s, then gone. Unchecking **Reminder** in *Show in menu* also switches to the bubble. A small **Test** button next to the toggle says "Meow" in the current style, and the bubble follows the cat if you drag it (branch `feat/reminder-speech-bubble`).
+- **Speech-bubble mode — the cat can *say* its messages.** Settings gained a **Messages** choice — *Reminder* (fly a banner plane, the default) or *Speech bubble*. Pick the bubble and every announcement (reminders, GitHub, digest, calendar, activity) is spoken in a rounded comic bubble that hugs the top of the cat's head — typed out letter by letter (it grows as it types), held ~10 s, then gone. Hiding **Reminder** in *Show in menu* drops the Reminder choice, leaving only the bubble. A small **Test** button says "Meow" in the current style, and the bubble follows the cat if you drag it (branch `feat/reminder-speech-bubble`).
 - **Korean interface — 한국어.** The UI is now also available in Korean, joining English, Русский and 简体中文. Pick it under *Settings… → Language*. As with the other languages, it's just a `mycat/locale/ko.json` file the app scans at startup — no code change (branch `feat/i18n-korean`).
 
 ### Changed

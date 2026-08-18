@@ -279,6 +279,8 @@
     "unknown": "未知",
     "Settings…": "设置…",
     "Show in menu": "在菜单中显示",
-    "Show messages in a speech bubble": "用气泡显示消息"
+    "Reminder": "提醒",
+    "Speech bubble": "气泡",
+    "Messages:": "消息："
   }
 }

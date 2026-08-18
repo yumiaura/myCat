@@ -28,7 +28,7 @@ MAX_TEXT_WIDTH = 280    # wrap long messages to this width
 PAD_X, PAD_Y = 14, 10   # text padding inside the bubble body
 TAIL_W, TAIL_H = 16, 14 # a narrow downward tail pointing at the cat
 CORNER = 16             # bubble corner radius
-HEAD_GAP = -9           # negative: the tail tip overlaps down onto the cat's head
+HEAD_GAP = -14          # negative: the tail overlaps down onto the cat's ears
 
 
 def bubble_mode_enabled(cfg_file=None) -> bool:
@@ -78,6 +78,7 @@ class BubbleWindow(QtWidgets.QWidget):
         self.shown_chars = 0
         self.body_w = 40
         self.body_h = 30
+        self.cat_top_cache = None  # cached y of the cat's opaque top (its ears)
 
         self.bubble_font = QtGui.QFont()
         self.bubble_font.setPointSize(11)
@@ -132,11 +133,36 @@ class BubbleWindow(QtWidgets.QWidget):
         self.reposition()
         self.update()
 
+    def cat_ink_top(self) -> int:
+        """Y (in the cat window) of the top of the drawn cat — the ear tips.
+
+        The cat pixmap is centred in its window and usually carries transparent
+        margin above the ears, so anchoring to the window top would float the
+        bubble too high. Scan the pixmap for its first opaque row instead."""
+        if self.cat_top_cache is not None:
+            return self.cat_top_cache
+        cat = self.cat_window
+        offset = 0
+        pixmap = getattr(cat, "current_pixmap", None) or getattr(cat, "first_frame_pixmap", None)
+        if pixmap is not None and not pixmap.isNull():
+            image = pixmap.toImage()
+            pix_top = max(0, (cat.height() - image.height()) // 2)
+            # Scan a narrow band at the centre (where the tail points) so the
+            # bubble hugs the top of the head between the ears, not the ear tips.
+            center = image.width() // 2
+            cols = range(max(0, center - 4), min(image.width(), center + 5))
+            for row in range(image.height()):
+                if any(QtGui.qAlpha(image.pixel(col, row)) > 12 for col in cols):
+                    offset = pix_top + row
+                    break
+        self.cat_top_cache = offset
+        return offset
+
     def reposition(self) -> None:
         cat = self.cat_window
         if cat is None:
             return
-        head_top = cat.mapToGlobal(QtCore.QPoint(cat.width() // 2, 0))
+        head_top = cat.mapToGlobal(QtCore.QPoint(cat.width() // 2, self.cat_ink_top()))
         x = head_top.x() - self.width() // 2
         y = head_top.y() - self.height() - HEAD_GAP
         screen = cat.screen() or QtWidgets.QApplication.primaryScreen()

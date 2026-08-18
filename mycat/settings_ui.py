@@ -37,13 +37,22 @@ class SettingsDialog(QtWidgets.QDialog):
         wait_layout.addWidget(self.wait_spinbox)
         layout.addLayout(wait_layout)
 
-        # Where to show messages: unchecked = fly a banner plane (default);
-        # checked = the cat speaks them in a bubble above its head. A small Test
-        # button on the right previews the current choice ("Meow").
+        # Where to show messages — a choice between two: fly a Reminder banner
+        # plane (default) or speak in a bubble above the cat. A small Test button
+        # on the right previews the current choice ("Meow").
         bubble_row = QtWidgets.QHBoxLayout()
-        self.bubble_checkbox = QtWidgets.QCheckBox(tr("Show messages in a speech bubble"))
-        self.bubble_checkbox.setChecked(speech_bubble.bubble_mode_enabled(self.config_path))
-        bubble_row.addWidget(self.bubble_checkbox)
+        bubble_row.addWidget(QtWidgets.QLabel(tr("Messages:")))
+        self.reminder_radio = QtWidgets.QRadioButton(tr("Reminder"))
+        self.speech_radio = QtWidgets.QRadioButton(tr("Speech bubble"))
+        self.mode_group = QtWidgets.QButtonGroup(self)
+        self.mode_group.addButton(self.reminder_radio)
+        self.mode_group.addButton(self.speech_radio)
+        if speech_bubble.bubble_mode_enabled(self.config_path):
+            self.speech_radio.setChecked(True)
+        else:
+            self.reminder_radio.setChecked(True)
+        bubble_row.addWidget(self.reminder_radio)
+        bubble_row.addWidget(self.speech_radio)
         bubble_row.addStretch(1)
         test_button = QtWidgets.QPushButton(tr("Test"))
         test_button.setMaximumWidth(72)
@@ -61,12 +70,12 @@ class SettingsDialog(QtWidgets.QDialog):
             checkbox.setChecked(visible.get(key, True))
             self.menu_checkboxes[key] = checkbox
             menu_group_layout.addWidget(checkbox)
-        # Hiding Reminder from the menu also switches messages to the bubble.
+        # Hiding Reminder from the menu removes the "Reminder" choice — only the
+        # speech bubble is left.
         reminder_box = self.menu_checkboxes.get("reminder")
         if reminder_box is not None:
-            reminder_box.toggled.connect(
-                lambda shown: None if shown else self.bubble_checkbox.setChecked(True)
-            )
+            reminder_box.toggled.connect(self.on_reminder_visibility)
+            self.on_reminder_visibility(reminder_box.isChecked())
         layout.addWidget(menu_group)
 
         # Buttons
@@ -116,16 +125,22 @@ class SettingsDialog(QtWidgets.QDialog):
             logger.error(f"Error saving menu visibility: {e}")
 
         try:
-            speech_bubble.set_bubble_mode(self.bubble_checkbox.isChecked(), self.config_path)
+            speech_bubble.set_bubble_mode(self.speech_radio.isChecked(), self.config_path)
         except Exception as e:
             logger.error(f"Error saving speech-bubble setting: {e}")
 
         super().accept()
 
+    def on_reminder_visibility(self, shown):
+        """Hiding Reminder drops the Reminder choice — only the bubble remains."""
+        self.reminder_radio.setEnabled(shown)
+        if not shown:
+            self.speech_radio.setChecked(True)
+
     def on_test(self):
         """Apply the current choices, then have the cat say "Meow" in that style."""
         try:
-            speech_bubble.set_bubble_mode(self.bubble_checkbox.isChecked(), self.config_path)
+            speech_bubble.set_bubble_mode(self.speech_radio.isChecked(), self.config_path)
             menu_config.save_menu_visibility(
                 {key: box.isChecked() for key, box in self.menu_checkboxes.items()},
                 self.config_path,

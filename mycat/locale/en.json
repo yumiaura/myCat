@@ -279,6 +279,8 @@
     "unknown": "unknown",
     "Settings…": "Settings…",
     "Show in menu": "Show in menu",
-    "Show messages in a speech bubble": "Show messages in a speech bubble"
+    "Reminder": "Reminder",
+    "Speech bubble": "Speech bubble",
+    "Messages:": "Messages:"
   }
 }
