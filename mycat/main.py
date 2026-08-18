@@ -1174,7 +1174,14 @@ class PixelCatWindow(QtWidgets.QWidget):
         # Focus is fully automatic now (earned from activity) — no menu action.
         menu.addSeparator()
 
-        # Rebuild the list every time so freshly-installed chars appear without restart.
+        # Settings, Chars and Language share one block (no separators between
+        # them). Settings is always shown — it's how hidden entries are brought
+        # back.
+        settings_action = menu.addAction(i18n.tr("Settings…"))
+        settings_action.triggered.connect(self.open_settings)
+
+        # Chars sits under Settings. Rebuild the list every time so freshly
+        # installed chars appear without a restart.
         self.available_images = char_catalog.scan_all()
         if len(self.available_images) > 0 and visible["chars"]:
             images_menu = menu.addMenu(i18n.tr("Chars"))
@@ -1196,16 +1203,10 @@ class PixelCatWindow(QtWidgets.QWidget):
                     action.setChecked(True)
                 action.triggered.connect(lambda checked, name=img_name: self.load_image(name))
 
-        # Chars, Settings and Language share one block (no separators between
-        # them). Settings is always shown — it's how hidden entries are brought
-        # back.
-        settings_action = menu.addAction(i18n.tr("Settings…"))
-        settings_action.triggered.connect(self.open_settings)
-
-        # Language picker sits right under Settings.
+        # Language picker.
         menu.addMenu(i18n.build_language_menu(CFG_FILE))
 
-        # Close the Chars / Settings / Language block before the utilities.
+        # Close the Settings / Chars / Language block before the utilities.
         menu.addSeparator()
 
         reset_action = menu.addAction(i18n.tr("Reset"))
