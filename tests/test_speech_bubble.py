@@ -1,25 +1,33 @@
-"""Speech-bubble mode: driven by the Reminder entry in Show in menu.
+"""Speech-bubble mode: the Settings toggle and the bubble widget's growth.
 
-There is no separate toggle — hiding **Reminder** in Settings → *Show in menu*
-switches every message from a flyby plane to a speech bubble above the cat.
+A "Show messages in a speech bubble" checkbox in Settings switches every message
+from the flyby plane to a bubble above the cat (default off = flyby). Hiding the
+Reminder entry in *Show in menu* ticks the same box (handled in the dialog).
 """
 
 from PySide6 import QtWidgets
 
-from mycat import menu_config, speech_bubble
+from mycat import speech_bubble
 
 
 def test_plane_by_default(tmp_path):
-    # Reminder is shown by default -> messages fly a plane, not a bubble.
     assert speech_bubble.bubble_mode_enabled(tmp_path / "config.ini") is False
 
 
-def test_hiding_reminder_switches_to_bubble(tmp_path):
+def test_bubble_toggle_roundtrip(tmp_path):
     cfg = tmp_path / "config.ini"
-    menu_config.save_menu_visibility({"reminder": False}, cfg)  # hide Reminder
-    assert speech_bubble.bubble_mode_enabled(cfg) is True  # -> bubble, no plane
-    menu_config.save_menu_visibility({"reminder": True}, cfg)  # show it again
-    assert speech_bubble.bubble_mode_enabled(cfg) is False  # -> plane
+    speech_bubble.set_bubble_mode(True, cfg)
+    assert speech_bubble.bubble_mode_enabled(cfg) is True
+    speech_bubble.set_bubble_mode(False, cfg)
+    assert speech_bubble.bubble_mode_enabled(cfg) is False
+
+
+def test_set_keeps_other_settings(tmp_path):
+    cfg = tmp_path / "config.ini"
+    cfg.write_text("[settings]\nwait_time = 3.0\n")
+    speech_bubble.set_bubble_mode(True, cfg)
+    assert "wait_time = 3.0" in cfg.read_text()  # [settings] preserved
+    assert speech_bubble.bubble_mode_enabled(cfg) is True
 
 
 def test_bubble_grows_as_it_types(qapp):

@@ -278,6 +278,7 @@
     "by {author}": "автор: {author}",
     "unknown": "неизвестно",
     "Settings…": "Настройки…",
-    "Show in menu": "Показывать в меню"
+    "Show in menu": "Показывать в меню",
+    "Show messages in a speech bubble": "Показывать сообщения в облачке"
   }
 }

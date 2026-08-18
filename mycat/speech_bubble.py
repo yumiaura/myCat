@@ -15,27 +15,38 @@ import logging
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from . import menu_config
+from . import config_store, paths
 
 logger = logging.getLogger(__name__)
 
-# Bubble mode has no toggle of its own: it is driven by the **Reminder** entry in
-# Settings → *Show in menu*. Reminder shown → messages fly a banner plane (as
-# before); Reminder hidden → the cat speaks every message in a bubble instead,
-# no plane.
+SETTINGS_SECTION = "settings"
+CONFIG_KEY = "speech_bubble"
 
 TYPE_INTERVAL_MS = 35   # per revealed character
 HOLD_SECONDS = 10.0     # how long the finished bubble lingers
 MAX_TEXT_WIDTH = 280    # wrap long messages to this width
-PAD_X, PAD_Y = 16, 12   # text padding inside the bubble body
-TAIL_W, TAIL_H = 26, 18 # the downward tail pointing at the cat
+PAD_X, PAD_Y = 14, 10   # text padding inside the bubble body
+TAIL_W, TAIL_H = 16, 14 # a narrow downward tail pointing at the cat
 CORNER = 16             # bubble corner radius
-HEAD_GAP = 6            # gap between the tail tip and the cat's head
+HEAD_GAP = -9           # negative: the tail tip overlaps down onto the cat's head
 
 
 def bubble_mode_enabled(cfg_file=None) -> bool:
-    """On exactly when the Reminder entry is hidden in Settings → Show in menu."""
-    return not menu_config.load_menu_visibility(cfg_file).get("reminder", True)
+    """Whether the cat speaks messages in a bubble (Settings). Default off = flyby."""
+    config = config_store.read_config(cfg_file or paths.config_file())
+    if config is not None and config.has_option(SETTINGS_SECTION, CONFIG_KEY):
+        try:
+            return config.getboolean(SETTINGS_SECTION, CONFIG_KEY)
+        except ValueError:
+            return False
+    return False
+
+
+def set_bubble_mode(enabled: bool, cfg_file=None) -> None:
+    """Persist the Settings 'speak in a bubble' choice."""
+    config_store.write_section(
+        SETTINGS_SECTION, {CONFIG_KEY: config_store.bool_str(bool(enabled))}, cfg_file or paths.config_file()
+    )
 
 
 class BubbleWindow(QtWidgets.QWidget):

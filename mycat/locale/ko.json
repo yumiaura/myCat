@@ -278,6 +278,7 @@
     "by {author}": "제작: {author}",
     "unknown": "알 수 없음",
     "Settings…": "설정…",
-    "Show in menu": "메뉴에 표시"
+    "Show in menu": "메뉴에 표시",
+    "Show messages in a speech bubble": "메시지를 말풍선으로 표시"
   }
 }
