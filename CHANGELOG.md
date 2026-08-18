@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Korean interface — 한국어.** The UI is now also available in Korean, joining English, Русский and 简体中文. Pick it under *Settings… → Language*. As with the other languages, it's just a `mycat/locale/ko.json` file the app scans at startup — no code change (branch `feat/i18n-korean`).
+
 ## [0.1.29] - 2026-08-18
 
 ### Added
