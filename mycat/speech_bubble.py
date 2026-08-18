@@ -12,6 +12,7 @@ The setting lives in ``[settings] speech_bubble`` in config.ini.
 from __future__ import annotations
 
 import logging
+import math
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -22,13 +23,16 @@ logger = logging.getLogger(__name__)
 SETTINGS_SECTION = "settings"
 CONFIG_KEY = "speech_bubble"
 
-TYPE_INTERVAL_MS = 35   # per revealed character
-HOLD_SECONDS = 10.0     # how long the finished bubble lingers
-MAX_TEXT_WIDTH = 280    # wrap long messages to this width
-PAD_X, PAD_Y = 14, 10   # text padding inside the bubble body
-TAIL_W, TAIL_H = 16, 14 # a narrow downward tail pointing at the cat
-CORNER = 16             # bubble corner radius
-HEAD_GAP = -14          # negative: the tail overlaps down onto the cat's ears
+TYPE_INTERVAL_MS = 35    # per revealed character
+HOLD_SECONDS = 10.0      # how long the finished bubble lingers
+MAX_TEXT_WIDTH = 280     # wrap long messages to this width
+PAD_X, PAD_Y = 8, 4      # tight text padding (≤5px above/below the glyphs)
+TAIL_ANGLE_DEG = 15      # apex angle of the pointer aimed at the cat
+TAIL_H = 14              # tail length; its width follows from the 15° apex
+TAIL_W = 2 * TAIL_H * math.tan(math.radians(TAIL_ANGLE_DEG / 2))
+TAIL_TIP_MARGIN = 2      # the drawn apex sits this far inside the window's bottom
+CORNER = 16              # bubble corner radius
+HEAD_GAP = 3             # the drawn tail tip stops 3px above the cat's ears
 
 
 def bubble_mode_enabled(cfg_file=None) -> bool:
@@ -78,6 +82,7 @@ class BubbleWindow(QtWidgets.QWidget):
         self.shown_chars = 0
         self.body_w = 40
         self.body_h = 30
+        self.tail_x = self.body_w / 2.0  # local x of the tail apex (moves per screen third)
         self.cat_top_cache = None  # cached y of the cat's opaque top (its ears)
 
         self.bubble_font = QtGui.QFont()
@@ -162,24 +167,48 @@ class BubbleWindow(QtWidgets.QWidget):
         cat = self.cat_window
         if cat is None:
             return
-        head_top = cat.mapToGlobal(QtCore.QPoint(cat.width() // 2, self.cat_ink_top()))
-        x = head_top.x() - self.width() // 2
-        y = head_top.y() - self.height() - HEAD_GAP
+        head = cat.mapToGlobal(QtCore.QPoint(cat.width() // 2, self.cat_ink_top()))
+        head_x, head_y = head.x(), head.y()
         screen = cat.screen() or QtWidgets.QApplication.primaryScreen()
-        if screen is not None:
-            usable = screen.availableGeometry()
+        usable = screen.availableGeometry() if screen is not None else None
+
+        # Keep the tail apex clear of the rounded corners.
+        inset = min(CORNER + TAIL_W, self.body_w / 2.0)
+        # Grow direction from which screen third the cat sits in: left third →
+        # grow right (tail near the left), right third → grow left (tail near the
+        # right), centre third → symmetric. Keeps the bubble off the screen edges.
+        if usable is not None and usable.width() > 0:
+            rel = head_x - usable.left()
+            third = usable.width() / 3.0
+            if rel < third:
+                tail_local = inset
+            elif rel > 2 * third:
+                tail_local = self.body_w - inset
+            else:
+                tail_local = self.body_w / 2.0
+        else:
+            tail_local = self.body_w / 2.0
+
+        x = round(head_x - tail_local)
+        # Position off the DRAWN tail tip (2px inside the window bottom), not the
+        # window edge, so the visible tip really stops HEAD_GAP px above the ears.
+        tail_tip = self.body_h + TAIL_H - TAIL_TIP_MARGIN
+        y = round(head_y - HEAD_GAP - tail_tip)
+        if usable is not None:
             x = max(usable.left(), min(x, usable.right() - self.width()))
             y = max(usable.top(), min(y, usable.bottom() - self.height()))
+        # After any edge clamp, keep the tail pointing at the cat's head.
+        self.tail_x = max(inset, min(head_x - x, self.body_w - inset))
         self.move(x, y)
 
     def bubble_path(self) -> QtGui.QPainterPath:
         body = QtGui.QPainterPath()
         body.addRoundedRect(QtCore.QRectF(1, 1, self.body_w - 2, self.body_h - 2), CORNER, CORNER)
-        center_x = self.body_w / 2
+        tip_x = max(TAIL_W, min(self.tail_x, self.body_w - TAIL_W))
         tail = QtGui.QPainterPath()
-        tail.moveTo(center_x - TAIL_W / 2, self.body_h - 2)
-        tail.lineTo(center_x, self.body_h + TAIL_H - 2)
-        tail.lineTo(center_x + TAIL_W / 2, self.body_h - 2)
+        tail.moveTo(tip_x - TAIL_W / 2, self.body_h - 2)
+        tail.lineTo(tip_x, self.body_h + TAIL_H - TAIL_TIP_MARGIN)
+        tail.lineTo(tip_x + TAIL_W / 2, self.body_h - 2)
         tail.closeSubpath()
         return body.united(tail)
 
