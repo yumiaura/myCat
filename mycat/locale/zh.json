@@ -137,7 +137,6 @@
     "Fork of my repo": "我的仓库被 Fork",
     "New follower": "新关注者",
     "My stars & follows": "我的点赞与关注",
-    "Reminder": "提醒",
     "Drag to move • Right-click for options": "拖拽移动 • 右键查看选项",
     "Double-click to open • Drag to move • Right-click for options": "双击打开 • 拖拽移动 • 右键查看选项",
     "Message": "内容",
@@ -279,7 +278,6 @@
     "by {author}": "作者：{author}",
     "unknown": "未知",
     "Settings…": "设置…",
-    "Show in menu": "在菜单中显示",
-    "On: messages fly across the screen. Off: the cat says them in a speech bubble.": "开启：消息飞过屏幕。关闭：小猫用气泡说出它们。"
+    "Show in menu": "在菜单中显示"
   }
 }

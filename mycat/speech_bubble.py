@@ -15,14 +15,14 @@ import logging
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from . import config_store, paths
+from . import menu_config
 
 logger = logging.getLogger(__name__)
 
-SETTINGS_SECTION = "settings"
-# The Settings "Reminder" toggle: on (default) -> messages fly a plane across the
-# screen; off -> the cat speaks them in a bubble instead, no plane at all.
-CONFIG_KEY = "reminder_flyby"
+# Bubble mode has no toggle of its own: it is driven by the **Reminder** entry in
+# Settings → *Show in menu*. Reminder shown → messages fly a banner plane (as
+# before); Reminder hidden → the cat speaks every message in a bubble instead,
+# no plane.
 
 TYPE_INTERVAL_MS = 35   # per revealed character
 HOLD_SECONDS = 10.0     # how long the finished bubble lingers
@@ -33,27 +33,9 @@ CORNER = 16             # bubble corner radius
 HEAD_GAP = 6            # gap between the tail tip and the cat's head
 
 
-def reminder_flyby_enabled(cfg_file=None) -> bool:
-    """Whether messages fly a plane (True, the default) rather than drop to a bubble."""
-    config = config_store.read_config(cfg_file or paths.config_file())
-    if config is not None and config.has_option(SETTINGS_SECTION, CONFIG_KEY):
-        try:
-            return config.getboolean(SETTINGS_SECTION, CONFIG_KEY)
-        except ValueError:
-            return True
-    return True
-
-
-def set_reminder_flyby(enabled: bool, cfg_file=None) -> None:
-    """Persist the Settings 'Reminder' toggle (on = plane, off = bubble)."""
-    config_store.write_section(
-        SETTINGS_SECTION, {CONFIG_KEY: config_store.bool_str(bool(enabled))}, cfg_file or paths.config_file()
-    )
-
-
 def bubble_mode_enabled(cfg_file=None) -> bool:
-    """Bubble mode is on exactly when the Reminder (flyby) toggle is off."""
-    return not reminder_flyby_enabled(cfg_file)
+    """On exactly when the Reminder entry is hidden in Settings → Show in menu."""
+    return not menu_config.load_menu_visibility(cfg_file).get("reminder", True)
 
 
 class BubbleWindow(QtWidgets.QWidget):

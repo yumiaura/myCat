@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PySide6 import QtWidgets
 
-from . import i18n, menu_config, speech_bubble
+from . import i18n, menu_config
 
 logger = logging.getLogger(__name__)
 tr = i18n.tr
@@ -37,17 +37,8 @@ class SettingsDialog(QtWidgets.QDialog):
         wait_layout.addWidget(self.wait_spinbox)
         layout.addLayout(wait_layout)
 
-        # The "Reminder" toggle: on (default) flies a banner plane across the
-        # screen; off makes the cat speak every message in a bubble above its
-        # head instead — no plane.
-        self.reminder_checkbox = QtWidgets.QCheckBox(tr("Reminder"))
-        self.reminder_checkbox.setToolTip(
-            tr("On: messages fly across the screen. Off: the cat says them in a speech bubble.")
-        )
-        self.reminder_checkbox.setChecked(speech_bubble.reminder_flyby_enabled(self.config_path))
-        layout.addWidget(self.reminder_checkbox)
-
-        # Which feature entries show in the right-click / tray menu.
+        # Which feature entries show in the right-click / tray menu. Hiding
+        # "Reminder" here also switches messages from a flyby plane to a bubble.
         menu_group = QtWidgets.QGroupBox(tr("Show in menu"))
         menu_group_layout = QtWidgets.QVBoxLayout(menu_group)
         visible = menu_config.load_menu_visibility(self.config_path)
@@ -58,6 +49,12 @@ class SettingsDialog(QtWidgets.QDialog):
             self.menu_checkboxes[key] = checkbox
             menu_group_layout.addWidget(checkbox)
         layout.addWidget(menu_group)
+
+        # Preview: the cat says "Meow" the way messages will appear — a plane if
+        # Reminder is shown above, a bubble if it's hidden.
+        test_button = QtWidgets.QPushButton(tr("Test"))
+        test_button.clicked.connect(self.on_test)
+        layout.addWidget(test_button)
 
         # Buttons
         button_box = QtWidgets.QDialogButtonBox(
@@ -105,9 +102,18 @@ class SettingsDialog(QtWidgets.QDialog):
         except Exception as e:
             logger.error(f"Error saving menu visibility: {e}")
 
-        try:
-            speech_bubble.set_reminder_flyby(self.reminder_checkbox.isChecked(), self.config_path)
-        except Exception as e:
-            logger.error(f"Error saving Reminder setting: {e}")
-
         super().accept()
+
+    def on_test(self):
+        """Apply the current Show-in-menu choices, then have the cat say "Meow"."""
+        try:
+            menu_config.save_menu_visibility(
+                {key: box.isChecked() for key, box in self.menu_checkboxes.items()},
+                self.config_path,
+            )
+        except Exception as e:
+            logger.error(f"Error applying menu visibility for the test: {e}")
+        window = self.main_window
+        announcer = getattr(window, "announcer", None) if window is not None else None
+        if announcer is not None:
+            announcer.announce("Meow")

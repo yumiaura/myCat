@@ -137,7 +137,6 @@
     "Fork of my repo": "내 저장소 포크",
     "New follower": "새 팔로워",
     "My stars & follows": "내 스타 및 팔로우",
-    "Reminder": "알림",
     "Drag to move • Right-click for options": "드래그하여 이동 • 오른쪽 클릭으로 옵션",
     "Double-click to open • Drag to move • Right-click for options": "더블 클릭하여 열기 • 드래그하여 이동 • 오른쪽 클릭으로 옵션",
     "Message": "내용",
@@ -279,7 +278,6 @@
     "by {author}": "제작: {author}",
     "unknown": "알 수 없음",
     "Settings…": "설정…",
-    "Show in menu": "메뉴에 표시",
-    "On: messages fly across the screen. Off: the cat says them in a speech bubble.": "켜짐: 메시지가 화면을 가로질러 날아갑니다. 꺼짐: 고양이가 말풍선으로 말합니다."
+    "Show in menu": "메뉴에 표시"
   }
 }
