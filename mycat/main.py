@@ -40,6 +40,7 @@ if __package__:
         focus,
         github_api,
         github_notify,
+        i18n,
         llm,
         menu_config,
         paths,
@@ -53,6 +54,7 @@ else:
     repo_root = Path(__file__).resolve().parent.parent
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
+    i18n = importlib.import_module("mycat.i18n")
     llm = importlib.import_module("mycat.llm")
     menu_config = importlib.import_module("mycat.menu_config")
     paths = importlib.import_module("mycat.paths")
@@ -1144,7 +1146,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         # and is greyed out while the LLM is disabled.
         toggle_chat = getattr(self, "toggle_llm_chat", None)
         if callable(toggle_chat) and visible["chat"]:
-            chat_action = menu.addAction("Chat")
+            chat_action = menu.addAction(i18n.tr("Chat"))
             chat_action.triggered.connect(toggle_chat)
             llm_is_enabled = getattr(self, "is_llm_enabled", None)
             if callable(llm_is_enabled):
@@ -1154,15 +1156,15 @@ class PixelCatWindow(QtWidgets.QWidget):
         # Feature entries, in the agreed order: LLM, Calendar, Reminder,
         # GitHub, Activity. Each can be hidden from the Settings dialog.
         if visible["llm"]:
-            menu.addAction("LLM…").triggered.connect(self.open_llm_settings)
+            menu.addAction(i18n.tr("LLM…")).triggered.connect(self.open_llm_settings)
         if visible["calendar"]:
-            menu.addAction("Calendar…").triggered.connect(self.open_calendar_settings)
+            menu.addAction(i18n.tr("Calendar…")).triggered.connect(self.open_calendar_settings)
         if visible["reminder"]:
-            menu.addAction("Reminder…").triggered.connect(self.open_reminder)
+            menu.addAction(i18n.tr("Reminder…")).triggered.connect(self.open_reminder)
         if visible["github"]:
-            menu.addAction("GitHub…").triggered.connect(self.open_github_settings)
+            menu.addAction(i18n.tr("GitHub…")).triggered.connect(self.open_github_settings)
         if visible["activity"]:
-            menu.addAction("Activity…").triggered.connect(self.open_activity_dialog)
+            menu.addAction(i18n.tr("Activity…")).triggered.connect(self.open_activity_dialog)
 
         # Shop temporarily hidden from the menu (work in progress). The dialog
         # and its handler stay in the codebase; re-enable by uncommenting:
@@ -1175,12 +1177,12 @@ class PixelCatWindow(QtWidgets.QWidget):
         # Rebuild the list every time so freshly-installed chars appear without restart.
         self.available_images = char_catalog.scan_all()
         if len(self.available_images) > 0 and visible["chars"]:
-            images_menu = menu.addMenu("Chars")
-            create_action = images_menu.addAction("Generate…")
+            images_menu = menu.addMenu(i18n.tr("Chars"))
+            create_action = images_menu.addAction(i18n.tr("Generate…"))
             create_action.triggered.connect(self.open_ai_char)
             generated_chars = char_catalog.ai_generated_chars()
             if generated_chars:
-                delete_menu = images_menu.addMenu("Delete…")
+                delete_menu = images_menu.addMenu(i18n.tr("Delete…"))
                 for custom_id in generated_chars:
                     delete_action = delete_menu.addAction(custom_id)
                     delete_action.triggered.connect(
@@ -1197,17 +1199,20 @@ class PixelCatWindow(QtWidgets.QWidget):
 
         # Settings is always shown (never hideable) — it's how hidden entries
         # are brought back.
-        settings_action = menu.addAction("Settings…")
+        settings_action = menu.addAction(i18n.tr("Settings…"))
         settings_action.triggered.connect(self.open_settings)
 
-        reset_action = menu.addAction("Reset")
+        # Language picker sits right under Settings.
+        menu.addMenu(i18n.build_language_menu(CFG_FILE))
+
+        reset_action = menu.addAction(i18n.tr("Reset"))
         reset_action.triggered.connect(self.reset_position)
 
-        update_action = menu.addAction("Update…")
+        update_action = menu.addAction(i18n.tr("Update…"))
         update_action.triggered.connect(self.open_update)
 
         if autostart.is_supported():
-            login_action = menu.addAction("Autostart")
+            login_action = menu.addAction(i18n.tr("Autostart"))
             login_action.setCheckable(True)
             login_action.setChecked(autostart.is_enabled())
             login_action.toggled.connect(autostart.set_enabled)
@@ -1217,10 +1222,10 @@ class PixelCatWindow(QtWidgets.QWidget):
         # lives only in the tray menu. Without a tray there's nowhere to hide, so
         # keep a real Quit here.
         if getattr(self, "tray_icon", None) is not None:
-            close_action = menu.addAction("Close")
+            close_action = menu.addAction(i18n.tr("Close"))
             close_action.triggered.connect(self.hide)
         else:
-            quit_action = menu.addAction("Quit")
+            quit_action = menu.addAction(i18n.tr("Quit"))
             quit_action.triggered.connect(QtWidgets.QApplication.quit)
         tidy_separators(menu)
         menu.exec(self.mapToGlobal(pos))
@@ -2153,34 +2158,36 @@ def setup_tray(app, window):
         visible = menu_config.load_menu_visibility()
         toggle_chat = getattr(window, "toggle_llm_chat", None)
         if callable(toggle_chat) and visible["chat"]:
-            menu.addAction("Chat", toggle_chat)
+            menu.addAction(i18n.tr("Chat"), toggle_chat)
         # Same order as the context menu: LLM, Calendar, Reminder, GitHub, Activity.
         if visible["llm"]:
-            menu.addAction("LLM…", window.open_llm_settings)
+            menu.addAction(i18n.tr("LLM…"), window.open_llm_settings)
         if visible["calendar"]:
-            menu.addAction("Calendar…", window.open_calendar_settings)
+            menu.addAction(i18n.tr("Calendar…"), window.open_calendar_settings)
         if visible["reminder"]:
-            menu.addAction("Reminder…", window.open_reminder)
+            menu.addAction(i18n.tr("Reminder…"), window.open_reminder)
         if visible["github"]:
-            menu.addAction("GitHub…", window.open_github_settings)
+            menu.addAction(i18n.tr("GitHub…"), window.open_github_settings)
         if visible["activity"]:
-            menu.addAction("Activity…", window.open_activity_dialog)
+            menu.addAction(i18n.tr("Activity…"), window.open_activity_dialog)
 
         # Settings is always shown — it's how hidden entries are brought back.
-        menu.addAction("Settings…", window.open_settings)
-        menu.addAction("Reset", window.reset_position)
-        menu.addAction("Update…", window.open_update)
+        menu.addAction(i18n.tr("Settings…"), window.open_settings)
+        # Language picker sits right under Settings.
+        menu.addMenu(i18n.build_language_menu(CFG_FILE))
+        menu.addAction(i18n.tr("Reset"), window.reset_position)
+        menu.addAction(i18n.tr("Update…"), window.open_update)
         if autostart.is_supported():
             menu.addSeparator()
-            login_action = menu.addAction("Autostart")
+            login_action = menu.addAction(i18n.tr("Autostart"))
             login_action.setCheckable(True)
             login_action.setChecked(autostart.is_enabled())
             login_action.toggled.connect(autostart.set_enabled)
         menu.addSeparator()
         # Dynamic label: "Open" when the cat is hidden, "Close" when on screen.
-        toggle_action = menu.addAction("Close" if window.isVisible() else "Open")
+        toggle_action = menu.addAction(i18n.tr("Close") if window.isVisible() else i18n.tr("Open"))
         toggle_action.triggered.connect(toggle_window)
-        menu.addAction("Quit", QtWidgets.QApplication.quit)
+        menu.addAction(i18n.tr("Quit"), QtWidgets.QApplication.quit)
         tidy_separators(menu)
 
     populate_tray_menu()
@@ -2211,6 +2218,9 @@ def main() -> None:
     app_version = update_check.current_version()
     logger.info("mycat %s", app_version)
     update_check.check_in_background(app_version)
+
+    # Apply the saved UI language before any window or menu is built.
+    i18n.load_language(CFG_FILE)
 
     llm_context = llm.initialize(args)
     

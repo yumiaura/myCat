@@ -108,6 +108,7 @@ mycat                 # or, without installing:  python3 mycat/main.py
 - **Reminder** 🛩️ - set a message and a time (one-shot or daily) and the cat flies a little banner plane across the top of your screen. Right-click → *Reminder…* to set the message, direction, plane and color.
 - **Chat (Ollama)** 💬 - talk to the cat through a **local [Ollama](https://ollama.com) model**, no account or API key needed (see below).
 - **Create with AI** 🎨 - turn 1–3 photos into a custom chibi cat character with your own OpenAI key (right-click → *Chars → Create custom with AI…*). Reference photos are never stored; the result is an ordinary local char you can reuse or delete.
+- **Language** 🌐 — right-click the cat → **Language** to switch between English and Simplified Chinese at any time. The choice is remembered for next time.
 
 ## 💬 Chat with the cat (Ollama)
 

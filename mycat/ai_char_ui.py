@@ -14,10 +14,11 @@ from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from . import ai_backends, ai_char, char_catalog, secret_store
+from . import ai_backends, ai_char, char_catalog, i18n, secret_store
 from .ui_theme import LIGHT_QSS
 
 logger = logging.getLogger(__name__)
+tr = i18n.tr
 
 BACKEND_LABELS = [
     ("OpenAI (hosted, transparent)", "openai"),
@@ -103,7 +104,7 @@ class AICharDialog(QtWidgets.QDialog):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Generate a custom char with AI")
+        self.setWindowTitle(tr("Generate a custom char with AI"))
         self.setMinimumWidth(640)
         self.setStyleSheet(LIGHT_QSS)
         self.pool = QtCore.QThreadPool(self)
@@ -113,20 +114,20 @@ class AICharDialog(QtWidgets.QDialog):
         self.current_kind = self.settings.get("backend", "openai")
 
         intro = QtWidgets.QLabel(
-            "Turn 1–3 photos of the same person into a custom char, or generate one "
-            "from the prompt. Reference photos are not stored by myCat."
+            tr("Turn 1–3 photos of the same person into a custom char, or generate one "
+               "from the prompt. Reference photos are not stored by myCat.")
         )
         intro.setWordWrap(True)
 
         self.name_edit = QtWidgets.QLineEdit()
-        self.name_edit.setPlaceholderText("Example: Mina chibi char")
+        self.name_edit.setPlaceholderText(tr("Example: Mina chibi char"))
 
         self.backend_combo = QtWidgets.QComboBox()
         for label, data in BACKEND_LABELS:
-            self.backend_combo.addItem(label, data)
+            self.backend_combo.addItem(tr(label), data)
         self.mode_combo = QtWidgets.QComboBox()
         for label, data in MODE_LABELS:
-            self.mode_combo.addItem(label, data)
+            self.mode_combo.addItem(tr(label), data)
 
         # --- OpenAI group -----------------------------------------------------
         self.key_edit = QtWidgets.QLineEdit()
@@ -134,30 +135,30 @@ class AICharDialog(QtWidgets.QDialog):
         saved_key = secret_store.get_secret(ai_char.SECRET_NAME)
         self.key_edit.setText(saved_key or os.getenv("OPENAI_API_KEY", ""))
         self.key_edit.setPlaceholderText("sk-… (or OPENAI_API_KEY)")
-        self.remember_box = QtWidgets.QCheckBox("Remember key in the operating system keyring")
+        self.remember_box = QtWidgets.QCheckBox(tr("Remember key in the operating system keyring"))
         self.remember_box.setChecked(bool(saved_key))
         self.remember_box.setEnabled(secret_store.keyring_available())
         if not self.remember_box.isEnabled():
-            self.remember_box.setToolTip("Install mycat[secure] and configure an OS keyring to enable this.")
+            self.remember_box.setToolTip(tr("Install mycat[secure] and configure an OS keyring to enable this."))
         self.model_combo = QtWidgets.QComboBox()
         for model in ai_backends.OPENAI_MODELS:
             self.model_combo.addItem(model, model)
         self.quality_combo = QtWidgets.QComboBox()
-        self.quality_combo.addItem("Low — cheaper, good for a mascot", "low")
-        self.quality_combo.addItem("Medium — more detail, costs more", "medium")
+        self.quality_combo.addItem(tr("Low — cheaper, good for a mascot"), "low")
+        self.quality_combo.addItem(tr("Medium — more detail, costs more"), "medium")
 
         openai_form = QtWidgets.QFormLayout()
-        openai_form.addRow("OpenAI API key", self.key_edit)
+        openai_form.addRow(tr("OpenAI API key"), self.key_edit)
         openai_form.addRow("", self.remember_box)
-        openai_form.addRow("Model", self.model_combo)
-        openai_form.addRow("Quality", self.quality_combo)
-        self.openai_group = QtWidgets.QGroupBox("OpenAI")
+        openai_form.addRow(tr("Model"), self.model_combo)
+        openai_form.addRow(tr("Quality"), self.quality_combo)
+        self.openai_group = QtWidgets.QGroupBox(tr("OpenAI"))
         self.openai_group.setLayout(openai_form)
 
         # --- Self-hosted server group ----------------------------------------
         self.url_edit = QtWidgets.QLineEdit()
         self.url_edit.setPlaceholderText("http://127.0.0.1:7860")
-        self.load_btn = QtWidgets.QPushButton("Load models")
+        self.load_btn = QtWidgets.QPushButton(tr("Load models"))
         self.load_btn.clicked.connect(self.load_models)
         url_row = QtWidgets.QHBoxLayout()
         url_row.addWidget(self.url_edit, 1)
@@ -171,14 +172,14 @@ class AICharDialog(QtWidgets.QDialog):
         for label, method_id in ai_char.background_removal_choices():
             self.background_combo.addItem(label, method_id)
         self.background_combo.setToolTip(
-            "Keep leaves the opaque image as generated. Remove clears a corner-connected, near-uniform background."
+            tr("Keep leaves the opaque image as generated. Remove clears a corner-connected, near-uniform background.")
         )
         local_form = QtWidgets.QFormLayout()
-        local_form.addRow("Server address", url_row)
-        local_form.addRow("Checkpoint", self.checkpoint_combo)
-        local_form.addRow("Steps", self.steps_spin)
-        local_form.addRow("Background", self.background_combo)
-        self.local_group = QtWidgets.QGroupBox("Self-hosted server")
+        local_form.addRow(tr("Server address"), url_row)
+        local_form.addRow(tr("Checkpoint"), self.checkpoint_combo)
+        local_form.addRow(tr("Steps"), self.steps_spin)
+        local_form.addRow(tr("Background"), self.background_combo)
+        self.local_group = QtWidgets.QGroupBox(tr("Self-hosted server"))
         self.local_group.setLayout(local_form)
 
         # Editable prompt (per backend style) + negative (self-hosted only).
@@ -187,15 +188,15 @@ class AICharDialog(QtWidgets.QDialog):
         self.prompt_edit.setSizePolicy(  # grows so the prompt block ends level with references
             QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Expanding
         )
-        self.negative_label = QtWidgets.QLabel("Negative prompt")
+        self.negative_label = QtWidgets.QLabel(tr("Negative prompt"))
         self.negative_edit = QtWidgets.QPlainTextEdit()
         self.negative_edit.setMinimumHeight(48)  # never let the negative box collapse out of view
         self.negative_edit.setMaximumHeight(70)
         self.negative_edit.setToolTip(
-            "Things to avoid. OpenAI has no negative field, so it's folded into the "
-            "prompt as 'the image must not contain: …'."
+            tr("Things to avoid. OpenAI has no negative field, so it's folded into the "
+               "prompt as 'the image must not contain: …'.")
         )
-        self.reset_prompt_btn = QtWidgets.QPushButton("Reset")
+        self.reset_prompt_btn = QtWidgets.QPushButton(tr("Reset"))
         self.reset_prompt_btn.clicked.connect(self.reset_prompts)
 
         self.reference_list = QtWidgets.QListWidget()
@@ -204,8 +205,8 @@ class AICharDialog(QtWidgets.QDialog):
         self.reference_list.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Expanding
         )
-        add_btn = QtWidgets.QPushButton("Add photos…")
-        remove_btn = QtWidgets.QPushButton("Remove selected")
+        add_btn = QtWidgets.QPushButton(tr("Add photos…"))
+        remove_btn = QtWidgets.QPushButton(tr("Remove selected"))
         add_btn.clicked.connect(self.add_references)
         remove_btn.clicked.connect(self.remove_selected)
         # Stacked, so the reference column stays within its 1/3 and never pushes
@@ -215,9 +216,9 @@ class AICharDialog(QtWidgets.QDialog):
         photo_buttons.addWidget(remove_btn)
 
         top_form = QtWidgets.QFormLayout()
-        top_form.addRow("Character name", self.name_edit)
-        top_form.addRow("Generate with", self.backend_combo)
-        top_form.addRow("Mode", self.mode_combo)
+        top_form.addRow(tr("Character name"), self.name_edit)
+        top_form.addRow(tr("Generate with"), self.backend_combo)
+        top_form.addRow(tr("Mode"), self.mode_combo)
 
         self.status_is_error = False
         self.status_label = ClickableLabel("")
@@ -232,7 +233,7 @@ class AICharDialog(QtWidgets.QDialog):
         block1.addStretch(1)
 
         # Preview (top-right): its height tracks block 1, not the whole window.
-        self.preview_label = ClickableLabel("The generated char\nwill appear here.")
+        self.preview_label = ClickableLabel(tr("The generated char\nwill appear here."))
         self.preview_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.preview_label.setWordWrap(True)
         self.preview_label.setMinimumSize(160, 120)
@@ -247,7 +248,7 @@ class AICharDialog(QtWidgets.QDialog):
         # Prompts (bottom-left, 2/3). The positive prompt box expands so this block
         # ends level with the reference block (list + Add/Remove).
         prompt_col = QtWidgets.QVBoxLayout()
-        prompt_col.addWidget(QtWidgets.QLabel("Prompt"))
+        prompt_col.addWidget(QtWidgets.QLabel(tr("Prompt")))
         prompt_col.addWidget(self.prompt_edit)
         prompt_col.addWidget(self.negative_label)
         prompt_col.addWidget(self.negative_edit)
@@ -255,14 +256,14 @@ class AICharDialog(QtWidgets.QDialog):
         # Reference photos (bottom-right, 1/3, under the preview). The list fills
         # the height so this block matches the prompt block; buttons sit beneath it.
         ref_col = QtWidgets.QVBoxLayout()
-        ref_col.addWidget(QtWidgets.QLabel("Reference photos (maximum 3)"))
+        ref_col.addWidget(QtWidgets.QLabel(tr("Reference photos (maximum 3)")))
         ref_col.addWidget(self.reference_list)
         ref_col.addLayout(photo_buttons)
 
-        self.generate_btn = QtWidgets.QPushButton("Generate")
-        self.save_btn = QtWidgets.QPushButton("Save")
+        self.generate_btn = QtWidgets.QPushButton(tr("Generate"))
+        self.save_btn = QtWidgets.QPushButton(tr("Save"))
         self.save_btn.setEnabled(False)  # nothing to save until a generation lands
-        close_btn = QtWidgets.QPushButton("Close")
+        close_btn = QtWidgets.QPushButton(tr("Close"))
         self.generate_btn.clicked.connect(self.generate)
         self.save_btn.clicked.connect(self.save_character)
         close_btn.clicked.connect(self.reject)
@@ -395,10 +396,10 @@ class AICharDialog(QtWidgets.QDialog):
         if kind not in ("a1111", "comfyui"):
             return
         if not url:
-            self.set_status("Enter the server address first.", error=True)
+            self.set_status(tr("Enter the server address first."), error=True)
             return
         self.load_btn.setEnabled(False)
-        self.set_status("Loading models…")
+        self.set_status(tr("Loading models…"))
         worker = ModelLoadWorker(kind, url)
         worker.signals.loaded.connect(self.on_models_loaded)
         worker.signals.failed.connect(self.on_models_failed)
@@ -411,7 +412,7 @@ class AICharDialog(QtWidgets.QDialog):
         self.checkpoint_combo.addItems(models)
         if current and current in models:
             self.checkpoint_combo.setCurrentText(current)
-        self.set_status(f"Loaded {len(models)} model(s).")
+        self.set_status(tr("Loaded {count} model(s).").format(count=len(models)))
 
     def on_models_failed(self, message: str) -> None:
         self.load_btn.setEnabled(True)
@@ -424,7 +425,7 @@ class AICharDialog(QtWidgets.QDialog):
         self.status_label.setText(text)
         if error and text:
             self.status_label.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-            self.status_label.setToolTip("Click to copy this error")
+            self.status_label.setToolTip(tr("Click to copy this error"))
         else:
             self.status_label.setCursor(QtCore.Qt.CursorShape.ArrowCursor)
             self.status_label.setToolTip("")
@@ -439,21 +440,21 @@ class AICharDialog(QtWidgets.QDialog):
         QtWidgets.QApplication.clipboard().setText(text)
         # Flash a confirmation, then restore the error so it stays visible/copyable.
         self.status_label.setStyleSheet("color: #2e7d32;")
-        self.status_label.setText("Copied to clipboard.")
+        self.status_label.setText(tr("Copied to clipboard."))
         QtCore.QTimer.singleShot(1200, lambda: self.restore_error(text))
 
     def restore_error(self, text: str) -> None:
-        if self.status_label.text() == "Copied to clipboard.":
+        if self.status_label.text() == tr("Copied to clipboard."):
             self.status_label.setStyleSheet("color: #c0392b;")
             self.status_label.setText(text)
 
     def add_references(self) -> None:
         remaining = ai_char.MAX_REFERENCES - len(self.reference_paths)
         if remaining <= 0:
-            self.set_status("You already selected the maximum of 3 photos.", error=True)
+            self.set_status(tr("You already selected the maximum of 3 photos."), error=True)
             return
         names, _ = QtWidgets.QFileDialog.getOpenFileNames(
-            self, "Choose reference photos", "", "Images (*.png *.jpg *.jpeg *.webp);;All files (*)"
+            self, tr("Choose reference photos"), "", tr("Images (*.png *.jpg *.jpeg *.webp);;All files (*)")
         )
         for name in names[:remaining]:
             path = Path(name)
@@ -464,7 +465,7 @@ class AICharDialog(QtWidgets.QDialog):
             item.setData(QtCore.Qt.ItemDataRole.UserRole, str(path))
             self.reference_list.addItem(item)
         if len(names) > remaining:
-            self.set_status("Only the first 3 photos were added.")
+            self.set_status(tr("Only the first 3 photos were added."))
 
     def remove_selected(self) -> None:
         for item in self.reference_list.selectedItems():
@@ -482,30 +483,30 @@ class AICharDialog(QtWidgets.QDialog):
         key = self.key_edit.text().strip() or os.getenv("OPENAI_API_KEY", "")
 
         if mode == "img2img" and not self.reference_paths:
-            self.set_status("img2img needs at least one reference photo (or switch to txt2img).", error=True)
+            self.set_status(tr("img2img needs at least one reference photo (or switch to txt2img)."), error=True)
             return
         if kind == "openai" and not key:
-            self.set_status("Enter an OpenAI API key.", error=True)
+            self.set_status(tr("Enter an OpenAI API key."), error=True)
             return
         if kind in ("a1111", "comfyui") and not self.url_edit.text().strip():
-            self.set_status("Enter the self-hosted server address.", error=True)
+            self.set_status(tr("Enter the self-hosted server address."), error=True)
             return
         if not self.prompt_edit.toPlainText().strip():
-            self.set_status("Enter a prompt.", error=True)
+            self.set_status(tr("Enter a prompt."), error=True)
             return
 
         if kind == "openai":
             if self.remember_box.isChecked():
                 if not secret_store.set_secret(ai_char.SECRET_NAME, key):
-                    self.set_status("The keyring could not save the key. Generation will continue.", error=True)
+                    self.set_status(tr("The keyring could not save the key. Generation will continue."), error=True)
             elif secret_store.get_secret(ai_char.SECRET_NAME):
                 secret_store.delete_secret(ai_char.SECRET_NAME)
 
         ai_backends.save_generation_settings(settings)
         self.generate_btn.setEnabled(False)
         self.save_btn.setEnabled(False)
-        note = " One API request will be charged." if kind == "openai" else ""
-        self.set_status("Generating… this can take a bit." + note)
+        note = tr(" One API request will be charged.") if kind == "openai" else ""
+        self.set_status(tr("Generating… this can take a bit.") + note)
         worker = GenerationWorker(self.name_edit.text().strip(), list(self.reference_paths), settings, key)
         worker.signals.completed.connect(self.on_generated)
         worker.signals.failed.connect(self.on_failed)
@@ -516,13 +517,13 @@ class AICharDialog(QtWidgets.QDialog):
         self.generate_btn.setEnabled(True)
         self.save_btn.setEnabled(True)
         self.show_preview(image)
-        self.set_status("Generated. Click Save to keep it, or Generate again.")
+        self.set_status(tr("Generated. Click Save to keep it, or Generate again."))
 
     def show_preview(self, image_bytes: bytes) -> None:
         pixmap = QtGui.QPixmap()
         pixmap.loadFromData(image_bytes)
         if pixmap.isNull():
-            self.preview_label.setText("Preview unavailable.")
+            self.preview_label.setText(tr("Preview unavailable."))
             return
         self.preview_label.setPixmap(
             pixmap.scaled(
@@ -532,7 +533,7 @@ class AICharDialog(QtWidgets.QDialog):
             )
         )
         self.preview_label.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        self.preview_label.setToolTip("Click to copy the image")
+        self.preview_label.setToolTip(tr("Click to copy the image"))
 
     def copy_preview(self) -> None:
         """Copy the generated image to the clipboard (a click on the preview)."""
@@ -543,7 +544,7 @@ class AICharDialog(QtWidgets.QDialog):
         if image.isNull():
             return
         QtWidgets.QApplication.clipboard().setImage(image)
-        self.set_status("Image copied to clipboard.")
+        self.set_status(tr("Image copied to clipboard."))
 
     def save_character(self) -> None:
         """Install the previewed image as a char and close."""
@@ -557,8 +558,10 @@ class AICharDialog(QtWidgets.QDialog):
             return
         if char_catalog.find_char(char_id) is not None:
             answer = QtWidgets.QMessageBox.question(
-                self, "Replace character?",
-                f'A character named "{char_id}" already exists. Replace it?',
+                self, tr("Replace character?"),
+                tr('A character named "{char_id}" already exists. Replace it?').format(
+                    char_id=char_id
+                ),
             )
             if answer != QtWidgets.QMessageBox.StandardButton.Yes:
                 return

@@ -25,16 +25,18 @@ from PySide6 import QtCore
 
 if __package__:
     from . import activity as activity_mod
-    from . import activity_store, config_store, paths
+    from . import activity_store, config_store, i18n, paths
 else:
     import importlib
 
     activity_mod = importlib.import_module("mycat.activity")
     activity_store = importlib.import_module("mycat.activity_store")
     config_store = importlib.import_module("mycat.config_store")
+    i18n = importlib.import_module("mycat.i18n")
     paths = importlib.import_module("mycat.paths")
 
 logger = logging.getLogger(__name__)
+tr = i18n.tr
 
 # Same config file the rest of the app uses (see main.py / reminder.py).
 CFG_DIR = paths.config_dir()
@@ -156,7 +158,7 @@ class FocusController(QtCore.QObject):
             km = cursor_km_estimate(stats["mouse_px"])
             path = f"{km:.1f} km" if km >= 0.1 else f"{int(km * 1000)} m"
             parts.append(f"🖱 {stats['clicks']:,} / {path}")
-            parts.append(f"{stats['active_pct']}% active")
+            parts.append(f"{stats['active_pct']}% {tr('active')}")
         return " · ".join(parts)
 
     def status_text(self) -> str:
@@ -197,7 +199,11 @@ class FocusController(QtCore.QObject):
     def announce_rest(self, milestone: int) -> None:
         if self.announcer is None:
             return
-        text = "🍅 earned — time to rest" if milestone == 1 else "Still at it — time to rest 🍅"
+        text = (
+            tr("🍅 earned — time to rest")
+            if milestone == 1
+            else tr("Still at it — time to rest 🍅")
+        )
         self.announcer.announce(text)
         logger.info("Focus rest nudge (milestone %d, %d min)", milestone, milestone * self.settings.focus_minutes)
 
@@ -218,7 +224,7 @@ class FocusController(QtCore.QObject):
             except Exception:  # noqa: BLE001 - a tooltip must never break the timer
                 pass
             return
-        text = self.status_text() or f"🍅 {self.today_count()} today · idle"
+        text = self.status_text() or tr("🍅 {count} today · idle").format(count=self.today_count())
         window.setToolTip(text)
         # While the tooltip is on screen, keep its clock/stats ticking.
         try:

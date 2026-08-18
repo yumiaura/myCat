@@ -12,8 +12,10 @@ from __future__ import annotations
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from . import activity as activity_mod
-from . import key_heatmap
+from . import i18n, key_heatmap
 from .ui_theme import LIGHT_QSS
+
+tr = i18n.tr
 
 GREY = QtGui.QColor(210, 210, 210)
 GREY_BORDER = QtGui.QColor(170, 170, 170)
@@ -142,7 +144,7 @@ class KeyboardHeatmapDialog(QtWidgets.QDialog):
         # done on the refresh timer. It can't change while the window is open.
         self.counting_available = activity_mod.counts_available()
         self.last_counts: dict[str, int] | None = None
-        self.setWindowTitle("Keyboard heatmap")
+        self.setWindowTitle(tr("Keyboard heatmap"))
         self.setModal(False)
         self.setMinimumWidth(700)
         self.resize(720, 400)
@@ -167,7 +169,7 @@ class KeyboardHeatmapDialog(QtWidgets.QDialog):
 
         button_row = QtWidgets.QHBoxLayout()
         button_row.addStretch(1)
-        self.close_button = QtWidgets.QPushButton("Close")
+        self.close_button = QtWidgets.QPushButton(tr("Close"))
         self.close_button.clicked.connect(self.reject)
         button_row.addWidget(self.close_button)
         layout.addLayout(button_row)
@@ -182,12 +184,12 @@ class KeyboardHeatmapDialog(QtWidgets.QDialog):
 
     def update_note(self) -> None:
         if not self.counting_available:
-            text = (
+            text = tr(
                 "Key counting isn't available here (needs X11, or macOS Input Monitoring "
                 "permission), so nothing can be collected."
             )
         elif not self.collector.settings.key_heatmap_enabled:
-            text = "Collection is off — tick “Heatmap” in the Activity window and Save."
+            text = tr("Collection is off — tick “Heatmap” in the Activity window and Save.")
         else:
             text = ""
         if text != self.note.text():

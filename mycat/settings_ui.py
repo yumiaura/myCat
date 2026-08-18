@@ -4,14 +4,15 @@ from pathlib import Path
 
 from PySide6 import QtWidgets
 
-from . import menu_config
+from . import i18n, menu_config
 
 logger = logging.getLogger(__name__)
+tr = i18n.tr
 
 class SettingsDialog(QtWidgets.QDialog):
     def __init__(self, parent=None, config_path: Path = None, main_window=None):
         super().__init__(parent)
-        self.setWindowTitle("Settings")
+        self.setWindowTitle(tr("Settings"))
         self.config_path = config_path
         self.main_window = main_window
         self.setMinimumWidth(300)
@@ -21,7 +22,7 @@ class SettingsDialog(QtWidgets.QDialog):
 
         # Wait Time
         wait_layout = QtWidgets.QHBoxLayout()
-        wait_label = QtWidgets.QLabel("Animation Wait Time (s):")
+        wait_label = QtWidgets.QLabel(tr("Animation Wait Time (s):"))
         self.wait_spinbox = QtWidgets.QDoubleSpinBox()
         self.wait_spinbox.setRange(0.5, 60.0)
         self.wait_spinbox.setSingleStep(0.5)
@@ -37,12 +38,12 @@ class SettingsDialog(QtWidgets.QDialog):
         layout.addLayout(wait_layout)
 
         # Which feature entries show in the right-click / tray menu.
-        menu_group = QtWidgets.QGroupBox("Show in menu")
+        menu_group = QtWidgets.QGroupBox(tr("Show in menu"))
         menu_group_layout = QtWidgets.QVBoxLayout(menu_group)
         visible = menu_config.load_menu_visibility(self.config_path)
         self.menu_checkboxes = {}
         for key, label in menu_config.MENU_ITEMS:
-            checkbox = QtWidgets.QCheckBox(label.replace("…", ""))
+            checkbox = QtWidgets.QCheckBox(tr(label))
             checkbox.setChecked(visible.get(key, True))
             self.menu_checkboxes[key] = checkbox
             menu_group_layout.addWidget(checkbox)
@@ -83,7 +84,7 @@ class SettingsDialog(QtWidgets.QDialog):
 
             except Exception as e:
                 logger.error(f"Error saving settings to INI file: {e}")
-                QtWidgets.QMessageBox.critical(self, "Error", f"Failed to save settings:\n{e}")
+                QtWidgets.QMessageBox.critical(self, tr("Error"), f"{tr('Failed to save settings:')}\n{e}")
 
         # Persist which feature entries appear in the cat / tray menus.
         try:

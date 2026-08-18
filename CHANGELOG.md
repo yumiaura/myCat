@@ -5,6 +5,7 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Switch the interface language — English, 简体中文 (Simplified Chinese) or Русский.** Every visible string is translatable; pick a language from the **Language** entry right under *Settings…* in the cat's right-click / tray menu, and it's remembered. Translations live in plain, readable `mycat/locale/<code>.json` files that are scanned at startup, so adding a language is just dropping in a new file — no code change. Untranslated strings fall back to English (Chinese wrapping by @astrnox, #121; folder-based loader + Russian; branch `feat/i18n-trilingual`).
 - **Hide menu entries you don't use.** A new **Settings…** entry (right-click / tray) opens the Settings dialog, where a *Show in menu* section lets you hide feature entries — Chat, LLM, Calendar, Reminder, GitHub, Activity, Chars — from both the cat's right-click menu and the tray menu. Hiding an entry only removes the shortcut; the feature keeps running. Settings, Quit and Close are always shown (branch `feat/menu-toggles`).
 
 ## [0.1.28] - 2026-07-27

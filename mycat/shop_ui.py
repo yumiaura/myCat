@@ -12,7 +12,7 @@ from pathlib import Path
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from . import char_catalog
+from . import char_catalog, i18n
 from .shop_api import (
     Catalog,
     CharEntry,
@@ -22,6 +22,7 @@ from .shop_api import (
 )
 
 logger = logging.getLogger(__name__)
+tr = i18n.tr
 
 
 # --- workers ------------------------------------------------------------------
@@ -141,7 +142,7 @@ class CharCard(QtWidgets.QFrame):
         name.setWordWrap(True)
         layout.addWidget(name)
 
-        author = QtWidgets.QLabel(f"by {char.author or 'unknown'}")
+        author = QtWidgets.QLabel(tr("by {author}").format(author=char.author or tr("unknown")))
         author.setStyleSheet("color:#666; font-size:11px;")
         layout.addWidget(author)
 
@@ -185,9 +186,9 @@ class CharCard(QtWidgets.QFrame):
 
     def refresh_button(self) -> None:
         if self.installed:
-            self.button.setText("✓ Installed — Uninstall")
+            self.button.setText(tr("✓ Installed — Uninstall"))
         else:
-            self.button.setText("Install")
+            self.button.setText(tr("Install"))
         self.button.setEnabled(True)
 
     def set_progress(self, done: int, total: int) -> None:
@@ -197,12 +198,12 @@ class CharCard(QtWidgets.QFrame):
             self.progress.setValue(min(100, int(done * 100 / total)))
         else:
             self.progress.setRange(0, 0)
-        self.button.setText(f"Downloading… {done // 1024 or 1} KB")
+        self.button.setText(tr("Downloading… {kb} KB").format(kb=done // 1024 or 1))
         self.button.setEnabled(False)
 
     def set_failed(self, message: str) -> None:
         self.progress.setVisible(False)
-        self.button.setText("Retry")
+        self.button.setText(tr("Retry"))
         self.button.setEnabled(True)
         self.button.setToolTip(message)
 
@@ -244,7 +245,7 @@ class ShopDialog(QtWidgets.QDialog):
         config_path: Path | None = None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("myCat Shop")
+        self.setWindowTitle(tr("myCat Shop"))
         self.resize(760, 540)
         self.setMinimumSize(560, 380)
         self.setModal(False)
@@ -279,12 +280,12 @@ class ShopDialog(QtWidgets.QDialog):
         self.title_label = QtWidgets.QLabel("<b>myCat Shop</b>")
         header.addWidget(self.title_label)
         header.addStretch(1)
-        self.refresh_button = QtWidgets.QPushButton("Refresh")
+        self.refresh_button = QtWidgets.QPushButton(tr("Refresh"))
         self.refresh_button.clicked.connect(lambda: self.refresh_catalog(force=True))
         header.addWidget(self.refresh_button)
         root.addLayout(header)
 
-        self.url_label = QtWidgets.QLabel(f"Server: {self.client.base_url}")
+        self.url_label = QtWidgets.QLabel(tr("Server: {url}").format(url=self.client.base_url))
         self.url_label.setStyleSheet("color:#888; font-size:11px;")
         root.addWidget(self.url_label)
 
@@ -301,7 +302,7 @@ class ShopDialog(QtWidgets.QDialog):
         self.catalog_grid.setVerticalSpacing(8)
         self.catalog_grid.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
         self.catalog_scroll.setWidget(self.catalog_content)
-        self.tabs.addTab(self.catalog_scroll, "Catalog")
+        self.tabs.addTab(self.catalog_scroll, tr("Catalog"))
 
         # My Chars tab
         my_chars_widget = QtWidgets.QWidget()
@@ -310,12 +311,12 @@ class ShopDialog(QtWidgets.QDialog):
         self.my_chars_list = QtWidgets.QListWidget()
         my_chars_layout.addWidget(self.my_chars_list, 1)
         buttons = QtWidgets.QHBoxLayout()
-        self.uninstall_button = QtWidgets.QPushButton("Uninstall selected")
+        self.uninstall_button = QtWidgets.QPushButton(tr("Uninstall selected"))
         self.uninstall_button.clicked.connect(self.uninstall_selected)
         buttons.addWidget(self.uninstall_button)
         buttons.addStretch(1)
         my_chars_layout.addLayout(buttons)
-        self.tabs.addTab(my_chars_widget, "My Chars")
+        self.tabs.addTab(my_chars_widget, tr("My Chars"))
 
         # Footer
         self.status_label = QtWidgets.QLabel("")
@@ -333,7 +334,7 @@ class ShopDialog(QtWidgets.QDialog):
     # ---- catalog flow -----------------------------------------------------
 
     def refresh_catalog(self, *, force: bool = False) -> None:
-        self.status_label.setText("Loading catalog…")
+        self.status_label.setText(tr("Loading catalog…"))
         self.refresh_button.setEnabled(False)
         worker = CatalogWorker(self.client, self.signals, force_refresh=force)
         self.pool.start(worker)
@@ -343,7 +344,7 @@ class ShopDialog(QtWidgets.QDialog):
         self.refresh_button.setEnabled(True)
         self.render_catalog()
         self.refresh_my_chars()
-        self.status_label.setText(f"{len(catalog.chars)} chars available.")
+        self.status_label.setText(tr("{count} chars available.").format(count=len(catalog.chars)))
 
     def on_catalog_failed(self, message: str) -> None:
         self.refresh_button.setEnabled(True)
@@ -359,7 +360,7 @@ class ShopDialog(QtWidgets.QDialog):
         self.cards.clear()
 
         if not self.catalog or not self.catalog.chars:
-            empty = QtWidgets.QLabel("No chars available.")
+            empty = QtWidgets.QLabel(tr("No chars available."))
             empty.setStyleSheet("color:#888;")
             self.catalog_grid.addWidget(empty, 0, 0)
             return
@@ -385,11 +386,15 @@ class ShopDialog(QtWidgets.QDialog):
             return
         if char.tier != "free":
             # Premium tiers require entitlements; not in MVP.
-            self.status_label.setText(f"⚠ Premium char '{char.name}' requires a subscription (coming soon).")
+            self.status_label.setText(
+                tr("⚠ Premium char '{name}' requires a subscription (coming soon).").format(
+                    name=char.name
+                )
+            )
             return
         worker = DownloadWorker(self.client, self.signals, char, self.user_chars_dir)
         self.pool.start(worker)
-        self.status_label.setText(f"Downloading {char.name}…")
+        self.status_label.setText(tr("Downloading {name}…").format(name=char.name))
 
     def on_download_progress(self, char_id: str, done: int, total: int) -> None:
         card = self.cards.get(char_id)
@@ -400,7 +405,7 @@ class ShopDialog(QtWidgets.QDialog):
         card = self.cards.get(char_id)
         if card is not None:
             card.set_installed(True)
-        self.status_label.setText(f"Installed: {char_id}")
+        self.status_label.setText(tr("Installed: {id}").format(id=char_id))
         self.refresh_my_chars()
         self.char_installed.emit(char_id)
 
@@ -408,18 +413,20 @@ class ShopDialog(QtWidgets.QDialog):
         card = self.cards.get(char_id)
         if card is not None:
             card.set_failed(message)
-        self.status_label.setText(f"⚠ Failed: {char_id} — {message}")
+        self.status_label.setText(
+            tr("⚠ Failed: {id} — {message}").format(id=char_id, message=message)
+        )
 
     def uninstall_char(self, char_id: str) -> None:
         if char_catalog.remove_installed(char_id):
             card = self.cards.get(char_id)
             if card is not None:
                 card.set_installed(False)
-            self.status_label.setText(f"Uninstalled: {char_id}")
+            self.status_label.setText(tr("Uninstalled: {id}").format(id=char_id))
             self.refresh_my_chars()
             self.char_uninstalled.emit(char_id)
         else:
-            self.status_label.setText(f"⚠ Could not uninstall {char_id}")
+            self.status_label.setText(tr("⚠ Could not uninstall {id}").format(id=char_id))
 
     def uninstall_selected(self) -> None:
         item = self.my_chars_list.currentItem()
