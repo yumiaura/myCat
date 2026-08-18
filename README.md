@@ -14,6 +14,7 @@ EN | [RU](https://github.com/yumiaura/myCat/blob/main/docs/README_RU.md) | [CN](
 I made a cute little animated cat 🐈 for your desktop.<br>
 It's a lightweight Python + Qt app - no borders, and you can drag it around easily.<br>
 Shows static first frame for 5 seconds, then plays GIF animation once, then loops back to static.<br>
+The whole interface speaks **English, Русский and 简体中文** — switch any time under **Settings → Language**.<br>
 If you like it, maybe I'll share an [AnimeGirl](https://github.com/yumiaura/mycat/discussions/1) version next time~ 😉<br>
 
 <img width="640" height="360" alt="image" src="https://github.com/user-attachments/assets/332494c9-8e39-4774-a85c-808839229106" />
@@ -108,7 +109,7 @@ mycat                 # or, without installing:  python3 mycat/main.py
 - **Reminder** 🛩️ - set a message and a time (one-shot or daily) and the cat flies a little banner plane across the top of your screen. Right-click → *Reminder…* to set the message, direction, plane and color.
 - **Chat (Ollama)** 💬 - talk to the cat through a **local [Ollama](https://ollama.com) model**, no account or API key needed (see below).
 - **Create with AI** 🎨 - turn 1–3 photos into a custom chibi cat character with your own OpenAI key (right-click → *Chars → Create custom with AI…*). Reference photos are never stored; the result is an ordinary local char you can reuse or delete.
-- **Language** 🌐 — right-click the cat → **Language** to switch between English and Simplified Chinese at any time. The choice is remembered for next time.
+- **Multilingual interface** 🌐 — the whole UI is available in **English, Русский (Russian) and 简体中文 (Simplified Chinese)**. Right-click the cat (or the tray) → under **Settings…** → **Language** to switch at any time; the choice is remembered. Translations live in plain `mycat/locale/*.json` files, so adding a language is just dropping in a file.
 
 ## 💬 Chat with the cat (Ollama)
 
