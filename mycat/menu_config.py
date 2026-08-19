@@ -26,11 +26,22 @@ MENU_ITEMS = [
     ("chars", "Chars"),
 ]
 
+# Entries hidden from the menu by default — Chat / LLM / Calendar are opt-in
+# (most users don't set up Ollama or a calendar), so they start hidden to keep
+# the menu tidy. Everything else shows by default. Any of them can be flipped in
+# Settings → Show in menu.
+DEFAULT_HIDDEN = {"chat", "llm", "calendar"}
+
+
+def default_visible(key: str) -> bool:
+    """Whether a menu entry is shown before the user has chosen in Settings."""
+    return key not in DEFAULT_HIDDEN
+
 
 def load_menu_visibility(cfg_file: Path | None = None) -> dict:
-    """Map each menu entry key to whether it should be shown (default: all shown)."""
+    """Map each menu entry key to whether it should be shown (see DEFAULT_HIDDEN)."""
     cfg_file = cfg_file or paths.config_file()
-    visible = {key: True for key, _ in MENU_ITEMS}
+    visible = {key: default_visible(key) for key, _ in MENU_ITEMS}
     config = config_store.read_config(cfg_file)
     if config is not None and config.has_section(MENU_SECTION):
         for key, _ in MENU_ITEMS:
@@ -38,12 +49,12 @@ def load_menu_visibility(cfg_file: Path | None = None) -> dict:
                 try:
                     visible[key] = config.getboolean(MENU_SECTION, key)
                 except ValueError:
-                    visible[key] = True
+                    visible[key] = default_visible(key)
     return visible
 
 
 def save_menu_visibility(visible: dict, cfg_file: Path | None = None) -> None:
     """Persist the shown/hidden state of every menu entry into ``[menu]``."""
     cfg_file = cfg_file or paths.config_file()
-    values = {key: config_store.bool_str(bool(visible.get(key, True))) for key, _ in MENU_ITEMS}
+    values = {key: config_store.bool_str(bool(visible.get(key, default_visible(key)))) for key, _ in MENU_ITEMS}
     config_store.write_section(MENU_SECTION, values, cfg_file)

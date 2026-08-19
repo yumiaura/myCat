@@ -19,6 +19,21 @@ from PySide6 import QtCore
 
 logger = logging.getLogger(__name__)
 
+
+def bubble_mode_enabled() -> bool:
+    """Whether the user chose to speak announcements in a bubble (Settings)."""
+    try:
+        if __package__:
+            from . import speech_bubble
+        else:
+            import importlib
+
+            speech_bubble = importlib.import_module("mycat.speech_bubble")
+        return speech_bubble.bubble_mode_enabled()
+    except Exception:  # noqa: BLE001 - never break announcing over a config read
+        return False
+
+
 # Seconds between the previous flyby leaving the screen and the next take-off.
 MIN_GAP_SECONDS = 4.0
 # A crossing takes ~20 s; a flyby older than this is parked (the user grabbed
@@ -170,6 +185,9 @@ class Announcer(QtCore.QObject):
             logger.info("Offscreen platform: skipping flyby for %r", item.text)
             return None
 
+        if bubble_mode_enabled():
+            return self.launch_bubble(item)
+
         try:
             if __package__:
                 from .reminder_ui import FlybyWindow
@@ -190,6 +208,23 @@ class Announcer(QtCore.QObject):
         flyby.destroyed.connect(lambda _=None: self.flyby_gone())
         flyby.start()
         return flyby
+
+    def launch_bubble(self, item: Announcement):
+        """Speak ``item`` in a comic bubble above the cat instead of flying it."""
+        try:
+            if __package__:
+                from .speech_bubble import BubbleWindow
+            else:
+                import importlib
+
+                BubbleWindow = importlib.import_module("mycat.speech_bubble").BubbleWindow
+        except Exception:
+            logger.exception("Failed to import speech bubble")
+            return None
+        bubble = BubbleWindow(self.window, item.text, url=getattr(item, "url", ""))
+        bubble.destroyed.connect(lambda _=None: self.flyby_gone())
+        bubble.start()
+        return bubble
 
 
 __all__ = ["Announcement", "Announcer", "MIN_GAP_SECONDS"]

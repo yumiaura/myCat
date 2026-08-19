@@ -137,7 +137,6 @@
     "Fork of my repo": "Fork of my repo",
     "New follower": "New follower",
     "My stars & follows": "My stars & follows",
-    "Reminder": "Reminder",
     "Drag to move • Right-click for options": "Drag to move • Right-click for options",
     "Double-click to open • Drag to move • Right-click for options": "Double-click to open • Drag to move • Right-click for options",
     "Message": "Message",
@@ -279,6 +278,9 @@
     "by {author}": "by {author}",
     "unknown": "unknown",
     "Settings…": "Settings…",
-    "Show in menu": "Show in menu"
+    "Show in menu": "Show in menu",
+    "Reminder": "Reminder",
+    "Speech bubble": "Speech bubble",
+    "Messages:": "Messages:"
   }
 }

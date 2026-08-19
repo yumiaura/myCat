@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.30] - 2026-08-19
+
+### Added
+- **Speech-bubble mode — the cat can *say* its messages.** Settings gained a **Messages** choice — *Reminder* (fly a banner plane, the default) or *Speech bubble*. Pick the bubble and every announcement (reminders, GitHub, digest, calendar, activity) is spoken in a rounded comic bubble that hugs the top of the cat's head — typed out letter by letter (it grows as it types), held ~10 s, then gone. Hiding **Reminder** in *Show in menu* drops the Reminder choice, leaving only the bubble. A small **Test** button says "Meow" in the current style, and the bubble follows the cat if you drag it (branch `feat/reminder-speech-bubble`).
+- **Korean interface — 한국어.** The UI is now also available in Korean, joining English, Русский and 简体中文. Pick it under *Settings… → Language*. As with the other languages, it's just a `mycat/locale/ko.json` file the app scans at startup — no code change (branch `feat/i18n-korean`).
+
+### Changed
+- **Chat, LLM and Calendar are hidden from the menu by default.** They're opt-in (most people don't set up Ollama or a calendar), so the menu starts tidier; turn any of them back on under *Settings… → Show in menu*. Reminder, GitHub, Activity and Chars still show by default.
+- **Dialogs open beside the cat, towards the screen centre.** Every pop-up (Settings, LLM, Calendar, Reminder, GitHub, Activity, Update, Generate) now opens next to the cat on the side facing the centre of the screen — cat on the right half opens to its left, on the left half to its right — instead of centred on the cat. So the window no longer covers the cat, and the speech bubble above the cat's head stays clear of it (branch `feat/reminder-speech-bubble`).
+
 ## [0.1.29] - 2026-08-18
 
 ### Added

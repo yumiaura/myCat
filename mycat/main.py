@@ -1174,7 +1174,14 @@ class PixelCatWindow(QtWidgets.QWidget):
         # Focus is fully automatic now (earned from activity) — no menu action.
         menu.addSeparator()
 
-        # Rebuild the list every time so freshly-installed chars appear without restart.
+        # Settings, Chars and Language share one block (no separators between
+        # them). Settings is always shown — it's how hidden entries are brought
+        # back.
+        settings_action = menu.addAction(i18n.tr("Settings…"))
+        settings_action.triggered.connect(self.open_settings)
+
+        # Chars sits under Settings. Rebuild the list every time so freshly
+        # installed chars appear without a restart.
         self.available_images = char_catalog.scan_all()
         if len(self.available_images) > 0 and visible["chars"]:
             images_menu = menu.addMenu(i18n.tr("Chars"))
@@ -1195,15 +1202,12 @@ class PixelCatWindow(QtWidgets.QWidget):
                     action.setCheckable(True)
                     action.setChecked(True)
                 action.triggered.connect(lambda checked, name=img_name: self.load_image(name))
-            menu.addSeparator()
 
-        # Settings is always shown (never hideable) — it's how hidden entries
-        # are brought back.
-        settings_action = menu.addAction(i18n.tr("Settings…"))
-        settings_action.triggered.connect(self.open_settings)
-
-        # Language picker sits right under Settings.
+        # Language picker.
         menu.addMenu(i18n.build_language_menu(CFG_FILE))
+
+        # Close the Settings / Chars / Language block before the utilities.
+        menu.addSeparator()
 
         reset_action = menu.addAction(i18n.tr("Reset"))
         reset_action.triggered.connect(self.reset_position)
@@ -1230,6 +1234,58 @@ class PixelCatWindow(QtWidgets.QWidget):
         tidy_separators(menu)
         menu.exec(self.mapToGlobal(pos))
 
+    def cat_body_rect(self) -> QtCore.QRect:
+        """Global rect of the drawn (opaque) cat, ignoring the pixmap's transparent
+        margins — so pop-ups can sit a few px from the *visible* cat, not the window
+        (which is sized to the whole pixmap). Falls back to the window when there's
+        no pixmap to scan."""
+        frame = self.frameGeometry()
+        pixmap = getattr(self, "current_pixmap", None) or getattr(self, "first_frame_pixmap", None)
+        if pixmap is None or pixmap.isNull():
+            return frame
+        image = pixmap.toImage()
+        pix_left = max(0, (self.width() - image.width()) // 2)
+        pix_top = max(0, (self.height() - image.height()) // 2)
+        left, right, top, bottom = image.width(), -1, image.height(), -1
+        for row in range(0, image.height(), 2):
+            for col in range(0, image.width(), 2):
+                if QtGui.qAlpha(image.pixel(col, row)) > 12:
+                    left, right = min(left, col), max(right, col)
+                    top, bottom = min(top, row), max(bottom, row)
+        if right < 0:
+            return frame
+        origin = self.mapToGlobal(QtCore.QPoint(pix_left + left, pix_top + top))
+        return QtCore.QRect(origin.x(), origin.y(), right - left + 1, bottom - top + 1)
+
+    def place_beside_cat(self, dialog) -> None:
+        """Open a pop-up beside the cat, on the side facing the screen centre, so it
+        never covers the cat (or the speech bubble above it).
+
+        Cat on the right half of the screen → the dialog opens to its left; on the
+        left half → to its right, flipping over / clamping when a side is tight. It
+        opens 5px from the visible cat and stays ≥25px clear of the screen's top and
+        bottom, centred vertically on the cat.
+        """
+        dialog.adjustSize()
+        dw, dh = dialog.width(), dialog.height()
+        cat = self.cat_body_rect()
+        screen = self.screen() or QtWidgets.QApplication.primaryScreen()
+        area = screen.availableGeometry() if screen is not None else cat
+        gap, margin = 5, 25
+        cat_left, cat_right = cat.left(), cat.right() + 1
+        if cat.center().x() >= area.center().x():
+            x = cat_left - gap - dw              # cat on the right → open left
+        else:
+            x = cat_right + gap                  # cat on the left → open right
+        if x < area.left():                      # too tight that side → flip over
+            x = cat_right + gap
+        elif x + dw > area.right():
+            x = cat_left - gap - dw
+        x = max(area.left(), min(x, area.right() - dw))
+        y = cat.center().y() - dh // 2
+        y = max(area.top() + margin, min(y, area.bottom() - margin - dh))
+        dialog.move(x, y)
+
     def open_ai_char(self) -> None:
         """Open the reference-photo generator and select its saved result."""
         try:
@@ -1241,6 +1297,7 @@ class PixelCatWindow(QtWidgets.QWidget):
                 AICharDialog = importlib.import_module("mycat.ai_char_ui").AICharDialog
             dialog = AICharDialog(self)
             dialog.character_created.connect(self.load_image)
+            self.place_beside_cat(dialog)
             dialog.exec()
         except Exception as exc:  # noqa: BLE001 - keep the desktop companion alive
             logger.exception("Failed to open AI character generator")
@@ -1280,6 +1337,7 @@ class PixelCatWindow(QtWidgets.QWidget):
             logger.exception("Failed to import LLM settings dialog")
             return
         dialog = LLMSettingsDialog(self, parent=self)
+        self.place_beside_cat(dialog)
         dialog.exec()
 
     def open_settings(self) -> None:
@@ -1295,6 +1353,7 @@ class PixelCatWindow(QtWidgets.QWidget):
             logger.exception("Failed to import Settings dialog")
             return
         dialog = SettingsDialog(self, config_path=CFG_FILE, main_window=self)
+        self.place_beside_cat(dialog)
         dialog.exec()
 
     def open_github_settings(self) -> None:
@@ -1312,6 +1371,7 @@ class PixelCatWindow(QtWidgets.QWidget):
             logger.exception("Failed to import GitHub settings UI")
             return
         dialog = GitHubDialog(notifier, parent=self)
+        self.place_beside_cat(dialog)
         dialog.show()
         dialog.raise_()
 
@@ -1330,6 +1390,7 @@ class PixelCatWindow(QtWidgets.QWidget):
             logger.exception("Failed to import calendar settings UI")
             return
         dialog = CalendarDialog(controller, parent=self)
+        self.place_beside_cat(dialog)
         dialog.show()
         dialog.raise_()
 
@@ -1348,6 +1409,7 @@ class PixelCatWindow(QtWidgets.QWidget):
             logger.exception("Failed to import activity UI")
             return
         dialog = ActivityDialog(collector, focus_controller=getattr(self, "focus_controller", None), parent=self)
+        self.place_beside_cat(dialog)
         dialog.show()
         dialog.raise_()
 
@@ -1379,6 +1441,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         dialog.char_installed.connect(self.on_char_installed)
         dialog.char_uninstalled.connect(self.on_char_uninstalled)
         self.shop_dialog = dialog
+        self.place_beside_cat(dialog)
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
@@ -1425,6 +1488,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         update_button = box.addButton("Update", QtWidgets.QMessageBox.ButtonRole.ActionRole)
         update_button.setEnabled(can_update)
         box.addButton(QtWidgets.QMessageBox.StandardButton.Close)
+        self.place_beside_cat(box)
         box.exec()
         clicked = box.clickedButton()
         if clicked is releases_button:
@@ -1512,6 +1576,7 @@ class PixelCatWindow(QtWidgets.QWidget):
                     signals.failed.emit(str(exc))
 
         threading.Thread(target=worker, name="mycat-update", daemon=True).start()
+        self.place_beside_cat(dialog)
         dialog.exec()
 
     def finish_update(self) -> None:
@@ -2171,10 +2236,13 @@ def setup_tray(app, window):
         if visible["activity"]:
             menu.addAction(i18n.tr("Activity…"), window.open_activity_dialog)
 
-        # Settings is always shown — it's how hidden entries are brought back.
+        # Settings and Language share one block. Settings is always shown — it's
+        # how hidden entries are brought back.
+        menu.addSeparator()
         menu.addAction(i18n.tr("Settings…"), window.open_settings)
         # Language picker sits right under Settings.
         menu.addMenu(i18n.build_language_menu(CFG_FILE))
+        menu.addSeparator()
         menu.addAction(i18n.tr("Reset"), window.reset_position)
         menu.addAction(i18n.tr("Update…"), window.open_update)
         if autostart.is_supported():

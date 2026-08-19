@@ -13,7 +13,7 @@
     "Chars": "Персонажи",
     "Generate…": "Сгенерировать…",
     "Delete…": "Удалить…",
-    "Reset": "Сбросить положение",
+    "Reset": "Сброс",
     "Update…": "Обновить…",
     "Autostart": "Автозапуск",
     "Close": "Закрыть",
@@ -137,7 +137,6 @@
     "Fork of my repo": "Форк моего репозитория",
     "New follower": "Новый подписчик",
     "My stars & follows": "Мои звёзды и подписки",
-    "Reminder": "Напоминание",
     "Drag to move • Right-click for options": "Перетащите, чтобы переместить • Правый клик — опции",
     "Double-click to open • Drag to move • Right-click for options": "Двойной клик — открыть • Перетащите, чтобы переместить • Правый клик — опции",
     "Message": "Текст",
@@ -279,6 +278,9 @@
     "by {author}": "автор: {author}",
     "unknown": "неизвестно",
     "Settings…": "Настройки…",
-    "Show in menu": "Показывать в меню"
+    "Show in menu": "Показывать в меню",
+    "Reminder": "Напоминание",
+    "Speech bubble": "Облачко",
+    "Messages:": "Сообщения:"
   }
 }

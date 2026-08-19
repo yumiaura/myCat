@@ -198,6 +198,9 @@ class ReminderController(QtCore.QObject):
         dialog.setModal(False)
         dialog.finished.connect(lambda result: setattr(self, "settings_dialog", None))
         self.settings_dialog = dialog
+        place_beside_cat = getattr(self.window, "place_beside_cat", None)
+        if callable(place_beside_cat):
+            place_beside_cat(dialog)
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
@@ -211,6 +214,22 @@ class ReminderController(QtCore.QObject):
         if platform_name == "offscreen":
             logger.info("Offscreen platform: skipping flyby for %r", reminder.text)
             return
+
+        try:
+            if __package__:
+                from . import speech_bubble
+            else:
+                import importlib
+
+                speech_bubble = importlib.import_module("mycat.speech_bubble")
+            if speech_bubble.bubble_mode_enabled():
+                bubble = speech_bubble.BubbleWindow(self.window, reminder.text, url=getattr(reminder, "url", ""))
+                bubble.destroyed.connect(lambda _=None: setattr(self, "flyby", None))
+                self.flyby = bubble
+                bubble.start()
+                return
+        except Exception:
+            logger.exception("Speech bubble failed; falling back to the flyby")
 
         try:
             if __package__:
