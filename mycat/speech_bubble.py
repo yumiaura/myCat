@@ -25,7 +25,7 @@ CONFIG_KEY = "speech_bubble"
 
 TYPE_INTERVAL_MS = 35    # per revealed character
 HOLD_SECONDS = 10.0      # how long the finished bubble lingers
-MAX_TEXT_WIDTH = 280     # wrap long messages to this width
+MAX_TEXT_WIDTH = 480     # wrap long messages to this width
 MIN_WIDTH = 120          # the bubble body is never narrower than this
 PAD_X, PAD_Y = 8, 4      # tight text padding (≤5px above/below the glyphs)
 TAIL_ANGLE_DEG = 25      # apex angle of the pointer aimed at the cat
@@ -85,6 +85,7 @@ class BubbleWindow(QtWidgets.QWidget):
         self.body_h = 30
         self.tail_x = self.body_w / 2.0  # local x of the tail apex (moves per screen third)
         self.cat_top_cache = None  # cached y of the cat's opaque top (its ears)
+        self.cat_x_bounds_cache = None  # cached (left, right) x of the cat's drawn body
 
         self.bubble_font = QtGui.QFont()
         self.bubble_font.setPointSize(11)
@@ -164,33 +165,69 @@ class BubbleWindow(QtWidgets.QWidget):
         self.cat_top_cache = offset
         return offset
 
+    def cat_ink_x_bounds(self) -> tuple[int, int]:
+        """Left and right x (in the cat window) of the cat's drawn body.
+
+        The pixmap is centred with transparent side margins, so the visible body
+        is narrower than the window. Scan for the first and last opaque columns so
+        the bubble can hug the cat's actual left/right side, not the window edge."""
+        if self.cat_x_bounds_cache is not None:
+            return self.cat_x_bounds_cache
+        cat = self.cat_window
+        left, right = 0, cat.width()
+        pixmap = getattr(cat, "current_pixmap", None) or getattr(cat, "first_frame_pixmap", None)
+        if pixmap is not None and not pixmap.isNull():
+            image = pixmap.toImage()
+            pix_left = max(0, (cat.width() - image.width()) // 2)
+            rows = range(0, image.height(), 3)  # every 3rd row is plenty to find the edges
+            for col in range(image.width()):
+                if any(QtGui.qAlpha(image.pixel(col, row)) > 12 for row in rows):
+                    left = pix_left + col
+                    break
+            for col in range(image.width() - 1, -1, -1):
+                if any(QtGui.qAlpha(image.pixel(col, row)) > 12 for row in rows):
+                    right = pix_left + col
+                    break
+        self.cat_x_bounds_cache = (left, right)
+        return self.cat_x_bounds_cache
+
     def reposition(self) -> None:
         cat = self.cat_window
         if cat is None:
             return
         head = cat.mapToGlobal(QtCore.QPoint(cat.width() // 2, self.cat_ink_top()))
         head_x, head_y = head.x(), head.y()
+        ink_left, ink_right = self.cat_ink_x_bounds()
+        cat_left = cat.mapToGlobal(QtCore.QPoint(ink_left, 0)).x()
+        cat_right = cat.mapToGlobal(QtCore.QPoint(ink_right, 0)).x()
         screen = cat.screen() or QtWidgets.QApplication.primaryScreen()
         usable = screen.availableGeometry() if screen is not None else None
 
-        # Keep the tail apex clear of the rounded corners.
-        inset = min(CORNER + TAIL_W, self.body_w / 2.0)
-        # Grow direction from which screen third the cat sits in: left third →
-        # grow right (tail near the left), right third → grow left (tail near the
-        # right), centre third → symmetric. Keeps the bubble off the screen edges.
+        # Grow direction from which screen third the cat sits in, anchoring the
+        # bubble to the cat's body so it grows towards the screen centre:
+        #   left third  → grow right, the bubble's LEFT edge meets the cat's left
+        #   right third → grow left,  the bubble's RIGHT edge meets the cat's right
+        #   centre third → symmetric, grows both ways evenly.
         if usable is not None and usable.width() > 0:
             rel = head_x - usable.left()
             third = usable.width() / 3.0
             if rel < third:
-                tail_local = inset
+                x = cat_left
             elif rel > 2 * third:
-                tail_local = self.body_w - inset
+                x = cat_right - self.body_w
             else:
-                tail_local = self.body_w / 2.0
+                x = head_x - self.body_w / 2.0
         else:
-            tail_local = self.body_w / 2.0
+            x = head_x - self.body_w / 2.0
 
-        x = round(head_x - tail_local)
+        # Hug the cat's edge, but never so far that the tail can't reach the head:
+        # clamp the body so the head always stays under it (short bubbles then stay
+        # on the head rather than drifting out to a far edge, e.g. the cat's tail).
+        inset = min(CORNER + TAIL_W, self.body_w / 2.0)
+        x = round(x)
+        x = min(x, round(head_x - inset))
+        x = max(x, round(head_x - (self.body_w - inset)))
+
         # Position off the DRAWN tail tip (2px inside the window bottom), not the
         # window edge, so the visible tip really stops HEAD_GAP px above the ears.
         tail_tip = self.body_h + TAIL_H - TAIL_TIP_MARGIN
@@ -198,7 +235,7 @@ class BubbleWindow(QtWidgets.QWidget):
         if usable is not None:
             x = max(usable.left(), min(x, usable.right() - self.width()))
             y = max(usable.top(), min(y, usable.bottom() - self.height()))
-        # After any edge clamp, keep the tail pointing at the cat's head.
+        # Keep the tail pointing at the cat's head, clamped onto the bubble body.
         self.tail_x = max(inset, min(head_x - x, self.body_w - inset))
         self.move(x, y)
 
