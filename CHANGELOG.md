@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [0.1.30] - 2026-08-19
 
 ### Added
 - **Speech-bubble mode — the cat can *say* its messages.** Settings gained a **Messages** choice — *Reminder* (fly a banner plane, the default) or *Speech bubble*. Pick the bubble and every announcement (reminders, GitHub, digest, calendar, activity) is spoken in a rounded comic bubble that hugs the top of the cat's head — typed out letter by letter (it grows as it types), held ~10 s, then gone. Hiding **Reminder** in *Show in menu* drops the Reminder choice, leaving only the bubble. A small **Test** button says "Meow" in the current style, and the bubble follows the cat if you drag it (branch `feat/reminder-speech-bubble`).
