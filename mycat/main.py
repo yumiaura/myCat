@@ -1234,32 +1234,56 @@ class PixelCatWindow(QtWidgets.QWidget):
         tidy_separators(menu)
         menu.exec(self.mapToGlobal(pos))
 
-    def place_beside_cat(self, dialog) -> None:
-        """Open a pop-up beside the cat, on the side facing the screen centre, so
-        it never covers the cat (or the speech bubble above it).
+    def cat_body_rect(self) -> QtCore.QRect:
+        """Global rect of the drawn (opaque) cat, ignoring the pixmap's transparent
+        margins — so pop-ups can sit a few px from the *visible* cat, not the window
+        (which is sized to the whole pixmap). Falls back to the window when there's
+        no pixmap to scan."""
+        frame = self.frameGeometry()
+        pixmap = getattr(self, "current_pixmap", None) or getattr(self, "first_frame_pixmap", None)
+        if pixmap is None or pixmap.isNull():
+            return frame
+        image = pixmap.toImage()
+        pix_left = max(0, (self.width() - image.width()) // 2)
+        pix_top = max(0, (self.height() - image.height()) // 2)
+        left, right, top, bottom = image.width(), -1, image.height(), -1
+        for row in range(0, image.height(), 2):
+            for col in range(0, image.width(), 2):
+                if QtGui.qAlpha(image.pixel(col, row)) > 12:
+                    left, right = min(left, col), max(right, col)
+                    top, bottom = min(top, row), max(bottom, row)
+        if right < 0:
+            return frame
+        origin = self.mapToGlobal(QtCore.QPoint(pix_left + left, pix_top + top))
+        return QtCore.QRect(origin.x(), origin.y(), right - left + 1, bottom - top + 1)
 
-        Cat on the right half of the screen → the dialog opens to its left; cat on
-        the left half → to its right. If that side is too tight the dialog flips to
-        the other side, then clamps onto the screen as a last resort. Vertically it
-        sits centred on the cat.
+    def place_beside_cat(self, dialog) -> None:
+        """Open a pop-up beside the cat, on the side facing the screen centre, so it
+        never covers the cat (or the speech bubble above it).
+
+        Cat on the right half of the screen → the dialog opens to its left; on the
+        left half → to its right, flipping over / clamping when a side is tight. It
+        opens 5px from the visible cat and stays ≥25px clear of the screen's top and
+        bottom, centred vertically on the cat.
         """
         dialog.adjustSize()
         dw, dh = dialog.width(), dialog.height()
-        cat = self.frameGeometry()
+        cat = self.cat_body_rect()
         screen = self.screen() or QtWidgets.QApplication.primaryScreen()
         area = screen.availableGeometry() if screen is not None else cat
-        gap = 12
+        gap, margin = 5, 25
+        cat_left, cat_right = cat.left(), cat.right() + 1
         if cat.center().x() >= area.center().x():
-            x = cat.left() - gap - dw            # cat on the right → open left
+            x = cat_left - gap - dw              # cat on the right → open left
         else:
-            x = cat.right() + gap                # cat on the left → open right
+            x = cat_right + gap                  # cat on the left → open right
         if x < area.left():                      # too tight that side → flip over
-            x = cat.right() + gap
+            x = cat_right + gap
         elif x + dw > area.right():
-            x = cat.left() - gap - dw
+            x = cat_left - gap - dw
         x = max(area.left(), min(x, area.right() - dw))
         y = cat.center().y() - dh // 2
-        y = max(area.top(), min(y, area.bottom() - dh))
+        y = max(area.top() + margin, min(y, area.bottom() - margin - dh))
         dialog.move(x, y)
 
     def open_ai_char(self) -> None:
