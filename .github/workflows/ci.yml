@@ -26,7 +26,7 @@ jobs:
       - name: Install package + dev tools
         run: |
           python -m pip install --upgrade pip
-          pip install ruff pytest
+          pip install ruff pytest pytest-forked pytest-timeout
           # [calendar] pulls icalendar/recurring-ical-events so the calendar
           # tests actually run (they hard-require the parser libs).
           pip install .[calendar]
@@ -34,7 +34,11 @@ jobs:
       - name: Ruff
         run: ruff check .
 
+      # Each test runs in its own forked process: Qt's offscreen platform is
+      # unstable when many tests share one process (a later Qt test can crash or
+      # hang on an earlier test's teardown). --timeout bounds any stuck test to
+      # seconds; --timeout-method=thread is required to bound a hang under --forked.
       - name: Tests
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -q
+        run: python -m pytest -q --forked --timeout=60 --timeout-method=thread

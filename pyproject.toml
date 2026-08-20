@@ -36,6 +36,10 @@ dependencies = [
 dev = [
     "ruff>=0.14.3",
     "pytest>=8.0",
+    # Run each test in its own process (Qt's offscreen platform is unstable
+    # across tests in one process); pytest-timeout bounds any stuck test.
+    "pytest-forked>=1.6",
+    "pytest-timeout>=2.0",
 ]
 
 # Optional: store API keys in the OS keyring instead of plaintext config.
