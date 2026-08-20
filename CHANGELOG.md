@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **CI runs each test in its own process, so the headless test suite stops crashing/hanging.** Under the offscreen Qt platform, tests that share one process could corrupt each other on teardown — a char-pack animation-decode test segfaulted whenever it ran after any test that had created a `QApplication`, and in CI the run hung to the 6-hour job timeout (each test file passed in isolation; it was a pre-existing cross-test flake, reproducible back to 0.1.29). The CI test step now runs `pytest --forked --timeout=60 --timeout-method=thread`, isolating every test in its own subprocess so one test's Qt teardown can't reach the next, with a per-test timeout so a stuck test fails in seconds instead of hours (branch `fix/ci-flaky-qt-tests`).
+
 ## [0.1.30] - 2026-08-19
 
 ### Added
