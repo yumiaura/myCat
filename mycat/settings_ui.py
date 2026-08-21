@@ -43,7 +43,7 @@ class SettingsDialog(QtWidgets.QDialog):
         bubble_row = QtWidgets.QHBoxLayout()
         bubble_row.addWidget(QtWidgets.QLabel(tr("Messages:")))
         self.reminder_radio = QtWidgets.QRadioButton(tr("Reminder"))
-        self.speech_radio = QtWidgets.QRadioButton(tr("Speech bubble"))
+        self.speech_radio = QtWidgets.QRadioButton(tr("SpeechBubble"))
         self.mode_group = QtWidgets.QButtonGroup(self)
         self.mode_group.addButton(self.reminder_radio)
         self.mode_group.addButton(self.speech_radio)

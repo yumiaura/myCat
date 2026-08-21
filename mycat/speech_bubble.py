@@ -27,12 +27,13 @@ TYPE_INTERVAL_MS = 35    # per revealed character
 HOLD_SECONDS = 10.0      # how long the finished bubble lingers
 MAX_TEXT_WIDTH = 480     # wrap long messages to this width
 MIN_WIDTH = 120          # the bubble body is never narrower than this
-PAD_X, PAD_Y = 10, 4     # side padding ≥10px; tight ≤5px above/below the glyphs
+PAD_X, PAD_Y = 30, 4     # roomy side padding when text drives the width; tight ≤5px top/bottom
 TAIL_ANGLE_DEG = 25      # apex angle of the pointer aimed at the cat
 TAIL_H = 14              # tail length; its width follows from the 15° apex
 TAIL_W = 2 * TAIL_H * math.tan(math.radians(TAIL_ANGLE_DEG / 2))
 TAIL_TIP_MARGIN = 2      # the drawn apex sits this far inside the window's bottom
 CORNER = 16              # bubble corner radius
+OUTLINE_WIDTH = 2        # width of the black outline around the bubble
 HEAD_GAP = 8             # the drawn tail tip stops 8px above the cat's ears
 
 
@@ -89,6 +90,7 @@ class BubbleWindow(QtWidgets.QWidget):
 
         self.bubble_font = QtGui.QFont()
         self.bubble_font.setPointSize(11)
+        self.bubble_font.setBold(True)
 
         self.type_timer = QtCore.QTimer(self)
         self.type_timer.setInterval(TYPE_INTERVAL_MS)
@@ -240,13 +242,22 @@ class BubbleWindow(QtWidgets.QWidget):
         self.move(x, y)
 
     def bubble_path(self) -> QtGui.QPainterPath:
+        # Inset the outline by half its width (+AA) so the whole stroke stays
+        # inside the widget bounds and isn't clipped on the edges.
+        margin = OUTLINE_WIDTH / 2.0 + 0.5
         body = QtGui.QPainterPath()
-        body.addRoundedRect(QtCore.QRectF(1, 1, self.body_w - 2, self.body_h - 2), CORNER, CORNER)
+        body.addRoundedRect(
+            QtCore.QRectF(margin, margin, self.body_w - 2 * margin, self.body_h - 2 * margin), CORNER, CORNER
+        )
         tip_x = max(TAIL_W, min(self.tail_x, self.body_w - TAIL_W))
+        # Start the tail base a few px UP inside the body so the union merges
+        # cleanly — a base that only touches the body edge leaves an internal
+        # seam that the outline then draws as a black line across the join.
+        base_y = self.body_h - margin - 3
         tail = QtGui.QPainterPath()
-        tail.moveTo(tip_x - TAIL_W / 2, self.body_h - 2)
+        tail.moveTo(tip_x - TAIL_W / 2, base_y)
         tail.lineTo(tip_x, self.body_h + TAIL_H - TAIL_TIP_MARGIN)
-        tail.lineTo(tip_x + TAIL_W / 2, self.body_h - 2)
+        tail.lineTo(tip_x + TAIL_W / 2, base_y)
         tail.closeSubpath()
         return body.united(tail)
 
@@ -256,7 +267,9 @@ class BubbleWindow(QtWidgets.QWidget):
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
         path = self.bubble_path()
-        painter.setPen(QtGui.QPen(QtGui.QColor(40, 40, 40), 2))
+        pen = QtGui.QPen(QtGui.QColor(0, 0, 0), OUTLINE_WIDTH)
+        pen.setJoinStyle(QtCore.Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
         painter.setBrush(QtGui.QColor(255, 255, 255, 242))
         painter.drawPath(path)
 
@@ -274,4 +287,8 @@ class BubbleWindow(QtWidgets.QWidget):
 
         # On X11 with no compositor a translucent window paints its transparent
         # pixels black; clip the window to the bubble shape so no black box shows.
-        self.setMask(QtGui.QRegion(path.toFillPolygon().toPolygon()))
+        # Widen the mask by the outline so the full stroke stays visible.
+        stroker = QtGui.QPainterPathStroker()
+        stroker.setWidth(OUTLINE_WIDTH)
+        outline = path.united(stroker.createStroke(path))
+        self.setMask(QtGui.QRegion(outline.toFillPolygon().toPolygon()))
