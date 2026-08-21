@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [0.1.31] - 2026-08-21
 
 ### Changed
 - **The speech bubble is bolder and roomier, and its toggle is named SpeechBubble.** The bubble text is now bold inside a clean solid-black outline (so it matches the cat's own linework), with roomier side padding so longer messages aren't cramped against the edge. In *Settings → Messages* the English label for the mode is now **SpeechBubble** (中文 / Русский / 한국어 keep their translated labels — 气泡 / Облачко / 말풍선) (branch `feat/speech-bubble-polish`).
