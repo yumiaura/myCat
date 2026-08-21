@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 ## [Unreleased]
 
 ### Changed
-- **The speech bubble is bolder and roomier, and its toggle is named SpeechBubble.** The bubble text is now bold inside a wider solid-black outline (so it matches the cat's own linework), with roomier side padding so longer messages aren't cramped against the edge. In *Settings → Messages* the English label for the mode is now **SpeechBubble** (中文 / Русский / 한국어 keep their translated labels — 气泡 / Облачко / 말풍선) (branch `feat/speech-bubble-polish`).
+- **The speech bubble is bolder and roomier, and its toggle is named SpeechBubble.** The bubble text is now bold inside a clean solid-black outline (so it matches the cat's own linework), with roomier side padding so longer messages aren't cramped against the edge. In *Settings → Messages* the English label for the mode is now **SpeechBubble** (中文 / Русский / 한국어 keep their translated labels — 气泡 / Облачко / 말풍선) (branch `feat/speech-bubble-polish`).
 
 ### Fixed
 - **CI runs each test in its own process, so the headless test suite stops crashing/hanging.** Under the offscreen Qt platform, tests that share one process could corrupt each other on teardown — a char-pack animation-decode test segfaulted whenever it ran after any test that had created a `QApplication`, and in CI the run hung to the 6-hour job timeout (each test file passed in isolation; it was a pre-existing cross-test flake, reproducible back to 0.1.29). The CI test step now runs `pytest --forked --timeout=60 --timeout-method=thread`, isolating every test in its own subprocess so one test's Qt teardown can't reach the next, with a per-test timeout so a stuck test fails in seconds instead of hours (branch `fix/ci-flaky-qt-tests`).

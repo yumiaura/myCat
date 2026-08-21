@@ -33,7 +33,7 @@ TAIL_H = 14              # tail length; its width follows from the 15° apex
 TAIL_W = 2 * TAIL_H * math.tan(math.radians(TAIL_ANGLE_DEG / 2))
 TAIL_TIP_MARGIN = 2      # the drawn apex sits this far inside the window's bottom
 CORNER = 16              # bubble corner radius
-OUTLINE_WIDTH = 3        # width of the black outline around the bubble
+OUTLINE_WIDTH = 2        # width of the black outline around the bubble
 HEAD_GAP = 8             # the drawn tail tip stops 8px above the cat's ears
 
 
@@ -250,10 +250,14 @@ class BubbleWindow(QtWidgets.QWidget):
             QtCore.QRectF(margin, margin, self.body_w - 2 * margin, self.body_h - 2 * margin), CORNER, CORNER
         )
         tip_x = max(TAIL_W, min(self.tail_x, self.body_w - TAIL_W))
+        # Start the tail base a few px UP inside the body so the union merges
+        # cleanly — a base that only touches the body edge leaves an internal
+        # seam that the outline then draws as a black line across the join.
+        base_y = self.body_h - margin - 3
         tail = QtGui.QPainterPath()
-        tail.moveTo(tip_x - TAIL_W / 2, self.body_h - margin)
+        tail.moveTo(tip_x - TAIL_W / 2, base_y)
         tail.lineTo(tip_x, self.body_h + TAIL_H - TAIL_TIP_MARGIN)
-        tail.lineTo(tip_x + TAIL_W / 2, self.body_h - margin)
+        tail.lineTo(tip_x + TAIL_W / 2, base_y)
         tail.closeSubpath()
         return body.united(tail)
 
