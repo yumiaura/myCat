@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Groundwork for VRM 3D characters — the pose maths.** New `mycat/vrm_pose.py` reads a VRM/glb humanoid (parsing the glTF-binary container and its `VRMC_vrm` humanoid-bone map) and composes delta rotations onto chosen bones — chiefly lowering the T-pose arms into a relaxed A-pose — then writes the glb back out. It is pure stdlib (no Qt, no rendering, no new dependency), so it is fully unit-tested in CI; the actual image is baked from the posed glb by the baker below. This is the reusable core that future arm/leg/pose animations will build on (branch `feat/vrm-pose-math`).
+- **Import a VRM 3D model straight from the menu — *Chars → Import VRM…*.** Pick a `.vrm` (or `.glb`) and myCat poses it, renders it to a transparent 2D character and adds it to your Chars, switching to it right away — so a loaded model shows up in the selection like any other skin. Rendering runs in-process but fully offscreen (no window flashes), with the 3D support imported lazily so the app still starts everywhere; where that support isn't bundled (some prebuilt binaries for now) the action shows a friendly "not available in this build" message instead of failing. The baking logic lives in `mycat/vrm_bake.py`, shared with a dev CLI (`tools/bake_vrm.py` / `python -m mycat.vrm_bake`, run under `xvfb-run` on a headless box). VRM MToon materials fall back to PBR, which reads fine for a still (branch `feat/vrm-pose-math`).
+- **Imported VRM characters move.** An imported model is baked with a gentle looping idle (breathing + arm sway + a little head bob, played periodically) and a wave gesture that plays when you click the character — the motions are procedural bone rotations (`mycat/vrm_pose.py`) rendered frame by frame into the pack's `idle0.gif` / `click0.gif`. Because each frame re-renders the model, the import shows a **cancellable progress dialog** while it bakes (branch `feat/vrm-pose-math`).
+
 ## [0.1.31] - 2026-08-21
 
 ### Changed
