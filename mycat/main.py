@@ -1202,6 +1202,9 @@ class PixelCatWindow(QtWidgets.QWidget):
                     action.setCheckable(True)
                     action.setChecked(True)
                 action.triggered.connect(lambda checked, name=img_name: self.load_image(name))
+            images_menu.addSeparator()
+            import_action = images_menu.addAction(i18n.tr("Import VRM…"))
+            import_action.triggered.connect(self.open_vrm_import)
 
         # Language picker.
         menu.addMenu(i18n.build_language_menu(CFG_FILE))
@@ -1302,6 +1305,56 @@ class PixelCatWindow(QtWidgets.QWidget):
         except Exception as exc:  # noqa: BLE001 - keep the desktop companion alive
             logger.exception("Failed to open AI character generator")
             QtWidgets.QMessageBox.warning(self, "AI character", str(exc))
+
+    def open_vrm_import(self) -> None:
+        """Import a .vrm/.glb model: bake it to a 2D char, then switch to it.
+
+        Rendering runs in-process but fully offscreen (no window flashes). Where the
+        3D rendering support isn't bundled (some prebuilt binaries), this degrades
+        to a friendly message instead of failing.
+        """
+        try:
+            if __package__:
+                from . import vrm_bake
+            else:
+                import importlib
+
+                vrm_bake = importlib.import_module("mycat.vrm_bake")
+        except Exception:
+            logger.exception("Failed to import the VRM baker")
+            QtWidgets.QMessageBox.information(
+                self, "Import VRM", "VRM import isn't available in this build."
+            )
+            return
+
+        if not vrm_bake.vrm_rendering_available():
+            QtWidgets.QMessageBox.information(
+                self,
+                "Import VRM",
+                "VRM import isn't available in this build (3D rendering support is missing).",
+            )
+            return
+
+        path, chosen_filter = QtWidgets.QFileDialog.getOpenFileName(
+            self, i18n.tr("Import VRM…"), "", "VRM / glb models (*.vrm *.glb)"
+        )
+        if not path:
+            return
+
+        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)
+        try:
+            zip_path = vrm_bake.bake_vrm(path)
+        except Exception as exc:  # noqa: BLE001 - keep the desktop companion alive
+            logger.exception("VRM import failed")
+            QtWidgets.QApplication.restoreOverrideCursor()
+            QtWidgets.QMessageBox.warning(
+                self, "Import VRM", f"Could not import this model:\n{exc}"
+            )
+            return
+        QtWidgets.QApplication.restoreOverrideCursor()
+
+        self.available_images = char_catalog.scan_all()
+        self.load_image(zip_path.stem)
 
     def delete_ai_char(self, char_id: str) -> None:
         """Delete a generated pack locally; this never makes an API request."""
