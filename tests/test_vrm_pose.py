@@ -145,6 +145,38 @@ def test_apply_pose_rejects_bad_mode():
         vrm_pose.apply_pose(glb.gltf, {"head": ((0.0, 0.0, 10.0), "sideways")})
 
 
+def test_idle_motion_frame_zero_is_rest():
+    frame = vrm_pose.idle_motion(0, 10)
+    # sin(0) == 0, so the arms sit at the plain relaxed A-pose angles
+    assert frame["leftUpperArm"] == ((0.0, 0.0, -55.0), "pre")
+    assert frame["rightUpperArm"] == ((0.0, 0.0, 55.0), "pre")
+    assert frame["spine"] == ((0.0, 0.0, 0.0), "pre")
+
+
+def test_idle_motion_moves_mid_loop():
+    mid = vrm_pose.idle_motion(3, 10)
+    # partway through the loop the arms have swung off the rest angle
+    assert mid["leftUpperArm"][0][2] != -55.0
+
+
+def test_wave_motion_endpoints_are_rest():
+    total = 10
+    for frame_index in (0, total - 1):
+        frame = vrm_pose.wave_motion(frame_index, total)
+        # arm back down at both ends (sin envelope ~0; allow float epsilon at p=1)
+        assert math.isclose(frame["rightUpperArm"][0][2], 55.0, abs_tol=1e-6)
+
+
+def test_wave_motion_lifts_arm_at_peak():
+    frame = vrm_pose.wave_motion(5, 10)  # near the envelope peak
+    assert frame["rightUpperArm"][0][2] < 0.0  # arm raised well above the resting +55
+
+
+def test_motions_registry():
+    assert vrm_pose.MOTIONS["idle"] is vrm_pose.idle_motion
+    assert vrm_pose.MOTIONS["wave"] is vrm_pose.wave_motion
+
+
 def test_pose_glb_bytes_end_to_end():
     data, bin_data, _ = make_glb_bytes()
     posed = vrm_pose.pose_glb_bytes(data, vrm_pose.RELAXED_A_POSE)

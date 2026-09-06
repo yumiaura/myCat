@@ -153,15 +153,17 @@ def render_glb_to_qimage(
                 captured["image"] = image
                 loop.quit()
 
-        poll = QtCore.QTimer(app)
+        poll = QtCore.QTimer(view)
         poll.timeout.connect(grab)
         poll.start(150)
-        watchdog = QtCore.QTimer(app)
+        watchdog = QtCore.QTimer(view)
         watchdog.setSingleShot(True)
         watchdog.timeout.connect(loop.quit)
         watchdog.start(timeout_ms)
 
         loop.exec()
+        poll.stop()           # stop before the view is torn down, so no stray tick
+        watchdog.stop()       # fires grab() on an already-deleted root
         if captured["image"] is None:
             raise RuntimeError("model did not render (RuntimeLoader failed or timed out)")
         return captured["image"]
@@ -193,6 +195,71 @@ def autocrop(pil_image, pad: int = 12):
     return canvas
 
 
+def render_posed_frame(src_bytes: bytes, deltas: dict, framing: dict):
+    """Pose ``src_bytes`` with ``deltas``, render it, and return a PIL RGBA image."""
+    posed = vrm_pose.pose_glb_bytes(src_bytes, deltas)
+    glb_handle = tempfile.NamedTemporaryFile(suffix=".glb", delete=False)
+    glb_handle.write(posed)
+    glb_handle.close()
+    glb_path = Path(glb_handle.name)
+    try:
+        image = render_glb_to_qimage(glb_path, **framing)
+    finally:
+        glb_path.unlink(missing_ok=True)
+    return qimage_to_pil(image)
+
+
+def render_motion_frames(src_bytes, motion_fn, count, framing, progress, base_done, total_steps):
+    """Render ``count`` frames of a motion (a ``frame,total -> deltas`` function)."""
+    frames = []
+    for index in range(count):
+        frames.append(render_posed_frame(src_bytes, motion_fn(index, count), framing))
+        if progress is not None and not progress(base_done + index + 1, total_steps):
+            raise RuntimeError("cancelled")
+    return frames
+
+
+def rgba_frame_to_indexed(pil_frame):
+    """Convert an RGBA frame to a palettised GIF frame with a transparent index."""
+    from PIL import Image
+
+    rgba = pil_frame.convert("RGBA")
+    alpha = rgba.getchannel("A")
+    indexed = rgba.convert("RGB").quantize(colors=255, method=Image.Quantize.FASTOCTREE)
+    transparent = alpha.point(lambda value: 255 if value < 128 else 0)
+    indexed.paste(255, transparent.convert("1"))
+    indexed.info["transparency"] = 255
+    return indexed
+
+
+def frames_to_gif_bytes(pil_frames, duration_ms, max_width, max_height, pad: int = 12) -> bytes:
+    """Crop every frame to one shared bbox (no jitter), scale to fit, return GIF bytes."""
+    from PIL import Image
+
+    boxes = [box for box in (frame.getbbox() for frame in pil_frames) if box is not None]
+    if not boxes:
+        raise RuntimeError("animation frames are fully transparent")
+    left = min(box[0] for box in boxes)
+    top = min(box[1] for box in boxes)
+    right = max(box[2] for box in boxes)
+    bottom = max(box[3] for box in boxes)
+
+    indexed_frames = []
+    for frame in pil_frames:
+        cropped = frame.crop((left, top, right, bottom))
+        canvas = Image.new("RGBA", (cropped.width + 2 * pad, cropped.height + 2 * pad), (0, 0, 0, 0))
+        canvas.paste(cropped, (pad, pad), cropped)
+        canvas.thumbnail((max_width, max_height), Image.LANCZOS)
+        indexed_frames.append(rgba_frame_to_indexed(canvas))
+
+    buffer = io.BytesIO()
+    indexed_frames[0].save(
+        buffer, format="GIF", save_all=True, append_images=indexed_frames[1:],
+        duration=duration_ms, loop=0, disposal=2, transparency=255, optimize=False,
+    )
+    return buffer.getvalue()
+
+
 def bake_vrm(
     src,
     out_dir=None,
@@ -205,34 +272,57 @@ def bake_vrm(
     cam_z: float = 2.6,
     look_y: float = 0.9,
     fov: int = 40,
+    animate: bool = True,
+    idle_frames: int = 10,
+    wave_frames: int = 10,
+    idle_duration_ms: int = 150,
+    wave_duration_ms: int = 70,
+    progress=None,
 ) -> Path:
-    """Bake the VRM/glb at ``src`` into a ``<id>.zip`` char and return its path."""
+    """Bake the VRM/glb at ``src`` into a ``<id>.zip`` char and return its path.
+
+    With ``animate`` (default) the pack also gets a looping ``idle0.gif`` (breathing
+    / sway, played periodically) and a ``click0.gif`` wave (played on click). The
+    optional ``progress(done, total)`` callback is invoked after every rendered
+    frame and may return ``False`` to cancel.
+    """
     src = Path(src)
     char_id = sanitize_char_id(char_id or src.stem)
     out_dir = Path(out_dir) if out_dir is not None else char_catalog.ensure_user_chars_dir()
-
-    posed = vrm_pose.pose_glb_bytes(src.read_bytes(), vrm_pose.RELAXED_A_POSE)
-    glb_handle = tempfile.NamedTemporaryFile(suffix=".glb", delete=False)
-    glb_handle.write(posed)
-    glb_handle.close()
-    glb_path = Path(glb_handle.name)
-    try:
-        image = render_glb_to_qimage(
-            glb_path, render_width, render_height, cam_y, cam_z, look_y, fov,
-        )
-    finally:
-        glb_path.unlink(missing_ok=True)
-
-    static = autocrop(qimage_to_pil(image))
-    static_bytes = io.BytesIO()
-    static.save(static_bytes, "PNG")
+    src_bytes = src.read_bytes()
+    framing = {
+        "width": render_width, "height": render_height,
+        "cam_y": cam_y, "cam_z": cam_z, "look_y": look_y, "fov": fov,
+    }
 
     config = {"name": char_id, "max_width": max_width, "max_height": max_height}
+    archive_files = {}
+
+    if not animate:
+        static = autocrop(render_posed_frame(src_bytes, vrm_pose.RELAXED_A_POSE, framing))
+    else:
+        total_steps = idle_frames + wave_frames
+        idle_pils = render_motion_frames(
+            src_bytes, vrm_pose.idle_motion, idle_frames, framing, progress, 0, total_steps)
+        wave_pils = render_motion_frames(
+            src_bytes, vrm_pose.wave_motion, wave_frames, framing, progress, idle_frames, total_steps)
+        # frame 0 of the idle loop is the clean rest pose — reuse it as the still
+        # (full PNG alpha, no GIF quantisation).
+        static = autocrop(idle_pils[0])
+        archive_files["idle0.gif"] = frames_to_gif_bytes(idle_pils, idle_duration_ms, max_width, max_height)
+        archive_files["click0.gif"] = frames_to_gif_bytes(wave_pils, wave_duration_ms, max_width, max_height)
+        config["idle"] = {"random_every": [6.0, 14.0]}
+
+    static_bytes = io.BytesIO()
+    static.save(static_bytes, "PNG")
+    archive_files["static.png"] = static_bytes.getvalue()
+    archive_files["config.json"] = json.dumps(config, indent=2).encode("utf-8")
+
     out_dir.mkdir(parents=True, exist_ok=True)
     zip_path = out_dir / f"{char_id}.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("config.json", json.dumps(config, indent=2))
-        archive.writestr("static.png", static_bytes.getvalue())
+        for name, data in archive_files.items():
+            archive.writestr(name, data)
     return zip_path
 
 
@@ -249,14 +339,23 @@ def main(argv=None) -> int:
     parser.add_argument("--cam-z", type=float, default=2.6)
     parser.add_argument("--look-y", type=float, default=0.9)
     parser.add_argument("--fov", type=int, default=40)
+    parser.add_argument("--no-animate", action="store_true", help="bake only a still (no idle/wave)")
+    parser.add_argument("--idle-frames", type=int, default=10)
+    parser.add_argument("--wave-frames", type=int, default=10)
     args = parser.parse_args(argv)
 
     if not args.src.exists():
         parser.error(f"no such file: {args.src}")
 
+    def report(done, total):
+        print(f"  rendering frame {done}/{total}", flush=True)
+        return True
+
     zip_path = bake_vrm(
         args.src, args.out, args.id, args.max_width, args.max_height,
         args.render_width, args.render_height, args.cam_y, args.cam_z, args.look_y, args.fov,
+        animate=not args.no_animate, idle_frames=args.idle_frames, wave_frames=args.wave_frames,
+        progress=report,
     )
     print(f"baked {zip_path.stem} -> {zip_path}")
     return 0

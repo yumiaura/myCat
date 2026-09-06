@@ -185,6 +185,48 @@ def apply_pose(gltf: dict, deltas: dict) -> list:
     return applied
 
 
+def idle_motion(frame: int, total: int) -> dict:
+    """A seamless idle-loop pose for ``frame`` of ``total`` (breathing + sway + bob).
+
+    Built on the relaxed A-pose, driven by ``sin`` of the loop phase so frame 0 is
+    the clean rest pose and frame ``total`` wraps back onto it — a gentle, always-
+    alive breath. Returns a delta dict compatible with :func:`apply_pose`.
+    """
+    phase = 2.0 * math.pi * frame / total
+    sway = math.sin(phase)
+    return {
+        "leftUpperArm": ((0.0, 0.0, -55.0 + 3.0 * sway), "pre"),
+        "rightUpperArm": ((0.0, 0.0, 55.0 - 3.0 * sway), "pre"),
+        "leftLowerArm": ((0.0, 0.0, -4.0 - 2.5 * sway), "pre"),
+        "rightLowerArm": ((0.0, 0.0, 4.0 + 2.5 * sway), "pre"),
+        "spine": ((1.6 * sway, 0.0, 0.0), "pre"),
+        "upperChest": ((1.4 * sway, 0.0, 0.0), "pre"),
+        "head": ((3.0 - 1.2 * sway, 0.0, 0.0), "pre"),
+    }
+
+
+def wave_motion(frame: int, total: int) -> dict:
+    """A one-shot wave gesture: the right arm lifts, waves, and returns to rest.
+
+    A ``sin(pi·p)`` envelope makes ``frame`` 0 and the last frame the resting
+    A-pose, so it blends cleanly when played on click and settles back to the
+    still. Returns a delta dict compatible with :func:`apply_pose`.
+    """
+    progress = frame / (total - 1) if total > 1 else 0.0
+    envelope = math.sin(math.pi * progress)          # 0 → 1 → 0 over the clip
+    wiggle = math.sin(2.0 * math.pi * 3.0 * progress) * envelope
+    return {
+        "leftUpperArm": ((0.0, 0.0, -55.0), "pre"),
+        "leftLowerArm": ((0.0, 0.0, -4.0), "pre"),
+        "rightUpperArm": ((0.0, 0.0, 55.0 - 120.0 * envelope), "pre"),   # lift the arm up
+        "rightLowerArm": ((0.0, 30.0 * wiggle, 20.0 * envelope), "pre"),  # wave the forearm
+        "head": ((3.0, 0.0, 4.0 * envelope), "pre"),
+    }
+
+
+MOTIONS = {"idle": idle_motion, "wave": wave_motion}
+
+
 def pose_glb_bytes(data, deltas: dict = RELAXED_A_POSE) -> bytes:
     """Read glb ``data``, apply ``deltas``, return the posed glb as bytes."""
     glb = read_glb(data)
@@ -204,6 +246,9 @@ __all__ = [
     "Glb",
     "IDENTITY_QUAT",
     "RELAXED_A_POSE",
+    "MOTIONS",
+    "idle_motion",
+    "wave_motion",
     "quaternion_multiply",
     "quaternion_normalize",
     "euler_to_quaternion",

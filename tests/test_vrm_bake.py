@@ -33,3 +33,27 @@ def test_autocrop_rejects_fully_transparent():
 
     with pytest.raises(RuntimeError):
         vrm_bake.autocrop(Image.new("RGBA", (20, 20), (0, 0, 0, 0)))
+
+
+def test_frames_to_gif_bytes_builds_animated_gif():
+    from PIL import Image, ImageSequence
+
+    frames = []
+    for offset in range(4):
+        frame = Image.new("RGBA", (60, 60), (0, 0, 0, 0))
+        frame.paste(Image.new("RGBA", (10, 10), (0, 200, 0, 255)), (10 + offset * 5, 20))
+        frames.append(frame)
+    data = vrm_bake.frames_to_gif_bytes(frames, duration_ms=100, max_width=300, max_height=500)
+    assert data[:6] in (b"GIF87a", b"GIF89a")
+    import io
+
+    decoded = list(ImageSequence.Iterator(Image.open(io.BytesIO(data))))
+    assert len(decoded) == 4
+
+
+def test_frames_to_gif_bytes_rejects_all_transparent():
+    from PIL import Image
+
+    frames = [Image.new("RGBA", (30, 30), (0, 0, 0, 0)) for _ in range(3)]
+    with pytest.raises(RuntimeError):
+        vrm_bake.frames_to_gif_bytes(frames, duration_ms=100, max_width=300, max_height=500)

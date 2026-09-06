@@ -1341,17 +1341,36 @@ class PixelCatWindow(QtWidgets.QWidget):
         if not path:
             return
 
-        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)
+        # Baking poses + renders many frames (~1s each), so show a cancellable
+        # progress dialog and pump events between frames.
+        progress_dialog = QtWidgets.QProgressDialog(
+            i18n.tr("Importing VRM…"), i18n.tr("Cancel"), 0, 0, self
+        )
+        progress_dialog.setWindowTitle(i18n.tr("Import VRM…"))
+        progress_dialog.setWindowModality(QtCore.Qt.WindowModality.ApplicationModal)
+        progress_dialog.setMinimumDuration(0)
+        progress_dialog.setAutoClose(False)
+        progress_dialog.setAutoReset(False)
+        progress_dialog.setValue(0)
+
+        def on_progress(done, total):
+            progress_dialog.setMaximum(total)
+            progress_dialog.setValue(done)
+            QtWidgets.QApplication.processEvents()
+            return not progress_dialog.wasCanceled()
+
         try:
-            zip_path = vrm_bake.bake_vrm(path)
+            zip_path = vrm_bake.bake_vrm(path, progress=on_progress)
         except Exception as exc:  # noqa: BLE001 - keep the desktop companion alive
+            progress_dialog.close()
+            if progress_dialog.wasCanceled():
+                return  # user cancelled — not an error
             logger.exception("VRM import failed")
-            QtWidgets.QApplication.restoreOverrideCursor()
             QtWidgets.QMessageBox.warning(
                 self, "Import VRM", f"Could not import this model:\n{exc}"
             )
             return
-        QtWidgets.QApplication.restoreOverrideCursor()
+        progress_dialog.close()
 
         self.available_images = char_catalog.scan_all()
         self.load_image(zip_path.stem)
