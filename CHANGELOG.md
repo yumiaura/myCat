@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Groundwork for VRM 3D characters — the pose maths.** New `mycat/vrm_pose.py` reads a VRM/glb humanoid (parsing the glTF-binary container and its `VRMC_vrm` humanoid-bone map) and composes delta rotations onto chosen bones — chiefly lowering the T-pose arms into a relaxed A-pose — then writes the glb back out. It is pure stdlib (no Qt, no rendering, no new dependency), so it is fully unit-tested in CI; the actual image is baked from the posed glb by a later phase. This is the reusable core that future arm/leg/pose animations will build on (branch `feat/vrm-pose-math`).
+
 ## [0.1.31] - 2026-08-21
 
 ### Changed
