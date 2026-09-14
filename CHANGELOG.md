@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Fixed
+- **The activity config example documents the Mouse toggle.** `docs/ACTIVITY.md` showed `[activity]` without `mouse_enabled`, even though the setting has always been read and written by the app, and it described `keyboard_enabled` as counting both keys and clicks — clicks belong to the mouse track. The example now lists both toggles with the right comment. The test helper for the cursor sampler also keeps its last known position once the scripted positions run out, instead of jumping back to `(0, 0)` (PR #128).
+
 ## [0.1.31] - 2026-08-21
 
 ### Changed
