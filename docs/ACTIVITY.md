@@ -117,11 +117,6 @@ sub-5-minute gaps dilute it.
 Per sample pair: `√(Δx² + Δy²)` pixels, summed per minute. Displayed as a
 physical distance via the primary screen's DPI:
 
-### Cursor distance
-
-Per sample pair: `√(Δx² + Δy²)` pixels, summed per minute. Displayed as a
-physical distance via the primary screen's DPI:
-
 ```
 meters = pixels / DPI × 0.0254
 ```
