@@ -187,7 +187,7 @@ def save_github_settings(settings: GitHubSettings, cfg_file: Path = CFG_FILE) ->
         section["me_login"] = settings.me_login
         section["categories"] = ",".join(settings.categories)
         section["token_verified"] = "true" if settings.token_verified else "false"
-        with open(cfg_file, "w") as fh:
+        with open(cfg_file, "w", encoding="utf-8") as fh:
             config.write(fh)
         secret_store.secure_file(cfg_file)
     except Exception as exc:  # noqa: BLE001

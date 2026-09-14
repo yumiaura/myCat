@@ -54,7 +54,7 @@ def write_section(name: str, values: dict, cfg_file: Path) -> None:
         if name not in config:
             config.add_section(name)
         config[name].update({key: str(value) for key, value in values.items()})
-        with open(cfg_file, "w") as fh:
+        with open(cfg_file, "w", encoding="utf-8") as fh:
             config.write(fh)
         secret_store.secure_file(cfg_file)
     except (OSError, configparser.Error) as exc:
@@ -69,7 +69,7 @@ def remove_section(name: str, cfg_file: Path) -> None:
         config = configparser.ConfigParser()
         config.read(cfg_file)
         if config.remove_section(name):
-            with open(cfg_file, "w") as fh:
+            with open(cfg_file, "w", encoding="utf-8") as fh:
                 config.write(fh)
             secret_store.secure_file(cfg_file)
     except (OSError, configparser.Error) as exc:

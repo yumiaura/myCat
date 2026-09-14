@@ -332,7 +332,7 @@ def save_config(config: dict) -> None:
             file_config['window']['y'] = str(config['y'])
         
         # Write to file
-        with open(CFG_FILE, 'w') as f:
+        with open(CFG_FILE, 'w', encoding="utf-8") as f:
             file_config.write(f)
         secret_store.secure_file(CFG_FILE)
     except Exception as e:
@@ -386,7 +386,7 @@ def save_image_to_ini(image_name: str) -> None:
         config['settings']['default_image'] = image_name
 
         # Write to file
-        with open(CFG_FILE, 'w') as f:
+        with open(CFG_FILE, 'w', encoding="utf-8") as f:
             config.write(f)
         secret_store.secure_file(CFG_FILE)
 
@@ -421,7 +421,7 @@ def mark_autostart_prompted() -> None:
         if "settings" not in config:
             config.add_section("settings")
         config["settings"]["autostart_prompted"] = "true"
-        with open(CFG_FILE, "w") as f:
+        with open(CFG_FILE, "w", encoding="utf-8") as f:
             config.write(f)
         secret_store.secure_file(CFG_FILE)
     except Exception as exc:
@@ -480,8 +480,8 @@ def read_battery_percent():
     try:
         for entry in base.iterdir():
             try:
-                if (entry / "type").read_text().strip() == "Battery":
-                    return int((entry / "capacity").read_text().strip())
+                if (entry / "type").read_text(encoding="utf-8").strip() == "Battery":
+                    return int((entry / "capacity").read_text(encoding="utf-8").strip())
             except OSError:
                 continue
     except OSError:
