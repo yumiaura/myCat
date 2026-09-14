@@ -18,6 +18,8 @@ import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from . import secret_store
+
 logger = logging.getLogger(__name__)
 
 FOCUS = "focus"
@@ -65,6 +67,10 @@ class ActivityStore:
         self.db_path = db_path or (user_data_dir() / "activity.db")
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(str(self.db_path))
+        # Per-minute keyboard and mouse counts, and every focus session, kept for
+        # the configured history window. Same treatment as config.ini and
+        # history.txt: readable by its owner and nobody else.
+        secret_store.secure_file(self.db_path)
         # Durable rollback journal: every commit lands in the main .db file
         # immediately. (WAL kept data in a side journal that a hard exit could
         # drop before it was checkpointed — losing sessions across restarts.)

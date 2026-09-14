@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PySide6 import QtWidgets
 
-from . import i18n, menu_config, speech_bubble
+from . import i18n, menu_config, secret_store, speech_bubble
 
 logger = logging.getLogger(__name__)
 tr = i18n.tr
@@ -102,8 +102,9 @@ class SettingsDialog(QtWidgets.QDialog):
                 new_wait_time = self.wait_spinbox.value()
                 config['settings']['wait_time'] = str(new_wait_time)
                 
-                with open(self.config_path, 'w') as f:
+                with open(self.config_path, 'w', encoding="utf-8") as f:
                     config.write(f)
+                secret_store.secure_file(self.config_path)
                 
                 logger.info(f"Saved wait_time setting to INI: {new_wait_time}")
 
@@ -113,7 +114,9 @@ class SettingsDialog(QtWidgets.QDialog):
 
             except Exception as e:
                 logger.error(f"Error saving settings to INI file: {e}")
-                QtWidgets.QMessageBox.critical(self, tr("Error"), f"{tr('Failed to save settings:')}\n{e}")
+                QtWidgets.QMessageBox.critical(
+                    self, tr("Error"), tr("Failed to save settings:\n{e}").format(e=e)
+                )
 
         # Persist which feature entries appear in the cat / tray menus.
         try:

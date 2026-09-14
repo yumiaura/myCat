@@ -39,6 +39,7 @@ from PIL import Image, UnidentifiedImageError
 
 from . import ai_char, paths
 from .ai_char import AICharError
+from . import secret_store
 
 CFG_DIR = paths.config_dir()
 CFG_FILE = paths.config_file()
@@ -426,8 +427,9 @@ def save_generation_settings(settings: dict) -> None:
     for key in GENERATION_DEFAULTS:
         if settings.get(key) is not None:
             parser.set(CFG_SECTION, key, str(settings[key]))
-    with open(CFG_FILE, "w") as handle:
+    with open(CFG_FILE, "w", encoding="utf-8") as handle:
         parser.write(handle)
+    secret_store.secure_file(CFG_FILE)
 
 
 def make_backend(settings: dict, api_key: str = "") -> OpenAIBackend | A1111Backend | ComfyUIBackend:
