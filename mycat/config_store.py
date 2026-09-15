@@ -32,7 +32,7 @@ def read_config(cfg_file: Path) -> configparser.ConfigParser | None:
         return None
     config = configparser.ConfigParser()
     try:
-        config.read(cfg_file)
+        config.read(cfg_file, encoding="utf-8")
     except (configparser.Error, OSError) as exc:
         logger.error("Failed to read %s: %s", cfg_file, exc)
         return None
@@ -50,7 +50,7 @@ def write_section(name: str, values: dict, cfg_file: Path) -> None:
         cfg_file.parent.mkdir(parents=True, exist_ok=True)
         config = configparser.ConfigParser()
         if cfg_file.exists():
-            config.read(cfg_file)
+            config.read(cfg_file, encoding="utf-8")
         if name not in config:
             config.add_section(name)
         config[name].update({key: str(value) for key, value in values.items()})
@@ -67,7 +67,7 @@ def remove_section(name: str, cfg_file: Path) -> None:
         if not cfg_file.exists():
             return
         config = configparser.ConfigParser()
-        config.read(cfg_file)
+        config.read(cfg_file, encoding="utf-8")
         if config.remove_section(name):
             with open(cfg_file, "w", encoding="utf-8") as fh:
                 config.write(fh)

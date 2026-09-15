@@ -94,7 +94,7 @@ class SettingsDialog(QtWidgets.QDialog):
                 self.config_path.parent.mkdir(parents=True, exist_ok=True)
                 config = configparser.ConfigParser()
                 if self.config_path.exists():
-                    config.read(self.config_path)
+                    config.read(self.config_path, encoding="utf-8")
                 
                 if 'settings' not in config:
                     config.add_section('settings')

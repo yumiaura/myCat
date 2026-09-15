@@ -19,8 +19,8 @@ import logging
 import os
 from dataclasses import dataclass, replace
 
-from .llm_prompt import CFG_DIR, CFG_FILE
 from . import secret_store
+from .llm_prompt import CFG_DIR, CFG_FILE
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ def read_config() -> configparser.ConfigParser:
     parser = configparser.ConfigParser()
     if CFG_FILE.exists():
         try:
-            parser.read(CFG_FILE)
+            parser.read(CFG_FILE, encoding="utf-8")
         except configparser.Error as exc:
             logger.warning("Unable to parse %s: %s", CFG_FILE, exc)
     return parser

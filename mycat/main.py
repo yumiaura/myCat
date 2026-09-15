@@ -298,7 +298,7 @@ def load_config(screen_width: int, screen_height: int, window_width: int, window
     
     try:
         config = configparser.ConfigParser()
-        config.read(CFG_FILE)
+        config.read(CFG_FILE, encoding="utf-8")
         
         if 'window' in config:
             if 'x' in config['window']:
@@ -319,7 +319,7 @@ def save_config(config: dict) -> None:
         # Read existing config if it exists
         file_config = configparser.ConfigParser()
         if CFG_FILE.exists():
-            file_config.read(CFG_FILE)
+            file_config.read(CFG_FILE, encoding="utf-8")
         
         # Ensure [window] section exists
         if 'window' not in file_config:
@@ -347,7 +347,7 @@ def load_image_from_ini() -> str | None:
     
     try:
         config = configparser.ConfigParser()
-        config.read(CFG_FILE)
+        config.read(CFG_FILE, encoding="utf-8")
         
         if 'settings' in config and 'default_image' in config['settings']:
             image_name = config['settings']['default_image']
@@ -370,7 +370,7 @@ def save_image_to_ini(image_name: str) -> None:
 
         # Read existing config if it exists
         if CFG_FILE.exists():
-            config.read(CFG_FILE)
+            config.read(CFG_FILE, encoding="utf-8")
 
         if (
             config.has_section('settings')
@@ -404,7 +404,7 @@ def autostart_was_prompted() -> bool:
         return False
     try:
         config = configparser.ConfigParser()
-        config.read(CFG_FILE)
+        config.read(CFG_FILE, encoding="utf-8")
         return config.getboolean("settings", "autostart_prompted", fallback=False)
     except Exception as exc:
         logger.debug("Could not read autostart_prompted flag: %s", exc)
@@ -417,7 +417,7 @@ def mark_autostart_prompted() -> None:
         CFG_DIR.mkdir(parents=True, exist_ok=True)
         config = configparser.ConfigParser()
         if CFG_FILE.exists():
-            config.read(CFG_FILE)
+            config.read(CFG_FILE, encoding="utf-8")
         if "settings" not in config:
             config.add_section("settings")
         config["settings"]["autostart_prompted"] = "true"

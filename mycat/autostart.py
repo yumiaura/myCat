@@ -53,7 +53,9 @@ def linux_set(enabled: bool) -> None:
             f"Name={APP_NAME}\n"
             f"Exec={launch_command()}\n"
             "Terminal=false\n"
-            "X-GNOME-Autostart-enabled=true\n", encoding="utf-8")
+            "X-GNOME-Autostart-enabled=true\n",
+            encoding="utf-8",
+        )
     elif path.exists():
         path.unlink()
 

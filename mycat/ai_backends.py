@@ -37,9 +37,8 @@ import uuid
 
 from PIL import Image, UnidentifiedImageError
 
-from . import ai_char, paths
+from . import ai_char, paths, secret_store
 from .ai_char import AICharError
-from . import secret_store
 
 CFG_DIR = paths.config_dir()
 CFG_FILE = paths.config_file()
@@ -397,7 +396,7 @@ def load_generation_settings() -> dict:
     legacy_remove_background = None
     if CFG_FILE.exists():
         try:
-            parser.read(CFG_FILE)
+            parser.read(CFG_FILE, encoding="utf-8")
         except configparser.Error:
             return settings
         if parser.has_section(CFG_SECTION):
@@ -419,7 +418,7 @@ def save_generation_settings(settings: dict) -> None:
     parser = configparser.ConfigParser()
     if CFG_FILE.exists():
         try:
-            parser.read(CFG_FILE)
+            parser.read(CFG_FILE, encoding="utf-8")
         except configparser.Error:
             pass
     if not parser.has_section(CFG_SECTION):

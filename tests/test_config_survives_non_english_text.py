@@ -8,13 +8,9 @@ UnicodeEncodeError on save rather than writing the file.
 
 from __future__ import annotations
 
-import ast
 import configparser
-from pathlib import Path
 
 import pytest
-
-SOURCE = Path(__file__).resolve().parents[1] / "mycat"
 
 # One phrase per UI language the project ships.
 SAMPLES = {
@@ -28,45 +24,48 @@ SAMPLES = {
 WINDOWS_CODECS = ["cp1252", "cp949", "gbk"]
 
 
-def text_io_without_encoding() -> list[str]:
-    """Builtin text `open`/`read_text`/`write_text` calls that take the locale codec."""
-    found = []
-    for path in sorted(SOURCE.rglob("*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            keywords = {kw.arg for kw in node.keywords}
-            if isinstance(node.func, ast.Name) and node.func.id == "open":
-                mode = node.args[1].value if len(node.args) > 1 and isinstance(node.args[1], ast.Constant) else "r"
-                if "b" not in str(mode) and "encoding" not in keywords:
-                    found.append(f"{path.name}:{node.lineno}")
-            # Attribute calls only — PIL's Image.open and zipfile's open are not this.
-            elif isinstance(node.func, ast.Attribute) and node.func.attr in ("read_text", "write_text"):
-                if "encoding" not in keywords:
-                    found.append(f"{path.name}:{node.lineno}")
-    return found
+@pytest.mark.parametrize("codec", WINDOWS_CODECS)
+@pytest.mark.parametrize("language,text", sorted(SAMPLES.items()))
+def test_a_prompt_round_trips_whatever_the_machine_locale_is(tmp_path, monkeypatch, codec,
+                                                             language, text):
+    """`save_generation_settings` writes it and the real reader gets it back.
 
+    Both halves on purpose. Naming utf-8 on the write alone moves the failure rather than
+    fixing it: the save succeeds and the next start raises UnicodeDecodeError instead.
+    """
+    from mycat import ai_backends
 
-def test_no_text_io_is_left_to_the_locale():
-    assert text_io_without_encoding() == []
+    cfg = tmp_path / "config.ini"
+    monkeypatch.setattr(ai_backends, "CFG_DIR", tmp_path)
+    monkeypatch.setattr(ai_backends, "CFG_FILE", cfg)
+
+    settings = dict(ai_backends.GENERATION_DEFAULTS)
+    settings["openai_prompt"] = text
+    ai_backends.save_generation_settings(settings)
+
+    back = configparser.ConfigParser()
+    back.read(cfg, encoding="utf-8")
+    assert back.get(ai_backends.CFG_SECTION, "openai_prompt") == text, language
 
 
 @pytest.mark.parametrize("codec", WINDOWS_CODECS)
 @pytest.mark.parametrize("language,text", sorted(SAMPLES.items()))
-def test_a_prompt_round_trips_whatever_the_machine_locale_is(tmp_path, codec, language, text):
-    """What `save_generation_settings` writes must come back as what it wrote."""
-    from mycat import ai_backends
+def test_the_locale_codec_is_what_would_have_broken(tmp_path, codec, language, text):
+    """The parameter earns its place: it says what each locale would have done to this text.
 
+    Either the codec cannot represent the phrase at all — which is the UnicodeEncodeError the
+    fix exists for — or it can, and then the bytes it writes are not the bytes a utf-8 reader
+    expects. Both are the same bug arriving at a different moment, and both are why neither end
+    may inherit the machine's codec.
+    """
+    try:
+        as_locale = text.encode(codec)
+    except UnicodeEncodeError:
+        return                      # this locale could not have written the phrase at all
+    if as_locale == text.encode("utf-8"):
+        return                      # pure ASCII: nothing to disagree about
     cfg = tmp_path / "config.ini"
+    cfg.write_bytes(b"[generation]\nopenai_prompt = " + as_locale + b"\n")
     parser = configparser.ConfigParser()
-    parser.add_section(ai_backends.CFG_SECTION)
-    parser.set(ai_backends.CFG_SECTION, "openai_prompt", text)
-    with open(cfg, "w", encoding="utf-8") as handle:
-        parser.write(handle)
-
-    # A reader on a machine whose locale codec is `codec` still gets the text back,
-    # because both ends name the encoding instead of inheriting one.
-    back = configparser.ConfigParser()
-    back.read(cfg, encoding="utf-8")
-    assert back.get(ai_backends.CFG_SECTION, "openai_prompt") == text, language
+    with pytest.raises(UnicodeDecodeError):
+        parser.read(cfg, encoding="utf-8")

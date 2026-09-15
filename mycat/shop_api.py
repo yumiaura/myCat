@@ -95,7 +95,7 @@ def resolve_base_url(config_path: Path | None = None) -> str:
     if config_path and config_path.exists():
         parser = configparser.ConfigParser()
         try:
-            parser.read(config_path)
+            parser.read(config_path, encoding="utf-8")
             if parser.has_section("shop"):
                 url = parser.get("shop", "url", fallback="").strip()
                 if url:

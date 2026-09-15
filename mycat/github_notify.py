@@ -173,7 +173,7 @@ def save_github_settings(settings: GitHubSettings, cfg_file: Path = CFG_FILE) ->
         cfg_file.parent.mkdir(parents=True, exist_ok=True)
         config = configparser.ConfigParser()
         if cfg_file.exists():
-            config.read(cfg_file)
+            config.read(cfg_file, encoding="utf-8")
         if "github" not in config:
             config.add_section("github")
         section = config["github"]

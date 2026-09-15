@@ -71,6 +71,15 @@ class ActivityStore:
         # the configured history window. Same treatment as config.ini and
         # history.txt: readable by its owner and nobody else.
         secret_store.secure_file(self.db_path)
+        # sqlite creates `activity.db-journal` beside the database on every transaction and
+        # deletes it on commit, at the umask default. chmod'ing it is a race the next commit
+        # wins, so the directory is what has to be closed — which also covers `-wal`/`-shm`
+        # if the journal mode below is ever revisited.
+        secret_store.secure_dir(self.db_path.parent)
+        # One that may already exist from a run before this change.
+        journal = self.db_path.with_name(self.db_path.name + "-journal")
+        if journal.exists():
+            secret_store.secure_file(journal)
         # Durable rollback journal: every commit lands in the main .db file
         # immediately. (WAL kept data in a side journal that a hard exit could
         # drop before it was checkpointed — losing sessions across restarts.)

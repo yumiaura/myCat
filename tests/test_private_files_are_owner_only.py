@@ -88,3 +88,34 @@ def test_activity_database_is_owner_only(tmp_path):
         assert stat.S_IMODE((tmp_path / "activity.db").stat().st_mode) == OWNER_ONLY
     finally:
         store.connection.close()
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Windows has no POSIX mode bits")
+def test_the_sqlite_journal_cannot_be_read_by_anyone_else(tmp_path):
+    """The journal holds the same counts as the database, and appears on every transaction.
+
+    `journal_mode=DELETE` means sqlite creates `activity.db-journal` next to the database when a
+    transaction opens and removes it on commit, at whatever the umask allows. chmod'ing the
+    journal is a race the next transaction wins, so the directory is what has to be closed. The
+    test asserts the outcome rather than the mechanism: while a write is in flight, nothing about
+    that data is reachable by another user.
+    """
+    from mycat import activity_store
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(mode=0o755)          # the umask default this is meant to correct
+    store = activity_store.ActivityStore(db_path=data_dir / "activity.db")
+    try:
+        assert stat.S_IMODE(data_dir.stat().st_mode) == 0o700, "the journal's directory is open"
+
+        # With a transaction open the journal exists; it must not be reachable either way.
+        store.connection.execute("BEGIN IMMEDIATE")
+        store.connection.execute(
+            "CREATE TABLE IF NOT EXISTS _probe (id INTEGER PRIMARY KEY)")
+        journal = data_dir / "activity.db-journal"
+        if journal.exists():
+            reachable = stat.S_IMODE(journal.stat().st_mode) & (stat.S_IRGRP | stat.S_IROTH)
+            assert not reachable or stat.S_IMODE(data_dir.stat().st_mode) == 0o700
+        store.connection.rollback()
+    finally:
+        store.connection.close()
