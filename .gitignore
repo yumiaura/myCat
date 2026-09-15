@@ -17,6 +17,10 @@ uv.lock
 !README.md
 !CHANGELOG.md
 !docs/**/*.md
+!AGENTS.md
+!CLAUDE.md
+!GEMINI.md
+!CONTRIBUTING.md
 
 # Vendored local tools (own git repos, not tracked here) — e.g. mycat-gen
 vendors/

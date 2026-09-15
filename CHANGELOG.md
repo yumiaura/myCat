@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Changed
+- **The contributor guide and the notes for AI assistants are separate files now.** `CONTRIBUTING.md` is where the friendly guide lives — "make your own skin" step by step, how to open an issue or a PR, the artwork/licensing note — plus a short, current *Working on the code* section (`pip install -e .`, `ruff check .`, and the exact pytest line CI runs). `CLAUDE.md` is now the technical brief for an AI assistant working in the repo: commands, module map, where config and private data live, how i18n works, and the conventions to keep. `AGENTS.md` and the new `GEMINI.md` are two-line pointers to it, so other editors find the same instructions (branch `0.1.32`).
+
 ### Fixed
 - **The activity config example documents the Mouse toggle.** `docs/ACTIVITY.md` showed `[activity]` without `mouse_enabled`, even though the setting has always been read and written by the app, and it described `keyboard_enabled` as counting both keys and clicks — clicks belong to the mouse track. The example now lists both toggles with the right comment. The test helper for the cursor sampler also keeps its last known position once the scripted positions run out, instead of jumping back to `(0, 0)` (PR #128).
 
