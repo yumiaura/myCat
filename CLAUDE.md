@@ -38,7 +38,7 @@ mutually exclusive `--openai` / `--ollama` for chat.
 
 ### Tests
 
-`tests/` holds ~35 pytest files and CI (`.github/workflows/ci.yml`, Python 3.10 and
+`tests/` holds over 30 pytest files and CI (`.github/workflows/ci.yml`, Python 3.10 and
 3.12) runs ruff plus the pytest line above. Two rules make the suite survivable:
 
 - **Never create a `QApplication` outside the `qapp` fixture in `tests/conftest.py`
