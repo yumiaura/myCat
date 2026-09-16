@@ -397,7 +397,10 @@ def load_generation_settings() -> dict:
     if CFG_FILE.exists():
         try:
             parser.read(CFG_FILE, encoding="utf-8")
-        except configparser.Error:
+        # UnicodeDecodeError: a config.ini written before this project named an encoding. The
+        # shared reader in config_store falls back to the locale codec; this parser only needs
+        # to not crash.
+        except (configparser.Error, UnicodeDecodeError):
             return settings
         if parser.has_section(CFG_SECTION):
             for key in GENERATION_DEFAULTS:
@@ -419,7 +422,7 @@ def save_generation_settings(settings: dict) -> None:
     if CFG_FILE.exists():
         try:
             parser.read(CFG_FILE, encoding="utf-8")
-        except configparser.Error:
+        except (configparser.Error, UnicodeDecodeError):
             pass
     if not parser.has_section(CFG_SECTION):
         parser.add_section(CFG_SECTION)

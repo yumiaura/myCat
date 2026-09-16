@@ -100,7 +100,10 @@ def resolve_base_url(config_path: Path | None = None) -> str:
                 url = parser.get("shop", "url", fallback="").strip()
                 if url:
                     return url.rstrip("/")
-        except configparser.Error as exc:
+        # UnicodeDecodeError: a config.ini written before this project named an encoding. The
+        # shared reader in config_store falls back to the locale codec; this parser only needs
+        # to not crash.
+        except (configparser.Error, UnicodeDecodeError) as exc:
             logger.warning("Could not read shop URL from %s: %s", config_path, exc)
     return DEFAULT_BASE_URL
 

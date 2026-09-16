@@ -79,7 +79,10 @@ def read_config() -> configparser.ConfigParser:
     if CFG_FILE.exists():
         try:
             parser.read(CFG_FILE, encoding="utf-8")
-        except configparser.Error as exc:
+        # UnicodeDecodeError: a config.ini written before this project named an encoding. The
+        # shared reader in config_store falls back to the locale codec; this parser only needs
+        # to not crash.
+        except (configparser.Error, UnicodeDecodeError) as exc:
             logger.warning("Unable to parse %s: %s", CFG_FILE, exc)
     return parser
 

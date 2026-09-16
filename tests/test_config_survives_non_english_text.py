@@ -69,3 +69,32 @@ def test_the_locale_codec_is_what_would_have_broken(tmp_path, codec, language, t
     parser = configparser.ConfigParser()
     with pytest.raises(UnicodeDecodeError):
         parser.read(cfg, encoding="utf-8")
+
+
+@pytest.mark.parametrize("codec", WINDOWS_CODECS)
+@pytest.mark.parametrize("language,text", sorted(SAMPLES.items()))
+def test_a_config_written_before_utf8_still_opens(tmp_path, monkeypatch, codec, language, text):
+    """An old config.ini, in whatever codec the locale used to supply, still opens.
+
+    `config_store.read_config` is the shared reader every feature is meant to go through, and
+    it must survive a config.ini that predates this project naming an encoding at all — not
+    just refuse to crash on one, but read the value back correctly, via the locale-codec
+    fallback in `config_store._read_text`.
+    """
+    from mycat import config_store
+
+    try:
+        as_locale = text.encode(codec)
+    except UnicodeEncodeError:
+        return                      # this locale could not have written the phrase at all
+    if as_locale == text.encode("utf-8"):
+        return                      # pure ASCII: nothing to disagree about, not a decode test
+
+    cfg = tmp_path / "config.ini"
+    cfg.write_bytes(b"[generation]\nopenai_prompt = " + as_locale + b"\n")
+    monkeypatch.setattr(config_store.locale, "getpreferredencoding", lambda do_setlocale=True: codec)
+
+    config = config_store.read_config(cfg)
+
+    assert config is not None, language
+    assert config.get("generation", "openai_prompt") == text, language

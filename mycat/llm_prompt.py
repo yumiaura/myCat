@@ -105,7 +105,10 @@ def load_llm_settings() -> LLMSettings:
     if CFG_FILE.exists():
         try:
             parser.read(CFG_FILE, encoding="utf-8")
-        except configparser.Error as exc:
+        # UnicodeDecodeError: a config.ini written before this project named an encoding. The
+        # shared reader in config_store falls back to the locale codec; this parser only needs
+        # to not crash.
+        except (configparser.Error, UnicodeDecodeError) as exc:
             logger.warning("Unable to parse %s: %s", CFG_FILE, exc)
             parser = None  # type: ignore[assignment]
 
@@ -135,7 +138,7 @@ def save_ollama_settings(url: str, model: str) -> None:
     if CFG_FILE.exists():
         try:
             parser.read(CFG_FILE, encoding="utf-8")
-        except configparser.Error as exc:
+        except (configparser.Error, UnicodeDecodeError) as exc:
             logger.warning("Unable to parse %s before saving: %s", CFG_FILE, exc)
     if not parser.has_section("ollama"):
         parser.add_section("ollama")
@@ -154,7 +157,7 @@ def save_llm_enabled(enabled: bool) -> None:
     if CFG_FILE.exists():
         try:
             parser.read(CFG_FILE, encoding="utf-8")
-        except configparser.Error as exc:
+        except (configparser.Error, UnicodeDecodeError) as exc:
             logger.warning("Unable to parse %s before saving: %s", CFG_FILE, exc)
     if not parser.has_section("llm"):
         parser.add_section("llm")
