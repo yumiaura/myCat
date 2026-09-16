@@ -37,7 +37,7 @@ import uuid
 
 from PIL import Image, UnidentifiedImageError
 
-from . import ai_char, paths
+from . import ai_char, paths, secret_store
 from .ai_char import AICharError
 
 CFG_DIR = paths.config_dir()
@@ -396,8 +396,11 @@ def load_generation_settings() -> dict:
     legacy_remove_background = None
     if CFG_FILE.exists():
         try:
-            parser.read(CFG_FILE)
-        except configparser.Error:
+            parser.read(CFG_FILE, encoding="utf-8")
+        # UnicodeDecodeError: a config.ini written before this project named an encoding. The
+        # shared reader in config_store falls back to the locale codec; this parser only needs
+        # to not crash.
+        except (configparser.Error, UnicodeDecodeError):
             return settings
         if parser.has_section(CFG_SECTION):
             for key in GENERATION_DEFAULTS:
@@ -418,16 +421,17 @@ def save_generation_settings(settings: dict) -> None:
     parser = configparser.ConfigParser()
     if CFG_FILE.exists():
         try:
-            parser.read(CFG_FILE)
-        except configparser.Error:
+            parser.read(CFG_FILE, encoding="utf-8")
+        except (configparser.Error, UnicodeDecodeError):
             pass
     if not parser.has_section(CFG_SECTION):
         parser.add_section(CFG_SECTION)
     for key in GENERATION_DEFAULTS:
         if settings.get(key) is not None:
             parser.set(CFG_SECTION, key, str(settings[key]))
-    with open(CFG_FILE, "w") as handle:
+    with open(CFG_FILE, "w", encoding="utf-8") as handle:
         parser.write(handle)
+    secret_store.secure_file(CFG_FILE)
 
 
 def make_backend(settings: dict, api_key: str = "") -> OpenAIBackend | A1111Backend | ComfyUIBackend:

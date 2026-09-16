@@ -19,6 +19,7 @@ import logging
 import os
 from dataclasses import dataclass, replace
 
+from . import secret_store
 from .llm_prompt import CFG_DIR, CFG_FILE
 
 logger = logging.getLogger(__name__)
@@ -77,8 +78,11 @@ def read_config() -> configparser.ConfigParser:
     parser = configparser.ConfigParser()
     if CFG_FILE.exists():
         try:
-            parser.read(CFG_FILE)
-        except configparser.Error as exc:
+            parser.read(CFG_FILE, encoding="utf-8")
+        # UnicodeDecodeError: a config.ini written before this project named an encoding. The
+        # shared reader in config_store falls back to the locale codec; this parser only needs
+        # to not crash.
+        except (configparser.Error, UnicodeDecodeError) as exc:
             logger.warning("Unable to parse %s: %s", CFG_FILE, exc)
     return parser
 
@@ -153,8 +157,9 @@ def save_vendor(vendor: Vendor, *, make_active: bool = True) -> None:
         if not parser.has_section("llm"):
             parser.add_section("llm")
         parser.set("llm", "vendor", vendor.name)
-    with open(CFG_FILE, "w") as handle:
+    with open(CFG_FILE, "w", encoding="utf-8") as handle:
         parser.write(handle)
+    secret_store.secure_file(CFG_FILE)
     logger.info("Saved vendor %s (kind=%s, active=%s)", vendor.name, vendor.kind, make_active)
 
 
