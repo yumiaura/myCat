@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import tempfile
 import urllib.error
 import urllib.parse
@@ -30,6 +31,18 @@ CATALOG_CACHE_TTL_SECONDS = 3600
 DEFAULT_CATALOG_TIMEOUT = 10.0
 DEFAULT_DOWNLOAD_TIMEOUT = 60.0
 MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024  # safety net
+
+# Catalog ids are attacker-controlled (server-served JSON) and get interpolated
+# straight into cache/download file paths, so they're restricted to a safe,
+# separator-free charset rather than reusing ai_char.slugify() (which is meant
+# for user-typed names and always emits a "custom-" prefix).
+_CHAR_ID_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,62}[A-Za-z0-9])?$")
+
+
+def _validate_char_id(char_id: str) -> str:
+    if not _CHAR_ID_RE.match(char_id) or ".." in char_id:
+        raise ShopError(f"Catalog entry has an invalid id: {char_id!r}")
+    return char_id
 
 
 @dataclass
@@ -51,7 +64,7 @@ class CharEntry:
     @classmethod
     def from_dict(cls, data: dict) -> CharEntry:
         return cls(
-            id=str(data["id"]),
+            id=_validate_char_id(str(data["id"])),
             name=str(data.get("name", data["id"])),
             author=str(data.get("author", "")),
             description=str(data.get("description", "")),
@@ -258,7 +271,7 @@ class ShopClient:
         url = self.resolve_download_url(char)
 
         headers = {"User-Agent": "mycat-client", "Accept": "application/zip, */*"}
-        if auth_token:
+        if auth_token and self._is_shop_host(url):
             headers["Authorization"] = f"Bearer {auth_token}"
 
         request = urllib.request.Request(url, headers=headers, method="GET")
@@ -337,6 +350,17 @@ class ShopClient:
         if not url.startswith("/"):
             url = "/" + url
         return self.base_url + url
+
+    def _is_shop_host(self, url: str) -> bool:
+        """True if `url` targets the configured shop host.
+
+        A catalog entry's `download_url` can be an arbitrary absolute URL, and
+        the bearer token authenticates us to the shop — not to whatever host
+        the catalog names. Only attach it when the request actually stays on
+        the shop's own origin; a legitimate CDN handoff should be anonymous
+        (e.g. a signed URL) or the server should proxy it, not carry our token.
+        """
+        return urllib.parse.urlsplit(url).netloc == urllib.parse.urlsplit(self.base_url).netloc
 
     @staticmethod
     def cleanup(tmp_file, tmp_path: Path) -> None:
