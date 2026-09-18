@@ -22,5 +22,8 @@ uv.lock
 !GEMINI.md
 !CONTRIBUTING.md
 
+# Private working notes imported by CLAUDE.md, never committed
+CLAUDE.local.md
+
 # Vendored local tools (own git repos, not tracked here) — e.g. mycat-gen
 vendors/
