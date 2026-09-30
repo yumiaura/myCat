@@ -71,7 +71,7 @@ Then run it:
 - **Windows** - double-click the `.exe`.
 - **macOS** - unzip and open `mycat.app` (first launch: right-click → **Open** to get past Gatekeeper).
 - **Linux `.deb`** - `sudo apt install ./mycat-linux-amd64.deb`.
-- **Linux AppImage** - `chmod +x mycat-linux-x86_64.AppImage && ./mycat-linux-x86_64.AppImage` (needs FUSE: `sudo apt install libfuse2`).
+- **Linux AppImage** - `chmod +x mycat-linux-x86_64.AppImage && ./mycat-linux-x86_64.AppImage`.
 
 > Builds for every release live on the **[Releases](https://github.com/yumiaura/myCat/releases)** page.
 

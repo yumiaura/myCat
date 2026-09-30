@@ -17,7 +17,11 @@ permissions:
 
 jobs:
   build-appimage:
-    runs-on: ubuntu-latest
+    # The oldest supported Ubuntu LTS, not ubuntu-latest: the binary links
+    # against the runner's glibc, and one built on 24.04 needs GLIBC_2.38 and
+    # will not start on 22.04 (nor in the AppImage catalog test, which runs
+    # there).
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v5
 
@@ -50,7 +54,10 @@ jobs:
           printf '#!/bin/sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/usr/bin/mycat" "$@"\n' > AppDir/AppRun
           chmod +x AppDir/AppRun
 
-          wget -qO appimagetool https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          # appimagetool from AppImage/appimagetool, not the retired AppImageKit:
+          # it embeds the static type2 runtime, so the AppImage needs neither
+          # libfuse2 nor the system C library to mount itself.
+          wget -qO appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool
           # --appimage-extract-and-run avoids needing FUSE on the runner.
           ARCH=x86_64 ./appimagetool --appimage-extract-and-run AppDir mycat-linux-x86_64.AppImage
