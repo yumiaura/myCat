@@ -2423,8 +2423,9 @@ def main() -> None:
         app.setQuitOnLastWindowClosed(window.tray_icon is None)
         # Flush the in-progress activity minute on a clean Quit.
         app.aboutToQuit.connect(lambda: flush_activity_on_quit(window))
-        # First-run nudge to start on login (after the cat is up).
-        QtCore.QTimer.singleShot(600, lambda: offer_autostart_on_first_run(window))
+        # First-run nudge to start on login, 15 s after the cat is up: the cat
+        # is the first thing a new user sees, not a dialog in front of it.
+        QtCore.QTimer.singleShot(15000, lambda: offer_autostart_on_first_run(window))
 
     try:
         sys.exit(app.exec())
