@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.1.35] - 2026-09-30
+
+### Changed
+- **The first-run autostart question waits 15 seconds.** "Keep mycat on screen every time you log in?" used to open 0.6 s after launch, in front of the cat, so a new user saw a dialog before the cat, and the AppImage catalog test captured that dialog as myCat's screenshot. It now opens 15 s after the cat appears (branch `fix/autostart-prompt-delay`).
+
 ## [0.1.34] - 2026-09-30
 
 ### Added
