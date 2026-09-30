@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Fixed
+- **The AppImage starts on systems without libxcb-cursor0.** The 0.1.32 AppImage quit right after launch with "no Qt platform plugin could be initialized" wherever the `libxcb-cursor0` package was missing, which is also what the AppImage catalog test hit (AppImage/appimage.github.io#4477). PyInstaller bundles only the libraries present on the build machine, so the AppImage workflow now installs `libxcb-cursor0` and the other xcb and xkbcommon libraries Qt's xcb plugin loads before it builds, and they ship inside the AppImage (branch `fix/appimage-xcb-cursor`).
+
 ## [0.1.32] - 2026-09-30
 
 ### Changed
