@@ -18,7 +18,10 @@ permissions:
 
 jobs:
   build-deb:
-    runs-on: ubuntu-latest
+    # The oldest supported Ubuntu LTS, not ubuntu-latest: the binary links
+    # against the runner's glibc, and one built on 24.04 needs GLIBC_2.38 and
+    # will not start on 22.04. Same reason as build-appimage.yml.
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v5
 

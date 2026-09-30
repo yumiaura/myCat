@@ -7,6 +7,9 @@ All notable changes to this project are documented in this file.
 ### Added
 - **AppStream metadata, with a screenshot of the cat.** `packaging/io.github.yumiaura.myCat.metainfo.xml` gives myCat a name, a summary, a description, links and a screenshot, and the AppImage and the `.deb` both ship it under `/usr/share/metainfo/`. The AppImage catalog (appimage.github.io) shows that screenshot instead of the first-run "Keep mycat on screen every time you log in?" dialog its test happened to capture, and software centres such as GNOME Software can show it for the `.deb`. The screenshot, `docs/screenshot.png`, is the default cat from `cat.zip` with its pupils, at 1280x720 (branch `feat/appstream-metainfo`).
 
+### Fixed
+- **The `.deb` starts on Ubuntu 22.04.** Like the AppImage before 0.1.32, it was built on `ubuntu-latest` (24.04), so the Python inside it required `GLIBC_2.38`: it installed on 22.04 and similar systems, then quit at launch. The `.deb` workflow now builds on `ubuntu-22.04` too (branch `fix/deb-old-glibc`).
+
 ## [0.1.33] - 2026-09-30
 
 ### Fixed
