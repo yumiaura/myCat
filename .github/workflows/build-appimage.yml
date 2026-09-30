@@ -64,6 +64,9 @@ jobs:
           install -m0644 packaging/mycat.desktop AppDir/mycat.desktop
           install -m0644 packaging/mycat.png AppDir/mycat.png
           install -m0644 packaging/mycat.png AppDir/usr/share/icons/hicolor/256x256/apps/mycat.png
+          # AppStream metadata: the AppImage catalog shows its summary and
+          # screenshot instead of a capture of the first-run dialog.
+          install -Dm0644 packaging/io.github.yumiaura.myCat.metainfo.xml AppDir/usr/share/metainfo/io.github.yumiaura.myCat.metainfo.xml
           printf '#!/bin/sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/usr/bin/mycat" "$@"\n' > AppDir/AppRun
           chmod +x AppDir/AppRun
 
