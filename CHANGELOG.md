@@ -2,9 +2,10 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## [0.1.34] - 2026-09-30
 
 ### Added
+- **The AppImage can be updated by AppImage tools.** It now carries update information pointing at the latest GitHub release (`gh-releases-zsync|yumiaura|myCat|latest|mycat-linux-x86_64.AppImage.zsync`), and every release publishes `mycat-linux-x86_64.AppImage.zsync` next to it. AppImageUpdate, Gear Lever, AppImageLauncher and similar tools can see a new version and download only the changed blocks. The AppImage catalog stops warning that the AppImage contains no update information. myCat's own "Update" menu is unchanged (branch `feat/appimage-zsync`).
 - **AppStream metadata, with a screenshot of the cat.** `packaging/io.github.yumiaura.myCat.metainfo.xml` gives myCat a name, a summary, a description, links and a screenshot, and the AppImage and the `.deb` both ship it under `/usr/share/metainfo/`. The AppImage catalog (appimage.github.io) shows that screenshot instead of the first-run "Keep mycat on screen every time you log in?" dialog its test happened to capture, and software centres such as GNOME Software can show it for the `.deb`. The screenshot, `docs/screenshot.png`, is the default cat from `cat.zip` with its pupils, at 1280x720 (branch `feat/appstream-metainfo`).
 
 ### Fixed

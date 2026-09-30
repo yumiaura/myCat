@@ -29,14 +29,16 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install the X libraries Qt's xcb plugin loads
+      - name: Install the X libraries Qt's xcb plugin loads, and zsync
         # PyInstaller bundles only the libraries it finds on this machine, and
         # the runner lacks some of these (libxcb-cursor0 above all). Without
         # them the AppImage quits on any system that lacks them too: "no Qt
         # platform plugin could be initialized".
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          # zsync provides zsyncmake, which appimagetool -u needs to write the
+          # .zsync file next to the AppImage.
+          sudo apt-get install -y --no-install-recommends zsync \
             libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
             libxcb-randr0 libxcb-render-util0 libxcb-render0 libxcb-shape0 \
             libxcb-shm0 libxcb-sync1 libxcb-util1 libxcb-xfixes0 libxcb-xkb1 \
@@ -76,18 +78,30 @@ jobs:
           wget -qO appimagetool https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool
           # --appimage-extract-and-run avoids needing FUSE on the runner.
-          ARCH=x86_64 ./appimagetool --appimage-extract-and-run AppDir mycat-linux-x86_64.AppImage
-          ls -la mycat-linux-x86_64.AppImage
+          # -u embeds where updates live: the .zsync of the latest GitHub
+          # release. The asset names are version-less, so this string never
+          # changes, and AppImageUpdate, Gear Lever and similar tools fetch only
+          # the changed blocks of a new release.
+          ARCH=x86_64 ./appimagetool --appimage-extract-and-run \
+            -u "gh-releases-zsync|yumiaura|myCat|latest|mycat-linux-x86_64.AppImage.zsync" \
+            AppDir mycat-linux-x86_64.AppImage
+          # Fail rather than publish an AppImage whose update file is missing.
+          test -s mycat-linux-x86_64.AppImage.zsync
+          ls -la mycat-linux-x86_64.AppImage mycat-linux-x86_64.AppImage.zsync
 
       - uses: actions/upload-artifact@v4
         with:
           name: mycat-appimage
-          path: mycat-linux-x86_64.AppImage
+          path: |
+            mycat-linux-x86_64.AppImage
+            mycat-linux-x86_64.AppImage.zsync
           if-no-files-found: error
 
       - name: Attach AppImage to the GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: mycat-linux-x86_64.AppImage
+          files: |
+            mycat-linux-x86_64.AppImage
+            mycat-linux-x86_64.AppImage.zsync
           fail_on_unmatched_files: true
