@@ -19,7 +19,7 @@ import logging
 import os
 from dataclasses import dataclass, replace
 
-from . import secret_store
+from . import config_store, secret_store
 from .llm_prompt import CFG_DIR, CFG_FILE
 
 logger = logging.getLogger(__name__)
@@ -78,11 +78,8 @@ def read_config() -> configparser.ConfigParser:
     parser = configparser.ConfigParser()
     if CFG_FILE.exists():
         try:
-            parser.read(CFG_FILE, encoding="utf-8")
-        # UnicodeDecodeError: a config.ini written before this project named an encoding. The
-        # shared reader in config_store falls back to the locale codec; this parser only needs
-        # to not crash.
-        except (configparser.Error, UnicodeDecodeError) as exc:
+            parser.read_string(config_store.read_config_text(CFG_FILE), source=str(CFG_FILE))
+        except (configparser.Error, OSError) as exc:
             logger.warning("Unable to parse %s: %s", CFG_FILE, exc)
     return parser
 

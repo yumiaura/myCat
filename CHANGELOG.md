@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Security
+- **Private files are owner-only everywhere.** Every writer of `config.ini` now restricts it to its owner (0600), including the one that saves an LLM vendor's `api_key`, which used to leave a freshly created file at the umask default (0644). `activity.db`, which holds per-minute keyboard and mouse counts, is owner-only too, and its directory is closed (0700) so the sqlite journal beside it is covered as well (PR #130).
+
+### Fixed
+- **Settings with Korean, Chinese or Russian text save on any Windows locale.** Every read and write of `config.ini` and the autostart entry names UTF-8, so a Korean prompt on a Western-locale Windows no longer raises `UnicodeEncodeError` instead of saving. The "Failed to save settings" message is looked up with the key the translations already have, so it shows in every UI language (PR #130).
+- **An existing config.ini in the old locale codec keeps all its settings.** With the change above, the LLM, Ollama, vendor and image-generation settings read `config.ini` as strict UTF-8. On a Windows install whose file was written before in cp1251, cp949 or gbk with non-ASCII text in it, the first save after the upgrade failed to read it and rewrote it with only its own section, dropping the window position, the GitHub token and the prompt. Every reader now goes through `config_store.read_config_text`, which falls back to the locale codec, and the next save rewrites the file as UTF-8 (branch `fix/config-legacy-encoding`).
+
 ## [0.1.36] - 2026-09-30
 
 ### Added

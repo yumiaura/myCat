@@ -27,7 +27,7 @@ def bool_str(value: bool) -> str:
     return "true" if value else "false"
 
 
-def _read_text(cfg_file: Path) -> str:
+def read_config_text(cfg_file: Path) -> str:
     """``cfg_file`` as text: UTF-8, or the machine's locale codec if that is what wrote it.
 
     The fallback is the upgrade path, not a guess. Before this project named an encoding, the
@@ -55,7 +55,7 @@ def read_config(cfg_file: Path) -> configparser.ConfigParser | None:
         return None
     config = configparser.ConfigParser()
     try:
-        config.read_string(_read_text(cfg_file), source=str(cfg_file))
+        config.read_string(read_config_text(cfg_file), source=str(cfg_file))
     except (configparser.Error, OSError) as exc:
         logger.error("Failed to read %s: %s", cfg_file, exc)
         return None
@@ -73,7 +73,7 @@ def write_section(name: str, values: dict, cfg_file: Path) -> None:
         cfg_file.parent.mkdir(parents=True, exist_ok=True)
         config = configparser.ConfigParser()
         if cfg_file.exists():
-            config.read_string(_read_text(cfg_file), source=str(cfg_file))
+            config.read_string(read_config_text(cfg_file), source=str(cfg_file))
         if name not in config:
             config.add_section(name)
         config[name].update({key: str(value) for key, value in values.items()})
@@ -90,7 +90,7 @@ def remove_section(name: str, cfg_file: Path) -> None:
         if not cfg_file.exists():
             return
         config = configparser.ConfigParser()
-        config.read_string(_read_text(cfg_file), source=str(cfg_file))
+        config.read_string(read_config_text(cfg_file), source=str(cfg_file))
         if config.remove_section(name):
             with open(cfg_file, "w", encoding="utf-8") as fh:
                 config.write(fh)

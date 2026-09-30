@@ -79,7 +79,7 @@ def test_a_config_written_before_utf8_still_opens(tmp_path, monkeypatch, codec, 
     `config_store.read_config` is the shared reader every feature is meant to go through, and
     it must survive a config.ini that predates this project naming an encoding at all — not
     just refuse to crash on one, but read the value back correctly, via the locale-codec
-    fallback in `config_store._read_text`.
+    fallback in `config_store.read_config_text`.
     """
     from mycat import config_store
 

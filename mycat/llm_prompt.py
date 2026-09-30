@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from . import paths, secret_store
+from . import config_store, paths, secret_store
 
 logger = logging.getLogger(__name__)
 
@@ -104,11 +104,8 @@ def load_llm_settings() -> LLMSettings:
     parser = configparser.ConfigParser()
     if CFG_FILE.exists():
         try:
-            parser.read(CFG_FILE, encoding="utf-8")
-        # UnicodeDecodeError: a config.ini written before this project named an encoding. The
-        # shared reader in config_store falls back to the locale codec; this parser only needs
-        # to not crash.
-        except (configparser.Error, UnicodeDecodeError) as exc:
+            parser.read_string(config_store.read_config_text(CFG_FILE), source=str(CFG_FILE))
+        except (configparser.Error, OSError) as exc:
             logger.warning("Unable to parse %s: %s", CFG_FILE, exc)
             parser = None  # type: ignore[assignment]
 
@@ -137,8 +134,8 @@ def save_ollama_settings(url: str, model: str) -> None:
     parser = configparser.ConfigParser()
     if CFG_FILE.exists():
         try:
-            parser.read(CFG_FILE, encoding="utf-8")
-        except (configparser.Error, UnicodeDecodeError) as exc:
+            parser.read_string(config_store.read_config_text(CFG_FILE), source=str(CFG_FILE))
+        except (configparser.Error, OSError) as exc:
             logger.warning("Unable to parse %s before saving: %s", CFG_FILE, exc)
     if not parser.has_section("ollama"):
         parser.add_section("ollama")
@@ -156,8 +153,8 @@ def save_llm_enabled(enabled: bool) -> None:
     parser = configparser.ConfigParser()
     if CFG_FILE.exists():
         try:
-            parser.read(CFG_FILE, encoding="utf-8")
-        except (configparser.Error, UnicodeDecodeError) as exc:
+            parser.read_string(config_store.read_config_text(CFG_FILE), source=str(CFG_FILE))
+        except (configparser.Error, OSError) as exc:
             logger.warning("Unable to parse %s before saving: %s", CFG_FILE, exc)
     if not parser.has_section("llm"):
         parser.add_section("llm")
@@ -180,10 +177,10 @@ def load_llm_enabled() -> bool:
     if CFG_FILE.exists():
         parser = configparser.ConfigParser()
         try:
-            parser.read(CFG_FILE, encoding="utf-8")
+            parser.read_string(config_store.read_config_text(CFG_FILE), source=str(CFG_FILE))
             if parser.has_option("llm", "enabled"):
                 enabled = parser.getboolean("llm", "enabled")
-        except (configparser.Error, ValueError) as exc:
+        except (configparser.Error, OSError, ValueError) as exc:
             logger.warning("Unable to read LLM enabled flag: %s", exc)
     return enabled
 

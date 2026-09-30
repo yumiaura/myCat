@@ -4,7 +4,7 @@ from pathlib import Path
 
 from PySide6 import QtWidgets
 
-from . import i18n, menu_config, secret_store, speech_bubble
+from . import config_store, i18n, menu_config, secret_store, speech_bubble
 
 logger = logging.getLogger(__name__)
 tr = i18n.tr
@@ -94,7 +94,7 @@ class SettingsDialog(QtWidgets.QDialog):
                 self.config_path.parent.mkdir(parents=True, exist_ok=True)
                 config = configparser.ConfigParser()
                 if self.config_path.exists():
-                    config.read(self.config_path, encoding="utf-8")
+                    config.read_string(config_store.read_config_text(self.config_path), source=str(self.config_path))
                 
                 if 'settings' not in config:
                     config.add_section('settings')

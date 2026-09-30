@@ -37,7 +37,7 @@ import uuid
 
 from PIL import Image, UnidentifiedImageError
 
-from . import ai_char, paths, secret_store
+from . import ai_char, config_store, paths, secret_store
 from .ai_char import AICharError
 
 CFG_DIR = paths.config_dir()
@@ -396,11 +396,8 @@ def load_generation_settings() -> dict:
     legacy_remove_background = None
     if CFG_FILE.exists():
         try:
-            parser.read(CFG_FILE, encoding="utf-8")
-        # UnicodeDecodeError: a config.ini written before this project named an encoding. The
-        # shared reader in config_store falls back to the locale codec; this parser only needs
-        # to not crash.
-        except (configparser.Error, UnicodeDecodeError):
+            parser.read_string(config_store.read_config_text(CFG_FILE), source=str(CFG_FILE))
+        except (configparser.Error, OSError):
             return settings
         if parser.has_section(CFG_SECTION):
             for key in GENERATION_DEFAULTS:
@@ -421,8 +418,8 @@ def save_generation_settings(settings: dict) -> None:
     parser = configparser.ConfigParser()
     if CFG_FILE.exists():
         try:
-            parser.read(CFG_FILE, encoding="utf-8")
-        except (configparser.Error, UnicodeDecodeError):
+            parser.read_string(config_store.read_config_text(CFG_FILE), source=str(CFG_FILE))
+        except (configparser.Error, OSError):
             pass
     if not parser.has_section(CFG_SECTION):
         parser.add_section(CFG_SECTION)
