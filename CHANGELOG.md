@@ -2,7 +2,10 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## [0.1.36] - 2026-09-30
+
+### Added
+- **The AppImage is also published as `mycat-x86_64.AppImage`.** The AppImage catalog warns that `mycat-linux-x86_64.AppImage` should not contain "linux". Each release now also carries the same file without it, uploaded after the original so the catalog tests that one. `mycat-linux-x86_64.AppImage` and its `.zsync` stay: the README download link and the update information of every installed AppImage point at them (branch `feat/appimage-plain-name`).
 
 ### Changed
 - **The catalog screenshot sits on the Ubuntu terminal colour.** `docs/screenshot.png`, which the AppStream metadata names as myCat's screenshot, shows the same cat with its pupils on aubergine (`#300A24`) instead of a light beige background. The metainfo links to it on `main`, so the AppImage catalog page and software centres pick it up without a new release (branch `chore/screenshot-aubergine`).

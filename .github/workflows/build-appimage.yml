@@ -88,6 +88,11 @@ jobs:
           # Fail rather than publish an AppImage whose update file is missing.
           test -s mycat-linux-x86_64.AppImage.zsync
           ls -la mycat-linux-x86_64.AppImage mycat-linux-x86_64.AppImage.zsync
+          # The same file under a name without "linux", which the AppImage
+          # catalog asks for. The original name stays: the README links to it,
+          # and the update information of every AppImage out there points at
+          # its .zsync.
+          cp mycat-linux-x86_64.AppImage mycat-x86_64.AppImage
 
       - uses: actions/upload-artifact@v4
         with:
@@ -95,6 +100,7 @@ jobs:
           path: |
             mycat-linux-x86_64.AppImage
             mycat-linux-x86_64.AppImage.zsync
+            mycat-x86_64.AppImage
           if-no-files-found: error
 
       - name: Attach AppImage to the GitHub Release
@@ -104,4 +110,14 @@ jobs:
           files: |
             mycat-linux-x86_64.AppImage
             mycat-linux-x86_64.AppImage.zsync
+          fail_on_unmatched_files: true
+
+      # A step of its own, after the one above, so this copy is uploaded last:
+      # the catalog tests the AppImage uploaded last when two differ only in
+      # "linux", and this one draws no warning about the name.
+      - name: Attach the AppImage without "linux" in its name
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: mycat-x86_64.AppImage
           fail_on_unmatched_files: true
