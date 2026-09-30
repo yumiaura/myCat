@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## [0.1.34] - 2026-09-30
 
 ### Added
 - **The AppImage can be updated by AppImage tools.** It now carries update information pointing at the latest GitHub release (`gh-releases-zsync|yumiaura|myCat|latest|mycat-linux-x86_64.AppImage.zsync`), and every release publishes `mycat-linux-x86_64.AppImage.zsync` next to it. AppImageUpdate, Gear Lever, AppImageLauncher and similar tools can see a new version and download only the changed blocks. The AppImage catalog stops warning that the AppImage contains no update information. myCat's own "Update" menu is unchanged (branch `feat/appimage-zsync`).
