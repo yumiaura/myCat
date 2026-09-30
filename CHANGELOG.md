@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## [0.1.32] - 2026-09-30
 
 ### Changed
 - **The contributor guide and the notes for AI assistants are separate files now.** `CONTRIBUTING.md` is where the friendly guide lives — "make your own skin" step by step, how to open an issue or a PR, the artwork/licensing note — plus a short, current *Working on the code* section (`pip install -e .`, `ruff check .`, and the exact pytest line CI runs). `CLAUDE.md` is now the technical brief for an AI assistant working in the repo: commands, module map, where config and private data live, how i18n works, and the conventions to keep. `AGENTS.md` and the new `GEMINI.md` are two-line pointers to it, so other editors find the same instructions (branch `0.1.32`).
