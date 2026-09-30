@@ -22,6 +22,20 @@ def secure_file(path) -> None:
         pass
 
 
+def secure_dir(path) -> None:
+    """Restrict a directory to the owner (chmod 700). No-op where unsupported (Windows).
+
+    For files an application does not create itself. sqlite writes `activity.db-journal` beside
+    the database at the start of every transaction and removes it at commit, at whatever the
+    umask says — so chmod'ing the journal is a race, and the next transaction undoes it anyway.
+    Closing the directory covers it, and covers `-wal`/`-shm` if the journal mode ever changes.
+    """
+    try:
+        os.chmod(path, 0o700)
+    except (OSError, NotImplementedError):
+        pass
+
+
 def keyring_available() -> bool:
     try:
         import keyring
