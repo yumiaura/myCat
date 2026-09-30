@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Added
+- **AppStream metadata, with a screenshot of the cat.** `packaging/io.github.yumiaura.myCat.metainfo.xml` gives myCat a name, a summary, a description, links and a screenshot, and the AppImage and the `.deb` both ship it under `/usr/share/metainfo/`. The AppImage catalog (appimage.github.io) shows that screenshot instead of the first-run "Keep mycat on screen every time you log in?" dialog its test happened to capture, and software centres such as GNOME Software can show it for the `.deb`. The screenshot, `docs/screenshot.png`, is the default cat from `cat.zip` with its pupils, at 1280x720 (branch `feat/appstream-metainfo`).
+
 ## [0.1.33] - 2026-09-30
 
 ### Fixed

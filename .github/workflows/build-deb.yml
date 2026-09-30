@@ -61,6 +61,8 @@ jobs:
           # compare this .deb against a git/pip/AppImage run.
           echo "X-mycat-version=${VERSION}" >> "$root/usr/share/applications/mycat.desktop"
           install -m0644 packaging/mycat.png "$root/usr/share/icons/hicolor/256x256/apps/mycat.png"
+          # AppStream metadata, so software centres show a summary and a screenshot.
+          install -Dm0644 packaging/io.github.yumiaura.myCat.metainfo.xml "$root/usr/share/metainfo/io.github.yumiaura.myCat.metainfo.xml"
           sed "s/@VERSION@/${VERSION}/" packaging/control.in > "$root/DEBIAN/control"
           dpkg-deb --root-owner-group --build "$root"
           # Internal control keeps the real version; the file name is version-less
