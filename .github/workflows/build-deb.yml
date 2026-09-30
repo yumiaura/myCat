@@ -29,6 +29,19 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install the X libraries Qt's xcb plugin loads
+        # PyInstaller bundles only the libraries it finds on this machine, and
+        # the runner lacks several of these. Without them the binary quits on
+        # any system that lacks them too: "no Qt platform plugin could be
+        # initialized". Same list as build-appimage.yml.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-render0 libxcb-shape0 \
+            libxcb-shm0 libxcb-sync1 libxcb-util1 libxcb-xfixes0 libxcb-xkb1 \
+            libxkbcommon-x11-0 libxkbcommon0
+
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
