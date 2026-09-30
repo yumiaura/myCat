@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## [0.1.36] - 2026-09-30
 
 ### Added
 - **The AppImage is also published as `mycat-x86_64.AppImage`.** The AppImage catalog warns that `mycat-linux-x86_64.AppImage` should not contain "linux". Each release now also carries the same file without it, uploaded after the original so the catalog tests that one. `mycat-linux-x86_64.AppImage` and its `.zsync` stay: the README download link and the update information of every installed AppImage point at them (branch `feat/appimage-plain-name`).
