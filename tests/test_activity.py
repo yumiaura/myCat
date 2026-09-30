@@ -43,12 +43,15 @@ def make_collector(tmp_path, cursor_positions=None):
     store = ActivityStore(db_path=tmp_path / "activity.db")
     now = FakeNow()
     positions = iter(cursor_positions or [])
+    last_pos = FakePoint(0, 0)
 
     def cursor_pos():
+        nonlocal last_pos
         try:
-            return next(positions)
+            last_pos = next(positions)
         except StopIteration:
-            return FakePoint(0, 0)
+            pass
+        return last_pos
 
     collector = ActivityCollector(
         store=store,

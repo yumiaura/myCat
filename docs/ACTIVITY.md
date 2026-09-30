@@ -167,16 +167,17 @@ focus. Once per day; an empty yesterday is skipped silently.
 
 ```ini
 [activity]
-enabled = true            ; master switch (Tier 1 + recording)
-keyboard_enabled = true   ; Tier 2: key/click counting
-retention_days = 90       ; minute history kept this long
+enabled = true             ; master switch (Tier 1 + recording)
+mouse_enabled = true       ; Tier 2: click counting
+keyboard_enabled = true    ; Tier 2: key counting
+retention_days = 90        ; minute history kept this long
 
 [focus]
 focus_minutes = 25
 break_minutes = 5
-long_break_minutes = 15   ; the long break (use 15–30 to taste)
+long_break_minutes = 15    ; the long break (use 15–30 to taste)
 sessions_before_long_break = 4
-auto_start = true         ; auto-pomodoro on input-after-idle
+auto_start = true          ; auto-pomodoro on input-after-idle
 ```
 
 Tuning constants (in code):
