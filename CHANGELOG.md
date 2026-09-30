@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Changed
+- **The catalog screenshot sits on the Ubuntu terminal colour.** `docs/screenshot.png`, which the AppStream metadata names as myCat's screenshot, shows the same cat with its pupils on aubergine (`#300A24`) instead of a light beige background. The metainfo links to it on `main`, so the AppImage catalog page and software centres pick it up without a new release (branch `chore/screenshot-aubergine`).
+
 ## [0.1.35] - 2026-09-30
 
 ### Changed
