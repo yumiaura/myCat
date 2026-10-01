@@ -3,8 +3,8 @@ name: Build snap
 # Same tag trigger as the other release workflows. Builds the PyInstaller
 # onefile Linux binary, packs it into the mycat snap (snap/snapcraft.yaml),
 # installs that snap on the runner and checks it starts and shows its window,
-# then publishes it to the Snap Store's stable channel. Also dispatchable to
-# produce the .snap as an artefact without publishing.
+# then publishes it to the Snap Store's stable channel. Branch pushes that
+# touch the snap, and manual dispatches, build and test it without publishing.
 #
 # Publishing needs the SNAPCRAFT_STORE_CREDENTIALS secret (the output of
 # `snapcraft export-login`); without it the snap is built and tested only.
@@ -14,6 +14,13 @@ on:
     tags:
       - "*.*.*"
       - "v*"
+    # Also on any branch whose push touches the snap: build and test only
+    # (publishing is for tags). Path filters do not apply to tag pushes.
+    branches:
+      - "**"
+    paths:
+      - "snap/**"
+      - ".github/workflows/build-snap.yml"
   workflow_dispatch: {}
 
 permissions:
