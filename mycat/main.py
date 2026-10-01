@@ -2131,8 +2131,11 @@ def install_desktop_entry() -> None:
     launcher's command and icon. The .deb ships its own system-wide entry.
 
     The entry is only (re)written when this install is at least as new as whatever
-    the menu currently launches, so running an older build never downgrades it."""
-    if sys.platform != "linux" or updater.install_kind() == "deb":
+    the menu currently launches, so running an older build never downgrades it.
+
+    A snap ships its own menu entry, and its home directory is the snap's private
+    one, so an entry written from inside it would never reach the real menu."""
+    if sys.platform != "linux" or updater.install_kind() in ("deb", "snap"):
         return
     share = Path.home() / ".local" / "share"
     user_desktop = share / "applications" / "mycat.desktop"

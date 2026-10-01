@@ -7,6 +7,7 @@ Everything degrades to a no-op / unsupported elsewhere.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -26,7 +27,13 @@ def launch_command() -> str:
     directory like ``/home/anna maria``) breaks the autostart entry. The
     same string goes into the Windows Run key, where unquoted paths with
     spaces are ambiguous.
+
+    Inside a snap the path under $SNAP changes with every revision, so the
+    entry names the snap's command instead; snapd starts the app from the
+    ``autostart:`` key in snapcraft.yaml, which matches this file by name.
     """
+    if os.environ.get("SNAP_NAME"):
+        return os.environ["SNAP_NAME"]
     exe = shutil.which("mycat")
     if exe:
         return f'"{exe}"'

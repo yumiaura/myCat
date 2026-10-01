@@ -119,3 +119,17 @@ def test_download_does_not_retry_on_cancel(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="cancelled"):
         updater.download("https://example/build", str(tmp_path / "build.bin"), progress=cancel)
     assert calls["n"] == 1  # no retry on cancel
+
+
+def test_install_kind_is_snap_inside_a_snap(monkeypatch):
+    # snapd sets SNAP for every snap app; it wins over APPIMAGE and the .deb default.
+    monkeypatch.setattr(updater.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(updater.sys, "platform", "linux")
+    monkeypatch.setenv("SNAP", "/snap/mycat/12")
+    assert updater.install_kind() == "snap"
+
+
+def test_snap_is_told_to_refresh_not_self_updated():
+    assert not updater.can_self_update("snap")
+    assert updater.update_hint("snap") == "snap refresh mycat"
+    assert updater.asset_name("snap") == ""

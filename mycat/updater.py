@@ -36,7 +36,7 @@ def install_kind() -> str:
     """How this instance was installed.
 
     One of ``source`` (running from a checkout or pip — nothing to swap),
-    ``appimage``, ``deb``, ``macos`` or ``windows``.
+    ``snap``, ``appimage``, ``deb``, ``macos`` or ``windows``.
     """
     if not getattr(sys, "frozen", False):
         return "source"
@@ -44,8 +44,11 @@ def install_kind() -> str:
         return "macos"
     if sys.platform.startswith("win"):
         return "windows"
-    # Frozen Linux: an AppImage exports APPIMAGE with the real .AppImage path;
-    # otherwise it's the binary installed from the .deb (in /usr/bin).
+    # Frozen Linux: snapd sets SNAP to the mounted snap; an AppImage exports
+    # APPIMAGE with the real .AppImage path; otherwise it's the binary installed
+    # from the .deb (in /usr/bin).
+    if os.environ.get("SNAP"):
+        return "snap"
     if os.environ.get("APPIMAGE"):
         return "appimage"
     return "deb"
@@ -53,13 +56,15 @@ def install_kind() -> str:
 
 def can_self_update(kind: str) -> bool:
     """Kinds that download + swap + relaunch on their own. Only the Windows exe
-    and macOS .app; pip/deb/AppImage installs are only *told* an update exists
-    (their package manager / a fresh download should apply it)."""
+    and macOS .app; pip/deb/AppImage/snap installs are only *told* an update
+    exists (their package manager / a fresh download should apply it)."""
     return kind in ("macos", "windows")
 
 
 def update_hint(kind: str) -> str:
     """A one-line 'how to update' for the kinds that don't self-update."""
+    if kind == "snap":
+        return "snap refresh mycat"
     if kind == "deb":
         return "Download the new .deb from the releases page and install it."
     if kind == "appimage":

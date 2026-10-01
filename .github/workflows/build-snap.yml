@@ -1,0 +1,102 @@
+name: Build snap
+
+# Same tag trigger as the other release workflows. Builds the PyInstaller
+# onefile Linux binary, packs it into the mycat snap (snap/snapcraft.yaml),
+# installs that snap on the runner and checks it starts and shows its window,
+# then publishes it to the Snap Store's stable channel. Also dispatchable to
+# produce the .snap as an artefact without publishing.
+#
+# Publishing needs the SNAPCRAFT_STORE_CREDENTIALS secret (the output of
+# `snapcraft export-login`); without it the snap is built and tested only.
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build-snap:
+    # core22 is Ubuntu 22.04, and --destructive-mode packs on the host itself,
+    # so the host must be 22.04. It is also the glibc the binary must target.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install the X libraries Qt's xcb plugin loads
+        # Same list as build-appimage.yml: PyInstaller bundles only the
+        # libraries it finds on this machine.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-randr0 libxcb-render-util0 libxcb-render0 libxcb-shape0 \
+            libxcb-shm0 libxcb-sync1 libxcb-util1 libxcb-xfixes0 libxcb-xkb1 \
+            libxkbcommon-x11-0 libxkbcommon0
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -e .
+          pip install openai
+
+      - name: Build with PyInstaller
+        run: pyinstaller --noconfirm mycat.spec
+
+      - name: Pack the snap
+        run: |
+          set -euo pipefail
+          sudo snap install snapcraft --classic
+          sudo snapcraft pack --destructive-mode
+          ls -la ./*.snap
+          echo "SNAP_FILE=$(ls ./*.snap | head -n 1)" >> "$GITHUB_ENV"
+
+      - name: Install the snap and check it starts
+        # A snap has a private /tmp, so an Xauthority file there is out of its
+        # reach: Xvfb runs without access control (-ac) instead.
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends xvfb x11-utils
+          sudo snap install --dangerous "$SNAP_FILE"
+          snap connections mycat
+          Xvfb :99 -ac -screen 0 1280x800x24 &
+          sleep 2
+          DISPLAY=:99 timeout 30 mycat > mycat.log 2>&1 &
+          APP=$!
+          sleep 20
+          if ! kill -0 "$APP" 2>/dev/null ; then
+            echo "mycat exited within 20 seconds"
+            cat mycat.log
+            exit 1
+          fi
+          DISPLAY=:99 xwininfo -root -tree | grep -i '"mycat"' || { cat mycat.log ; exit 1 ; }
+          kill "$APP" || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mycat-snap
+          path: ${{ env.SNAP_FILE }}
+          if-no-files-found: error
+
+      # A step's own env is not visible to its `if`, and `secrets` is not
+      # allowed there, so whether the secret is set is worked out here.
+      - name: Check for Snap Store credentials
+        id: creds
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: echo "present=$([ -n "$SNAPCRAFT_STORE_CREDENTIALS" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to the Snap Store (stable)
+        if: startsWith(github.ref, 'refs/tags/') && steps.creds.outputs.present == 'true'
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: snapcraft upload --release=stable "$SNAP_FILE"
