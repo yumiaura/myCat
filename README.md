@@ -50,6 +50,33 @@ your own GPU.
 
 Pick whichever is easiest - the cat runs on **Windows, macOS and Linux**.
 
+### Homebrew (macOS)
+
+Install from the [yumiaura tap](https://github.com/yumiaura/homebrew-tap):
+
+```bash
+brew install --cask yumiaura/tap/mycat
+```
+
+Or add the tap first, then install:
+
+```bash
+brew tap yumiaura/tap
+brew install --cask mycat
+```
+
+Update:
+
+```bash
+brew upgrade --cask mycat
+```
+
+Uninstall:
+
+```bash
+brew uninstall --cask mycat
+```
+
 ### Option A - prebuilt binary (no Python needed)
 
 Grab the build for your OS - each button downloads the **latest release**:
