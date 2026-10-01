@@ -70,6 +70,7 @@ Then run it:
 
 - **Windows** - double-click the `.exe`.
 - **macOS** - unzip and open `mycat.app` (first launch: right-click → **Open** to get past Gatekeeper).
+- **macOS with Homebrew** - `brew install --cask yumiaura/tap/mycat`.
 - **Linux `.deb`** - `sudo apt install ./mycat-linux-amd64.deb`.
 - **Linux AppImage** - `chmod +x mycat-linux-x86_64.AppImage && ./mycat-linux-x86_64.AppImage`.
 - **Linux snap** - `sudo snap install mycat` (keeps its own settings in `~/snap/mycat/`).

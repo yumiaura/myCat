@@ -1,0 +1,92 @@
+name: Publish to Homebrew and winget
+
+# After "Release binaries" has attached the Windows exe and the macOS zips to a
+# tag's release, point the package managers at them:
+#   - Homebrew: rewrite version and SHA256 in yumiaura/homebrew-tap's cask
+#     (secret HOMEBREW_TAP_TOKEN: fine-grained, Contents read/write on that repo)
+#   - winget: komac opens the next version's pull request in
+#     microsoft/winget-pkgs from your fork (secret WINGET_TOKEN: classic,
+#     public_repo). Skipped until the first manifest (packaging/winget) has
+#     been merged there, since komac only updates an existing package.
+# A missing secret skips that store instead of failing the release.
+# Also dispatchable with a tag, to redo a release by hand.
+
+on:
+  workflow_run:
+    workflows: ["Release binaries"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish, e.g. 0.1.38
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    # Only for a successful run that was started by a tag.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       startsWith(github.event.workflow_run.head_branch, '0.') )
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.event.workflow_run.head_branch }}
+      RELEASE: https://github.com/yumiaura/myCat/releases/download
+    steps:
+      - name: Check which stores have credentials
+        id: creds
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          echo "homebrew=$([ -n "$HOMEBREW_TAP_TOKEN" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "winget=$([ -n "$WINGET_TOKEN" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Update the Homebrew cask
+        if: steps.creds.outputs.homebrew == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          for arch in arm64 x64; do
+            curl -fsSL -o "mycat-macos-$arch.zip" "$RELEASE/$TAG/mycat-macos-$arch.zip"
+          done
+          ARM=$(sha256sum mycat-macos-arm64.zip | cut -d' ' -f1)
+          INTEL=$(sha256sum mycat-macos-x64.zip | cut -d' ' -f1)
+          gh api repos/yumiaura/homebrew-tap/contents/Casks/mycat.rb > current.json
+          SHA=$(jq -r .sha current.json)
+          jq -r .content current.json | base64 -d > mycat.rb
+          sed -i -E \
+            -e "s/^  version \"[^\"]+\"/  version \"$TAG\"/" \
+            -e "s/^  sha256 arm:   \"[0-9a-f]+\"/  sha256 arm:   \"$ARM\"/" \
+            -e "s/^         intel: \"[0-9a-f]+\"/         intel: \"$INTEL\"/" \
+            mycat.rb
+          grep -q "version \"$TAG\"" mycat.rb
+          if gh api repos/yumiaura/homebrew-tap/contents/Casks/mycat.rb --jq .content | base64 -d | cmp -s - mycat.rb ; then
+            echo "The cask already has $TAG"
+            exit 0
+          fi
+          gh api -X PUT repos/yumiaura/homebrew-tap/contents/Casks/mycat.rb \
+            -f message="mycat $TAG" \
+            -f content="$(base64 -w0 mycat.rb)" \
+            -f sha="$SHA" --jq .commit.html_url
+
+      - name: Open the winget pull request
+        if: steps.creds.outputs.winget == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          set -euo pipefail
+          if ! curl -fsS -o /dev/null https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/y/yumiaura/myCat ; then
+            echo "yumiaura.myCat is not in winget-pkgs yet: the first manifest (packaging/winget) goes in by hand"
+            exit 0
+          fi
+          curl -fsSL https://github.com/russellbanks/Komac/releases/download/v2.16.0/komac-2.16.0-x86_64-unknown-linux-gnu.tar.gz | tar -xz
+          KOMAC=$(find . -name komac -type f -perm -u+x | head -n 1)
+          "$KOMAC" update yumiaura.myCat --version "$TAG" \
+            --urls "$RELEASE/$TAG/mycat-windows-x64.exe" \
+            --submit
