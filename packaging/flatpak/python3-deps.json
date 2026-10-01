@@ -2,9 +2,14 @@
   "name": "python3-deps",
   "buildsystem": "simple",
   "build-commands": [
-    "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} --no-build-isolation six python-xlib pillow"
+    "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} --no-build-isolation pybind11 six python-xlib pillow"
   ],
   "sources": [
+    {
+      "type": "file",
+      "url": "https://files.pythonhosted.org/packages/33/fd/8762f7ee3e4e4be6d1d846cffb4916dd9bb02b2f800d3603718a0efe494c/pybind11-3.1.0-py3-none-any.whl",
+      "sha256": "b8488090f8acffbcb6b5d6a85571a6827a0a2981ffb75e5a0b27b87c4a6b7dd0"
+    },
     {
       "type": "file",
       "url": "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl",
@@ -20,5 +25,9 @@
       "url": "https://files.pythonhosted.org/packages/1c/3d/bb7fca845737cf9d7dbde16ed1843984665ff2e0a518f5db43e77ec540b9/pillow-12.3.0.tar.gz",
       "sha256": "3b8182a766685eaa002637e28b4ec8d6b18819a0c71f579bf0dbaa5830297cce"
     }
+  ],
+  "cleanup": [
+    "/lib/python*/site-packages/pybind11*",
+    "/bin/pybind11-config"
   ]
 }
