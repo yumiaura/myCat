@@ -47,6 +47,33 @@
 
 편한 방법을 고르세요 - 고양이는 **Windows, macOS, Linux**에서 모두 실행됩니다.
 
+### Homebrew (macOS)
+
+[yumiaura tap](https://github.com/yumiaura/homebrew-tap)에서 설치하세요:
+
+```bash
+brew install --cask yumiaura/tap/mycat
+```
+
+또는 먼저 tap을 추가한 다음 앱을 설치하세요:
+
+```bash
+brew tap yumiaura/tap
+brew install --cask mycat
+```
+
+업데이트:
+
+```bash
+brew upgrade --cask mycat
+```
+
+제거:
+
+```bash
+brew uninstall --cask mycat
+```
+
 ### 방법 A - 미리 빌드된 바이너리 (Python 불필요)
 
 사용 중인 OS에 맞는 빌드를 받으세요 - 각 버튼은 **최신 릴리스**를 다운로드합니다:

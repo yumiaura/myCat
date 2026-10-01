@@ -22,6 +22,33 @@
 
 选择最方便的方式 —— 猫咪支持 **Windows、macOS 和 Linux**。
 
+### Homebrew (macOS)
+
+从 [yumiaura tap](https://github.com/yumiaura/homebrew-tap) 安装：
+
+```bash
+brew install --cask yumiaura/tap/mycat
+```
+
+也可以先添加 tap，再安装应用：
+
+```bash
+brew tap yumiaura/tap
+brew install --cask mycat
+```
+
+更新：
+
+```bash
+brew upgrade --cask mycat
+```
+
+卸载：
+
+```bash
+brew uninstall --cask mycat
+```
+
 ### 方式 A —— 预编译二进制（无需 Python）
 
 选择适合你系统的版本 —— 每个按钮都会下载**最新发布**：

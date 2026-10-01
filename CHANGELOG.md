@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Added
+- **Homebrew installation instructions for macOS.** The English, Russian, Chinese, Indonesian and Korean READMEs now document installation from `yumiaura/tap`, the alternative tap-first setup, updates and removal.
+
 ### Changed
 - **The catalog screenshot looks the way the cat does in the README.** `docs/screenshot.png` now has the pupils turned in towards the nose, as in `docs/cat.gif`, instead of centred in each eye; everything else is unchanged. The AppStream metadata links to it on `main`, so the AppImage catalog and software centres pick it up without a release (branch `chore/screenshot-crossed-eyes`).
 
