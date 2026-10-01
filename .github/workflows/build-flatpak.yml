@@ -53,13 +53,30 @@ jobs:
           flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
 
       - name: Install the bundle and check it starts
+        # The container has Xvfb and dbus but no xwininfo and no package
+        # manager, so the window check uses the python-xlib the app ships.
         run: |
           set -euo pipefail
           flatpak install -y --noninteractive --user --bundle mycat.flatpak
-          # The build container is Fedora-based.
-          for tool in Xvfb xwininfo dbus-run-session; do command -v "$tool" || echo "missing: $tool"; done
-          dnf install -y xorg-x11-server-Xvfb xwininfo dbus-daemon
           Xvfb :99 -ac -screen 0 1280x800x24 &
           sleep 2
           export DISPLAY=:99
-          dbus-run-session -- sh -c 'timeout 30 flatpak run --user io.github.yumiaura.myCat > mycat.log 2>&1 & sleep 20; xwininfo -root -tree | grep -i "\"mycat\"" || { cat mycat.log; exit 1; }'
+          cat > windows.py <<'PY'
+          from Xlib import display
+
+          def names(window):
+              for child in window.query_tree().children:
+                  name = child.get_wm_name()
+                  if name:
+                      yield name
+                  yield from names(child)
+
+          found = [name for name in names(display.Display().screen().root) if "mycat" in str(name).lower()]
+          print("windows:", found)
+          raise SystemExit(0 if found else 1)
+          PY
+          dbus-run-session -- sh -c '
+            timeout 30 flatpak run --user io.github.yumiaura.myCat > mycat.log 2>&1 &
+            sleep 20
+            flatpak run --user --command=python3 --filesystem=host io.github.yumiaura.myCat "$PWD/windows.py" || { cat mycat.log; exit 1; }
+          '
