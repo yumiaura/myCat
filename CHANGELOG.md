@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## [0.1.37] - 2026-10-01
 
 ### Added
 - **A snap package.** `snap/snapcraft.yaml` wraps the same PyInstaller binary as the AppImage and the `.deb` (core22, strict confinement, with the OpenGL stack, fontconfig and fonts staged in). The new `build-snap.yml` workflow builds it on every tag, installs it on the runner and checks that it starts and shows its window, and publishes it to the Snap Store's stable channel once the `SNAPCRAFT_STORE_CREDENTIALS` secret is set. Inside the snap, "Update" says `snap refresh mycat`, Autostart goes through snapd's `autostart:` key, and the app no longer writes its own applications-menu entry, since the snap brings one. The snap keeps its settings in `~/snap/mycat/`, separate from other installs (branch `0.1.37`).
