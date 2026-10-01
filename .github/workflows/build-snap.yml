@@ -77,7 +77,8 @@ jobs:
           snap connections mycat
           Xvfb :99 -ac -screen 0 1280x800x24 &
           sleep 2
-          DISPLAY=:99 timeout 30 mycat > mycat.log 2>&1 &
+          # /snap/bin explicitly: pip also installed a `mycat` earlier in PATH.
+          DISPLAY=:99 timeout 30 /snap/bin/mycat > mycat.log 2>&1 &
           APP=$!
           sleep 20
           if ! kill -0 "$APP" 2>/dev/null ; then
