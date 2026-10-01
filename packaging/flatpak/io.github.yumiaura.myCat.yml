@@ -39,7 +39,10 @@ modules:
       - pip3 install --no-deps --no-build-isolation --prefix=${FLATPAK_DEST} .
       - install -Dm644 packaging/mycat.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
       - desktop-file-edit --set-icon=${FLATPAK_ID} ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
-      - install -Dm644 packaging/mycat.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+      # The icon is 1024x1024 and Flatpak takes at most 512x512; Pillow, just
+      # built above, scales it down.
+      - mkdir -p ${FLATPAK_DEST}/share/icons/hicolor/512x512/apps
+      - python3 -c "from PIL import Image; Image.open('packaging/mycat.png').resize((512, 512), Image.LANCZOS).save('${FLATPAK_DEST}/share/icons/hicolor/512x512/apps/${FLATPAK_ID}.png')"
       - install -Dm644 packaging/io.github.yumiaura.myCat.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
       # Elsewhere the menu entry is mycat.desktop; in a Flatpak it is named after the app id.
       - sed -i 's|<launchable type="desktop-id">mycat.desktop</launchable>|<launchable type="desktop-id">io.github.yumiaura.myCat.desktop</launchable>|'
