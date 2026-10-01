@@ -56,8 +56,9 @@ jobs:
         run: |
           set -euo pipefail
           flatpak install -y --noninteractive --user --bundle mycat.flatpak
-          dnf install -y xorg-x11-server-Xvfb xorg-x11-utils dbus-daemon 2>/dev/null \
-            || (apt-get update && apt-get install -y xvfb x11-utils dbus)
+          # The build container is Fedora-based.
+          for tool in Xvfb xwininfo dbus-run-session; do command -v "$tool" || echo "missing: $tool"; done
+          dnf install -y xorg-x11-server-Xvfb xwininfo dbus-daemon
           Xvfb :99 -ac -screen 0 1280x800x24 &
           sleep 2
           export DISPLAY=:99
