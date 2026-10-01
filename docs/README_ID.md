@@ -22,6 +22,33 @@ Jika Anda menyukainya, mungkin lain kali saya akan membagikan versi [AnimeGirl](
 
 Pilih cara yang paling mudah - kucing berjalan di **Windows, macOS, dan Linux**.
 
+### Homebrew (macOS)
+
+Instal dari [tap yumiaura](https://github.com/yumiaura/homebrew-tap):
+
+```bash
+brew install --cask yumiaura/tap/mycat
+```
+
+Atau tambahkan tap terlebih dahulu, lalu instal aplikasi:
+
+```bash
+brew tap yumiaura/tap
+brew install --cask mycat
+```
+
+Perbarui:
+
+```bash
+brew upgrade --cask mycat
+```
+
+Hapus instalasi:
+
+```bash
+brew uninstall --cask mycat
+```
+
 ### Opsi A - biner siap pakai (tanpa Python)
 
 Ambil build untuk OS Anda - setiap tombol mengunduh **rilis terbaru**:
