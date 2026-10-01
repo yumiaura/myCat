@@ -22,6 +22,33 @@
 
 Выбери, что удобнее - котик работает на **Windows, macOS и Linux**.
 
+### Homebrew (macOS)
+
+Установка из [tap yumiaura](https://github.com/yumiaura/homebrew-tap):
+
+```bash
+brew install --cask yumiaura/tap/mycat
+```
+
+Или сначала подключи tap, затем установи приложение:
+
+```bash
+brew tap yumiaura/tap
+brew install --cask mycat
+```
+
+Обновление:
+
+```bash
+brew upgrade --cask mycat
+```
+
+Удаление:
+
+```bash
+brew uninstall --cask mycat
+```
+
 ### Вариант A - готовый бинарник (без Python)
 
 Возьми сборку под свою ОС - каждая кнопка скачивает **последний релиз**:
