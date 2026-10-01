@@ -72,6 +72,7 @@ Then run it:
 - **macOS** - unzip and open `mycat.app` (first launch: right-click → **Open** to get past Gatekeeper).
 - **Linux `.deb`** - `sudo apt install ./mycat-linux-amd64.deb`.
 - **Linux AppImage** - `chmod +x mycat-linux-x86_64.AppImage && ./mycat-linux-x86_64.AppImage`.
+- **Linux snap** - `sudo snap install mycat` (keeps its own settings in `~/snap/mycat/`).
 
 > Builds for every release live on the **[Releases](https://github.com/yumiaura/myCat/releases)** page.
 

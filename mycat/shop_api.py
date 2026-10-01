@@ -20,6 +20,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import config_store
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = "http://127.0.0.1:18000"
@@ -95,12 +97,12 @@ def resolve_base_url(config_path: Path | None = None) -> str:
     if config_path and config_path.exists():
         parser = configparser.ConfigParser()
         try:
-            parser.read(config_path)
+            parser.read_string(config_store.read_config_text(config_path), source=str(config_path))
             if parser.has_section("shop"):
                 url = parser.get("shop", "url", fallback="").strip()
                 if url:
                     return url.rstrip("/")
-        except configparser.Error as exc:
+        except (configparser.Error, OSError) as exc:
             logger.warning("Could not read shop URL from %s: %s", config_path, exc)
     return DEFAULT_BASE_URL
 

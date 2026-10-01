@@ -1,0 +1,82 @@
+# The myCat snap: `snap install mycat`.
+#
+# It wraps the same PyInstaller onefile binary as the AppImage and the .deb,
+# built by .github/workflows/build-snap.yml on ubuntu-22.04 into dist/mycat
+# before snapcraft runs (pack it with `snapcraft pack --destructive-mode` on a
+# 22.04 host). The snap only adds what the binary does not bundle itself: the
+# OpenGL/EGL stack, fontconfig and fonts.
+#
+# Strict confinement: the snap's home is ~/snap/mycat/current, so its settings,
+# history and activity are separate from an AppImage, .deb or pip install.
+
+name: mycat
+base: core22
+adopt-info: mycat
+title: myCat
+summary: A tiny animated desktop pet cat
+description: |
+  A small cat that sits on your desktop, blinks, follows your cursor with its
+  eyes, and flies little reminder banners across the screen. The window has no
+  borders and can be dragged anywhere.
+icon: packaging/mycat.png
+website: https://github.com/yumiaura/myCat
+issues: https://github.com/yumiaura/myCat/issues
+grade: stable
+confinement: strict
+architectures:
+  - build-on: amd64
+
+apps:
+  mycat:
+    command: bin/mycat
+    desktop: usr/share/applications/mycat.desktop
+    common-id: io.github.yumiaura.myCat
+    # snapd starts the app at login when ~/snap/mycat/current/.config/autostart/
+    # holds a file of this name, which the app's Autostart toggle writes there.
+    autostart: mycat.desktop
+    environment:
+      LD_LIBRARY_PATH: $SNAP/usr/lib/x86_64-linux-gnu:$SNAP/usr/lib/x86_64-linux-gnu/dri
+      LIBGL_DRIVERS_PATH: $SNAP/usr/lib/x86_64-linux-gnu/dri
+      __EGL_VENDOR_LIBRARY_DIRS: $SNAP/usr/share/glvnd/egl_vendor.d
+      FONTCONFIG_PATH: $SNAP/etc/fonts
+      FONTCONFIG_FILE: $SNAP/etc/fonts/fonts.conf
+    plugs:
+      - x11            # the window, and key/click counting via X RECORD
+      - wayland
+      - desktop
+      - desktop-legacy
+      - unity7         # tray icon on desktops that use the legacy protocol
+      - opengl
+      - network        # update check, GitHub notifications, LLM chat
+      - home           # pick a char zip or a calendar file from home
+
+parts:
+  mycat:
+    plugin: dump
+    source: .
+    override-build: |
+      install -Dm0755 dist/mycat "$CRAFT_PART_INSTALL/bin/mycat"
+      install -Dm0644 packaging/mycat.desktop "$CRAFT_PART_INSTALL/usr/share/applications/mycat.desktop"
+      sed -i 's|^Icon=.*|Icon=${SNAP}/meta/gui/icon.png|' "$CRAFT_PART_INSTALL/usr/share/applications/mycat.desktop"
+      install -Dm0644 packaging/io.github.yumiaura.myCat.metainfo.xml \
+        "$CRAFT_PART_INSTALL/usr/share/metainfo/io.github.yumiaura.myCat.metainfo.xml"
+      craftctl set version="$(grep -m1 -E '^version *= *' pyproject.toml | sed -E 's/.*"([^"]+)".*/\1/')"
+    stage-packages:
+      - libgl1
+      - libegl1
+      - libglx-mesa0
+      - libegl-mesa0
+      - libgl1-mesa-dri
+      - libfontconfig1
+      - fontconfig-config
+      - fonts-dejavu-core
+      - libglib2.0-0
+      - libdbus-1-3
+    prime:
+      - bin/mycat
+      - usr/share/applications
+      - usr/share/metainfo
+      - usr/lib
+      - usr/share/glvnd
+      - usr/share/fonts
+      - etc/fonts

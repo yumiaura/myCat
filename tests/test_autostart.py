@@ -54,3 +54,9 @@ def test_linux_enable_disable_roundtrip(monkeypatch, tmp_path):
     autostart.set_enabled(False)
     assert autostart.is_enabled() is False
     assert not desktop.exists()
+
+
+def test_launch_command_inside_a_snap_names_the_snap(monkeypatch):
+    # The $SNAP path changes with every revision; the snap's command does not.
+    monkeypatch.setenv("SNAP_NAME", "mycat")
+    assert autostart.launch_command() == "mycat"
