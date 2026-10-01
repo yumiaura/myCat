@@ -39,6 +39,9 @@ jobs:
           bundle: mycat.flatpak
           manifest-path: packaging/flatpak/io.github.yumiaura.myCat.yml
           cache-key: flatpak-builder-${{ github.sha }}
+          # As Flathub's own builds do: the linter wants the metainfo
+          # screenshots mirrored to Flathub's media host.
+          mirror-screenshots-url: https://dl.flathub.org/media
 
       - name: Flathub linter
         # The manifest checks are the ones Flathub runs on a submission; the
