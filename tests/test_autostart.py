@@ -60,3 +60,22 @@ def test_launch_command_inside_a_snap_names_the_snap(monkeypatch):
     # The $SNAP path changes with every revision; the snap's command does not.
     monkeypatch.setenv("SNAP_NAME", "mycat")
     assert autostart.launch_command() == "mycat"
+
+
+def test_flatpak_asks_the_background_portal(monkeypatch, tmp_path):
+    # Inside a Flatpak the sandbox's ~/.config/autostart reaches no session; the
+    # portal writes the real entry. The sandbox copy stays as the record.
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("FLATPAK_ID", "io.github.yumiaura.myCat")
+    calls = []
+    monkeypatch.setattr(autostart.subprocess, "run", lambda args, **kwargs: calls.append(args))
+
+    autostart.linux_set(True)
+    assert "org.freedesktop.portal.Background.RequestBackground" in calls[-1]
+    assert "'autostart': <true>" in calls[-1][-1]
+    assert "'commandline': <['mycat']>" in calls[-1][-1]
+    assert autostart.linux_is_enabled()
+
+    autostart.linux_set(False)
+    assert "'autostart': <false>" in calls[-1][-1]
+    assert not autostart.linux_is_enabled()

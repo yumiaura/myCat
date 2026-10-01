@@ -36,8 +36,12 @@ def install_kind() -> str:
     """How this instance was installed.
 
     One of ``source`` (running from a checkout or pip — nothing to swap),
-    ``snap``, ``appimage``, ``deb``, ``macos`` or ``windows``.
+    ``flatpak``, ``snap``, ``appimage``, ``deb``, ``macos`` or ``windows``.
     """
+    # Flatpak runs the package from source inside its sandbox, so it is not
+    # frozen; flatpak sets FLATPAK_ID for every app it runs.
+    if os.environ.get("FLATPAK_ID"):
+        return "flatpak"
     if not getattr(sys, "frozen", False):
         return "source"
     if sys.platform == "darwin":
@@ -56,13 +60,15 @@ def install_kind() -> str:
 
 def can_self_update(kind: str) -> bool:
     """Kinds that download + swap + relaunch on their own. Only the Windows exe
-    and macOS .app; pip/deb/AppImage/snap installs are only *told* an update
-    exists (their package manager / a fresh download should apply it)."""
+    and macOS .app; pip/deb/AppImage/snap/flatpak installs are only *told* an
+    update exists (their package manager / a fresh download should apply it)."""
     return kind in ("macos", "windows")
 
 
 def update_hint(kind: str) -> str:
     """A one-line 'how to update' for the kinds that don't self-update."""
+    if kind == "flatpak":
+        return "flatpak update io.github.yumiaura.myCat"
     if kind == "snap":
         return "snap refresh mycat"
     if kind == "deb":

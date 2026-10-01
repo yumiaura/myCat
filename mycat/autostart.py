@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -50,7 +51,38 @@ def linux_is_enabled() -> bool:
     return linux_desktop_path().exists()
 
 
+def flatpak_request_background(enabled: bool) -> None:
+    """Ask the Background portal to start mycat at login, or to stop doing so.
+
+    Inside a Flatpak, ~/.config/autostart is the sandbox's own copy, which no
+    session reads; the portal writes the real entry on the host and runs the app
+    through `flatpak run`. `gdbus` sends the call with exact D-Bus types (an
+    ``as`` command line, ``b`` autostart), which a QVariant map cannot promise.
+    The answer arrives later as a signal nobody here needs: the entry in the
+    sandbox (linux_set) stays the record of what was asked.
+    """
+    options = (
+        "{'reason': <'Keep mycat on screen every time you log in'>, "
+        f"'autostart': <{'true' if enabled else 'false'}>, "
+        "'commandline': <['mycat']>}"
+    )
+    subprocess.run(
+        [
+            "gdbus", "call", "--session",
+            "--dest", "org.freedesktop.portal.Desktop",
+            "--object-path", "/org/freedesktop/portal/desktop",
+            "--method", "org.freedesktop.portal.Background.RequestBackground",
+            "", options,
+        ],
+        check=True,
+        capture_output=True,
+        timeout=10,
+    )
+
+
 def linux_set(enabled: bool) -> None:
+    if os.environ.get("FLATPAK_ID"):
+        flatpak_request_background(enabled)
     path = linux_desktop_path()
     if enabled:
         path.parent.mkdir(parents=True, exist_ok=True)

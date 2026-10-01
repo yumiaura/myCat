@@ -4,6 +4,9 @@ All notable changes to this project are documented in this file.
 
 ## Unreleased
 
+### Added
+- **A Flatpak, for Flathub.** `packaging/flatpak/io.github.yumiaura.myCat.yml` builds myCat from source on the PySide BaseApp (KDE 6.11 runtime), with X11, the GPU, the network and the tray as its only permissions. The new `build-flatpak.yml` workflow builds it, runs the Flathub linter and checks the installed app shows its window. Inside a Flatpak, Autostart asks the Background portal (the sandbox's own `~/.config/autostart` reaches no session), "Update" says `flatpak update io.github.yumiaura.myCat`, and the app writes no menu entry of its own. The metainfo gains the project license (`LicenseRef-MIT-CAT`), a source link, brand colours and a release list, which a new test keeps in step with `pyproject.toml` (branch `0.1.38`).
+
 ### Changed
 - **The catalog screenshot looks the way the cat does in the README.** `docs/screenshot.png` now has the pupils turned in towards the nose, as in `docs/cat.gif`, instead of centred in each eye; everything else is unchanged. The AppStream metadata links to it on `main`, so the AppImage catalog and software centres pick it up without a release (branch `chore/screenshot-crossed-eyes`).
 

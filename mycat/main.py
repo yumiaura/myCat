@@ -2133,9 +2133,10 @@ def install_desktop_entry() -> None:
     The entry is only (re)written when this install is at least as new as whatever
     the menu currently launches, so running an older build never downgrades it.
 
-    A snap ships its own menu entry, and its home directory is the snap's private
-    one, so an entry written from inside it would never reach the real menu."""
-    if sys.platform != "linux" or updater.install_kind() in ("deb", "snap"):
+    A snap or a Flatpak ships its own menu entry, and its home directory is a
+    private one, so an entry written from inside it would never reach the real
+    menu."""
+    if sys.platform != "linux" or updater.install_kind() in ("deb", "snap", "flatpak"):
         return
     share = Path.home() / ".local" / "share"
     user_desktop = share / "applications" / "mycat.desktop"

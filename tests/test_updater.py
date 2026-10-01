@@ -133,3 +133,11 @@ def test_snap_is_told_to_refresh_not_self_updated():
     assert not updater.can_self_update("snap")
     assert updater.update_hint("snap") == "snap refresh mycat"
     assert updater.asset_name("snap") == ""
+
+
+def test_install_kind_is_flatpak_inside_a_flatpak(monkeypatch):
+    # A Flatpak runs the package unfrozen; FLATPAK_ID is what tells it apart from pip.
+    monkeypatch.setenv("FLATPAK_ID", "io.github.yumiaura.myCat")
+    assert updater.install_kind() == "flatpak"
+    assert not updater.can_self_update("flatpak")
+    assert updater.update_hint("flatpak") == "flatpak update io.github.yumiaura.myCat"

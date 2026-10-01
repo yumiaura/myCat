@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- AppStream metadata: the name, summary and screenshot that the AppImage
-     catalog (appimage.github.io) and software centres show for myCat. Shipped
-     in the AppImage and the .deb under /usr/share/metainfo/. -->
+     catalog (appimage.github.io), Flathub and software centres show for myCat.
+     Shipped under /usr/share/metainfo/ in the AppImage, the .deb, the snap and
+     the Flatpak. -->
 <component type="desktop-application">
   <id>io.github.yumiaura.myCat</id>
   <name>myCat</name>
   <summary>A tiny animated desktop pet cat</summary>
   <metadata_license>CC0-1.0</metadata_license>
+  <!-- The MIT CAT (Meow-IT) License in LICENSE.txt, which has no SPDX id. -->
+  <project_license>LicenseRef-MIT-CAT</project_license>
   <developer id="io.github.yumiaura">
     <name>yumiaura</name>
   </developer>
@@ -20,6 +23,7 @@
   <launchable type="desktop-id">mycat.desktop</launchable>
   <url type="homepage">https://github.com/yumiaura/myCat</url>
   <url type="bugtracker">https://github.com/yumiaura/myCat/issues</url>
+  <url type="vcs-browser">https://github.com/yumiaura/myCat</url>
   <screenshots>
     <screenshot type="default">
       <caption>The cat on the desktop</caption>
@@ -27,4 +31,13 @@
     </screenshot>
   </screenshots>
   <content_rating type="oars-1.1"/>
+  <branding>
+    <color type="primary" scheme_preference="light">#f2b062</color>
+    <color type="primary" scheme_preference="dark">#300a24</color>
+  </branding>
+  <!-- Newest first. Every release adds its line here; tests/test_metainfo.py
+       checks the newest one matches pyproject.toml. -->
+  <releases>
+    <release version="0.1.37" date="2026-10-01"/>
+  </releases>
 </component>

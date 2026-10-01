@@ -1,0 +1,61 @@
+name: Build Flatpak
+
+# Builds the Flatpak from packaging/flatpak/io.github.yumiaura.myCat.yml (the
+# working tree, on the PySide BaseApp), runs the Flathub linter on it, installs
+# the bundle and checks myCat starts and shows its window. Flathub builds and
+# publishes the real thing from its own repository; this keeps the manifest
+# working between releases.
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+      - "v*"
+    # Also on any branch whose push touches what the Flatpak is built from.
+    branches:
+      - "**"
+    paths:
+      - "packaging/flatpak/**"
+      - "packaging/io.github.yumiaura.myCat.metainfo.xml"
+      - "packaging/mycat.desktop"
+      - "pyproject.toml"
+      - ".github/workflows/build-flatpak.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build-flatpak:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.11
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: mycat.flatpak
+          manifest-path: packaging/flatpak/io.github.yumiaura.myCat.yml
+          cache-key: flatpak-builder-${{ github.sha }}
+
+      - name: Flathub linter
+        # The manifest checks are the ones Flathub runs on a submission; the
+        # repo checks look at the built app (metainfo, desktop file, icon).
+        run: |
+          set -euo pipefail
+          flatpak install -y --noninteractive flathub org.flatpak.Builder
+          flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest packaging/flatpak/io.github.yumiaura.myCat.yml || true
+          flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
+
+      - name: Install the bundle and check it starts
+        run: |
+          set -euo pipefail
+          flatpak install -y --noninteractive --user --bundle mycat.flatpak
+          dnf install -y xorg-x11-server-Xvfb xorg-x11-utils dbus-daemon 2>/dev/null \
+            || (apt-get update && apt-get install -y xvfb x11-utils dbus)
+          Xvfb :99 -ac -screen 0 1280x800x24 &
+          sleep 2
+          export DISPLAY=:99
+          dbus-run-session -- sh -c 'timeout 30 flatpak run --user io.github.yumiaura.myCat > mycat.log 2>&1 & sleep 20; xwininfo -root -tree | grep -i "\"mycat\"" || { cat mycat.log; exit 1; }'

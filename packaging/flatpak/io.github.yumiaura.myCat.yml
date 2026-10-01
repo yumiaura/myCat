@@ -1,0 +1,49 @@
+# Flatpak manifest for myCat, built from source on the PySide BaseApp (Qt and
+# PySide6 come from the base, so only the small Python dependencies and myCat
+# itself are built here).
+#
+# This copy builds the working tree (`type: dir`) and is what
+# .github/workflows/build-flatpak.yml checks. The Flathub copy, in the
+# flathub/io.github.yumiaura.myCat repository, is the same file with the
+# source pinned to a release tag.
+id: io.github.yumiaura.myCat
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: '6.11'
+command: mycat
+build-options:
+  env:
+    BASEAPP_REMOVE_WEBENGINE: '1'
+    BASEAPP_DISABLE_NUMPY: '1'
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+finish-args:
+  - --share=ipc
+  # X11, not Wayland: the cat positions its own frameless always-on-top window,
+  # which Wayland does not allow, and key/click counting uses the X RECORD
+  # extension. Only the number of presses is kept, never which key.
+  - --socket=x11
+  - --device=dri
+  # Update check, GitHub notifications and the optional LLM chat.
+  - --share=network
+  # The tray icon (StatusNotifierItem).
+  - --talk-name=org.kde.StatusNotifierWatcher
+modules:
+  - python3-deps.json
+
+  - name: mycat
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-deps --no-build-isolation --prefix=${FLATPAK_DEST} .
+      - install -Dm644 packaging/mycat.desktop ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - desktop-file-edit --set-icon=${FLATPAK_ID} ${FLATPAK_DEST}/share/applications/${FLATPAK_ID}.desktop
+      - install -Dm644 packaging/mycat.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/${FLATPAK_ID}.png
+      - install -Dm644 packaging/io.github.yumiaura.myCat.metainfo.xml ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+      # Elsewhere the menu entry is mycat.desktop; in a Flatpak it is named after the app id.
+      - sed -i 's|<launchable type="desktop-id">mycat.desktop</launchable>|<launchable type="desktop-id">io.github.yumiaura.myCat.desktop</launchable>|'
+        ${FLATPAK_DEST}/share/metainfo/${FLATPAK_ID}.metainfo.xml
+    sources:
+      - type: dir
+        path: ../..
