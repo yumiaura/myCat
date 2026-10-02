@@ -1,15 +1,8 @@
-name: Publish to Homebrew and winget
+name: Publish to Homebrew
 
-# After "Release binaries" has attached the Windows exe and the macOS zips to a
-# tag's release, point the package managers at them:
-#   - Homebrew: rewrite version and SHA256 in yumiaura/homebrew-tap's cask
-#     (secret HOMEBREW_TAP_TOKEN: fine-grained, Contents read/write on that repo)
-#   - winget: komac opens the next version's pull request in
-#     microsoft/winget-pkgs from your fork (secret WINGET_TOKEN: classic,
-#     public_repo). Skipped until the first manifest (packaging/winget) has
-#     been merged there, since komac only updates an existing package.
-# A missing secret skips that store instead of failing the release.
-# Also dispatchable with a tag, to redo a release by hand.
+# Update Homebrew after release binaries are attached. WinGet is published
+# separately by the release workflow through publish-winget.yml.
+# A missing HOMEBREW_TAP_TOKEN skips Homebrew. Manual runs accept a release tag.
 
 on:
   workflow_run:
@@ -37,14 +30,12 @@ jobs:
       TAG: ${{ github.event.inputs.tag || github.event.workflow_run.head_branch }}
       RELEASE: https://github.com/yumiaura/myCat/releases/download
     steps:
-      - name: Check which stores have credentials
+      - name: Check Homebrew credentials
         id: creds
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
         run: |
           echo "homebrew=$([ -n "$HOMEBREW_TAP_TOKEN" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-          echo "winget=$([ -n "$WINGET_TOKEN" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
       - name: Update the Homebrew cask
         if: steps.creds.outputs.homebrew == 'true'
@@ -74,19 +65,3 @@ jobs:
             -f message="mycat $TAG" \
             -f content="$(base64 -w0 mycat.rb)" \
             -f sha="$SHA" --jq .commit.html_url
-
-      - name: Open the winget pull request
-        if: steps.creds.outputs.winget == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
-        run: |
-          set -euo pipefail
-          if ! curl -fsS -o /dev/null https://api.github.com/repos/microsoft/winget-pkgs/contents/manifests/y/yumiaura/myCat ; then
-            echo "yumiaura.myCat is not in winget-pkgs yet: the first manifest (packaging/winget) goes in by hand"
-            exit 0
-          fi
-          curl -fsSL https://github.com/russellbanks/Komac/releases/download/v2.16.0/komac-2.16.0-x86_64-unknown-linux-gnu.tar.gz | tar -xz
-          KOMAC=$(find . -name komac -type f -perm -u+x | head -n 1)
-          "$KOMAC" update yumiaura.myCat --version "$TAG" \
-            --urls "$RELEASE/$TAG/mycat-windows-x64.exe" \
-            --submit
