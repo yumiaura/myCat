@@ -1,8 +1,5 @@
-from importlib.metadata import PackageNotFoundError, version
+from .update_check import current_version
 
-try:
-    __version__ = version("mycat")
-except PackageNotFoundError:
-    __version__ = "0.0.0"
+__version__ = current_version()
 
 __all__ = ["__version__"]

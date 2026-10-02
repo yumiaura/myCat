@@ -1778,10 +1778,18 @@ class PixelCatWindow(QtWidgets.QWidget):
             self.dragging = False
             self.save_position()
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Pixel cat overlay with GIF animation (first frame used as static image)."
+        prog="mycat",
+        description="Pixel cat overlay with GIF animation (first frame used as static image).",
+    )
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"%(prog)s {update_check.current_version()}",
+        help="Show myCat version and exit",
     )
     parser.add_argument(
         "-i", "--image",
@@ -1809,7 +1817,7 @@ def parse_args() -> argparse.Namespace:
         help="Enable verbose DEBUG logging (per-frame animation cycle, GIF timing, etc.)",
     )
     llm.add_arguments(parser)
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 def x11_compositor_active() -> bool | None:
     """Return True/False when an X11 compositing manager is running, None if undetermined.
