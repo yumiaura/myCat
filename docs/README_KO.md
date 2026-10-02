@@ -65,12 +65,33 @@
 
 그런 다음 실행하세요:
 
-- **Windows** - `.exe` 파일을 더블클릭.
+- **Windows (x64)** - `mycat-windows-x64.exe`를 다운로드한 뒤 더블클릭하세요. 포터블 앱이므로 설치 과정이나 Python이 필요하지 않습니다.
 - **macOS** - 압축을 풀고 `mycat.app`을 엽니다 (첫 실행 시: Gatekeeper를 우회하려면 우클릭 → **열기**).
 - **Linux `.deb`** - `sudo apt install ./mycat-linux-amd64.deb`.
 - **Linux AppImage** - `chmod +x mycat-linux-x86_64.AppImage && ./mycat-linux-x86_64.AppImage` (FUSE 필요: `sudo apt install libfuse2`).
 
 > 각 릴리스의 빌드는 **[Releases](https://github.com/yumiaura/myCat/releases)** 페이지에서 확인할 수 있습니다.
+
+#### Windows에서 WinGet으로 설치
+
+> [첫 WinGet 패키지](https://github.com/microsoft/winget-pkgs/pull/445631)는
+> 승인을 기다리고 있습니다. 게시되기 전까지는 위의 Windows 다운로드 링크를 사용하세요.
+
+패키지가 게시되면 PowerShell 또는 Windows Terminal에서 설치할 수 있습니다:
+
+```powershell
+winget install --id yumiaura.myCat --exact
+```
+
+새 터미널 창을 열고 `mycat`을 실행하면 고양이가 나타납니다.
+
+WinGet에서 제공하는 버전으로 업데이트하려면:
+
+```powershell
+winget upgrade --id yumiaura.myCat --exact
+```
+
+삭제하려면 `winget uninstall --id yumiaura.myCat --exact`를 실행하세요.
 
 ### 방법 B - pip (Windows / macOS / Linux, Python ≥ 3.10)
 
