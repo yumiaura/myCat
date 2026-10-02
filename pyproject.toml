@@ -23,12 +23,6 @@ classifiers = [
     "Operating System :: MacOS",
 ]
 
-[project.urls]
-Homepage = "https://github.com/sushantguri/myCatop"
-Repository = "https://github.com/sushantguri/myCatop"
-Issues = "https://github.com/sushantguri/myCatop/issues"
-Changelog = "https://github.com/sushantguri/myCatop/blob/main/CHANGELOG.md"
-
 dependencies = [
     "pillow>=12.0.0",
     "pyside6>=6.10.0",
@@ -43,6 +37,13 @@ dependencies = [
     "pynput>=1.7; sys_platform != 'linux'",
     "python-xlib>=0.33; sys_platform == 'linux'",
 ]
+
+[project.urls]
+Homepage = "https://github.com/sushantguri/myCatop"
+Repository = "https://github.com/sushantguri/myCatop"
+Issues = "https://github.com/sushantguri/myCatop/issues"
+Changelog = "https://github.com/sushantguri/myCatop/blob/main/CHANGELOG.md"
+
 
 [dependency-groups]
 dev = [

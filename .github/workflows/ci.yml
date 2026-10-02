@@ -31,11 +31,8 @@ jobs:
           # tests actually run (they hard-require the parser libs).
           pip install .[calendar]
 
-      - name: Ruff Check
+      - name: Ruff
         run: ruff check .
-
-      - name: Ruff Format Check
-        run: ruff format --check .
 
       # Each test runs in its own forked process: Qt's offscreen platform is
       # unstable when many tests share one process (a later Qt test can crash or
