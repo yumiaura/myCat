@@ -1,6 +1,4 @@
 addAssignees: true
-addReviewers: true
-reviewers:
-  - yumiaura
+addReviewers: false
 assignees:
-  - yumiaura
+  - sushantguri

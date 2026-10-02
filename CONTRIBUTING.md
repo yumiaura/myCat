@@ -86,53 +86,98 @@ and open a pull request. ⚠️ Please only share art **you drew yourself** — 
 
 ## 🐞 Hit a problem? Open an Issue
 
-If something doesn't work, or you have an idea, please open an [Issue](../../issues).
-Tell me what happened and how you ran it (your OS, the command) so I can reproduce
-it.
+If something doesn't work, or you have an idea:
+- Check existing [Issues](../../issues) to see if it's already being discussed.
+- If not, open a new issue using our issue templates:
+  - 🐛 **Bug Report**
+  - 💡 **Feature Request**
+  - 🎨 **Skin / Character Submission**
+- Include your OS, installation method, steps to reproduce, and terminal logs (run with `--debug`).
 
-## 🛠 Working on the code
+## 🛠 Local Development Setup
 
+### 1. Prerequisites
+- **Python 3.10+**
+- Git
+- On Linux, Qt offscreen/X11 needs system libraries:
+  ```bash
+  sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3
+  ```
+
+### 2. Fork & Clone
 ```bash
-git clone https://github.com/yumiaura/mycat.git
-cd mycat
-pip install -e .          # add [calendar] for ICS reminders, [secure] for the OS keyring
-./run.sh                  # or: mycat / python -m mycat
+# Fork the repository on GitHub, then clone your fork:
+git clone https://github.com/<your-username>/myCatop.git
+cd myCatop
+
+# Add upstream remote
+git remote add upstream https://github.com/sushantguri/myCatop.git
 ```
 
-On Linux, Qt also wants a few system libs: `libegl1 libgl1 libxkbcommon0 libdbus-1-3`.
+### 3. Virtual Environment & Dependencies
+```bash
+# Create and activate a virtual environment
+python3 -m venv .venv
+source .venv/bin/activate       # On Windows: .venv\Scripts\activate
 
-Before opening a PR, please run the same two checks CI runs (on Python 3.10 and 3.12):
+# Install in editable mode with development extras
+pip install --upgrade pip
+pip install -e ".[calendar,secure]"
+pip install ruff pytest pytest-forked pytest-timeout pre-commit
+
+# (Optional) Install pre-commit git hooks
+pre-commit install
+```
+
+### 4. Running the App
+```bash
+./run.sh                  # On macOS / Linux
+# or:
+python -m mycat
+```
+
+### 5. Code Quality & Testing
+Before committing or opening a PR, ensure code formatting and tests pass:
 
 ```bash
+# Format and lint
+ruff format .
 ruff check .
+
+# Run test suite
 QT_QPA_PLATFORM=offscreen python -m pytest -q --forked --timeout=60 --timeout-method=thread
 ```
 
-`--forked` isn't decoration: Qt's offscreen platform gets unstable when many tests
-share one process, so every test runs in its own.
+> **Why `--forked`?** Qt's offscreen platform can be unstable when many tests share a single process. Each test runs in its own process, and `--timeout-method=thread` bounds hangs.
 
-If you work with an AI assistant, its notes about this codebase live in
-[CLAUDE.md](CLAUDE.md).
+If you work with an AI assistant, notes about this codebase live in [CLAUDE.md](CLAUDE.md).
 
-## 🔀 Opening a pull request
+## 🔀 Branching & Pull Requests
 
-When you open a PR, please add a short note about **what it does and why** — even a
-sentence or two. It lets me understand and review it quickly. 🙏
+1. **Create a branch** for your work:
+   ```bash
+   git checkout -b feature/my-cool-feature
+   # or: git checkout -b fix/window-drag-issue
+   ```
+2. **Make your changes** cleanly with descriptive commit messages.
+3. **Run linter and tests** to ensure no regressions.
+4. **Push to your fork** and open a Pull Request against `main`.
+5. Fill out the **Pull Request Template** describing what changed and why.
 
 ## 💛 About artwork & licensing
 
-I'm genuinely happy every single time someone shares an animation — thank you. I'll
-be honest with you: I can't draw, and that's my biggest limitation here.
+I'm genuinely happy every single time someone shares an animation — thank you!
 
-Because of licensing and repository size, **I can only accept artwork that you drew
-yourself.** If a character wasn't made by you personally, I won't be able to merge
-it — not because it isn't lovely, but because I can't take on art I don't have the
-rights to. I hope you understand. 🙏
+Because of licensing and repository size, **we can only accept artwork that you drew yourself.** If a character wasn't made by you personally, we won't be able to merge it — not because it isn't lovely, but because we must respect original artists' copyright.
 
-## 🌱 A little dream
+All code and skins in this repository are licensed under the terms in [LICENSE](LICENSE).
 
-One day I'd love to build a small site — a place to upload and download characters
-and share them freely, without crowding the repo. If that idea excites you, I'd be
-glad for the company.
+## 🤝 Code of Conduct
 
-Thank you, really. 🐾
+We are committed to providing a friendly, safe, and welcoming environment for all. Please review our [Code of Conduct](CODE_OF_CONDUCT.md) before participating.
+
+## 🔒 Security
+
+To report sensitive security vulnerabilities, please refer to our [Security Policy](SECURITY.md) and report via GitHub Security Advisories.
+
+Thank you for contributing to myCat! 🐾

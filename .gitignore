@@ -21,6 +21,9 @@ uv.lock
 !CLAUDE.md
 !GEMINI.md
 !CONTRIBUTING.md
+!CODE_OF_CONDUCT.md
+!SECURITY.md
+!.github/**/*.md
 
 # Private working notes imported by CLAUDE.md, never committed
 CLAUDE.local.md

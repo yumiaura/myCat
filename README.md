@@ -228,15 +228,16 @@ docker compose -f docker-compose.mac.yml up
 **Permission errors** 🔒
 - On Linux prefer a user install over `sudo` (`pip install --user mycat`).
 
-### 🤝 Getting help
+### 🤝 Getting Help & Contributing
 
-- Search the [GitHub Issues](https://github.com/yumiaura/myCat/issues) for similar problems.
-- Read [CONTRIBUTING.md](CONTRIBUTING.md) for development setup.
-- Open a new issue with your OS, desktop environment, Python version and any terminal errors.
+- Check out our [Contributing Guide](CONTRIBUTING.md) to get started with code or skins.
+- Read our [Code of Conduct](CODE_OF_CONDUCT.md).
+- Report security issues privately following our [Security Policy](SECURITY.md).
+- Search or open an issue on [GitHub Issues](https://github.com/sushantguri/myCatop/issues).
 
-### License
+### 📄 License
 
-[MIT License](LICENSE.txt)
+Distributed under the [MIT License](LICENSE). See [LICENSE](LICENSE) for more information.
 
 Thank you for reading to the end! 😸🐾
 

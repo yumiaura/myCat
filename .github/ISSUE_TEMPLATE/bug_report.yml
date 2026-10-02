@@ -1,0 +1,102 @@
+name: 🐛 Bug Report
+description: Report a problem or unexpected behavior in myCat
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue! Please provide as much detail as possible to help us reproduce and fix it.
+
+  - type: input
+    id: version
+    attributes:
+      label: myCat Version
+      description: What version of myCat are you running? (Run `mycat --version` or check your package manager)
+      placeholder: e.g. 0.1.37 or git main
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      description: Which OS are you running?
+      options:
+        - macOS (Apple Silicon - M1/M2/M3/M4)
+        - macOS (Intel)
+        - Windows 10 / 11
+        - Linux (X11)
+        - Linux (Wayland)
+        - Other (explain in details)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: Installation Method
+      description: How did you install or run myCat?
+      options:
+        - Prebuilt binary (.exe / macOS app)
+        - pip / pipx (`pip install mycat`)
+        - Homebrew (`brew install --cask mycat`)
+        - Linux Package (.deb / AppImage / Snap)
+        - Source code (`git clone` + `run.sh` / `run.bat`)
+        - Docker
+    validations:
+      required: true
+
+  - type: input
+    id: python_version
+    attributes:
+      label: Python Version (if running from source or pip)
+      placeholder: e.g. Python 3.12.2
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the Bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Step-by-step instructions to reproduce the problem.
+      placeholder: |
+        1. Run `mycat --image ...`
+        2. Right click on the cat
+        3. Click on ...
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: A clear and concise description of what you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or Terminal Output
+      description: Please copy and paste any terminal output or crash traceback here (run with `--debug` if possible).
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or Screen Recording
+      description: Drag and drop any relevant screenshots or recordings here.
+    validations:
+      required: false

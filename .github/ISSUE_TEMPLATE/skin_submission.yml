@@ -1,0 +1,50 @@
+name: 🎨 Skin / Character Submission
+description: Submit a new animated skin or character to be bundled with myCat
+title: "[Skin]: "
+labels: ["skin", "community-art"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for creating a character for myCat! 🐾
+        Please review the character guidelines in [CONTRIBUTING.md](CONTRIBUTING.md) before submitting.
+
+  - type: input
+    id: skin_name
+    attributes:
+      label: Character Name
+      description: The name of the character as it should appear in the context menu.
+      placeholder: e.g. calico, tuxedo, sleepypanda
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Tell us a bit about this character and its animation!
+    validations:
+      required: false
+
+  - type: textarea
+    id: preview
+    attributes:
+      label: Character Preview
+      description: Attach the animated GIF or a preview image (drag and drop here).
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Skin Verification Checklist
+      description: Please confirm the following technical & legal requirements:
+      options:
+        - label: The animation is packaged as a `.zip` containing a single animated `.gif`.
+          required: true
+        - label: The first frame of the GIF is the idle resting pose.
+          required: true
+        - label: The GIF has a transparent background and is <= 300x500 px.
+          required: true
+        - label: **Original artwork:** I confirm that I created this artwork myself and have full rights to contribute it under the project's open-source license.
+          required: true

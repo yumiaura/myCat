@@ -1,0 +1,41 @@
+name: 💡 Feature Request
+description: Suggest an idea or enhancement for myCat
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        We love new ideas! Please describe the feature you would like to see and why it would be beneficial.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Is your feature request related to a problem or limitation?
+      description: A clear and concise description of what the limitation is (e.g. "I'm always frustrated when...").
+    validations:
+      required: false
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Describe the Solution You'd Like
+      description: A clear and concise description of what you want to happen and how you envision it working.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative solutions or features you've considered.
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Add any other context, screenshots, or mockups about the feature request here.
+    validations:
+      required: false

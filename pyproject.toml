@@ -9,14 +9,26 @@ description = "Desktop Cat: Qt Overlay"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "yumiaura" }]
+license = { text = "MIT" }
 classifiers = [
+    "License :: OSI Approved :: MIT License",
     "Environment :: X11 Applications :: Qt",
     "Intended Audience :: End Users/Desktop",
+    "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Operating System :: POSIX :: Linux",
     "Operating System :: Microsoft :: Windows",
     "Operating System :: MacOS",
 ]
+
+[project.urls]
+Homepage = "https://github.com/sushantguri/myCatop"
+Repository = "https://github.com/sushantguri/myCatop"
+Issues = "https://github.com/sushantguri/myCatop/issues"
+Changelog = "https://github.com/sushantguri/myCatop/blob/main/CHANGELOG.md"
+
 dependencies = [
     "pillow>=12.0.0",
     "pyside6>=6.10.0",
