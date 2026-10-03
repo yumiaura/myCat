@@ -1,0 +1,48 @@
+name: Bug report
+description: Report a reproducible problem with myCat.
+body:
+  - type: input
+    id: version
+    attributes:
+      label: myCat version
+      placeholder: "For example: 0.1.37, or a commit if running from source"
+    validations:
+      required: true
+  - type: input
+    id: installation
+    attributes:
+      label: Installation method
+      placeholder: "For example: pip, downloaded exe, Homebrew, WinGet, deb, AppImage, Snap, Flatpak, source"
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Operating system
+      description: Include the OS version; on Linux, include the desktop and X11 or Wayland if known.
+      placeholder: "For example: Windows 11, macOS 15, Ubuntu 24.04 / GNOME / Wayland"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start myCat with...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and actual result
+      placeholder: |
+        Expected:
+        Actual:
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Logs or screenshots (optional)
+      description: Attach relevant errors or screenshots. Remove API keys and other private information.
