@@ -3,6 +3,8 @@
 import copy
 import hashlib
 import json
+import sys
+import types
 import urllib.request
 
 import pytest
@@ -42,6 +44,7 @@ def test_can_self_update():
     assert not updater.can_self_update("appimage")
     assert not updater.can_self_update("deb")
     assert not updater.can_self_update("source")
+    assert not updater.can_self_update("winget")
 
 
 def test_update_hint():
@@ -56,6 +59,7 @@ def test_asset_names():
     assert updater.asset_name("deb") == "mycat-linux-amd64.deb"
     assert updater.asset_name("macos") in ("mycat-macos-arm64.zip", "mycat-macos-x64.zip")
     assert updater.asset_name("source") == ""
+    assert updater.asset_name("winget") == ""
 
 
 # Trimmed from the real api.github.com/repos/yumiaura/myCat/releases/latest
@@ -319,3 +323,233 @@ def test_download_hashes_only_the_final_attempt(tmp_path, monkeypatch):
     dest = tmp_path / "build.bin"
     updater.download("https://example/build", str(dest), sha256=hashlib.sha256(body).hexdigest())
     assert dest.read_bytes() == body
+
+
+USER_WINGET_EXE = (
+    r"C:\Users\anna maria\AppData\Local\Microsoft\WinGet\Packages"
+    r"\yumiaura.myCat_Microsoft.Winget.Source_8wekyb3d8bbwe\mycat-windows-x64.exe"
+)
+LOCATION_EXE = r"D:\Tools\myCat\mycat-windows-x64.exe"
+
+
+class FakeKey:
+    """An open registry key: a context manager naming its path."""
+
+    def __init__(self, path):
+        self.path = path
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def fake_winreg(hives, opened=None):
+    """A read-only winreg over {hive: {subkey name: {value name: data}}} for the
+    Uninstall key. ``opened`` records every OpenKey access mode."""
+
+    def open_key(parent, sub_key, reserved=0, access=0):
+        if opened is not None:
+            opened.append(access)
+        if isinstance(parent, FakeKey):
+            entries = hives[parent.path[0]]
+            if sub_key not in entries:
+                raise FileNotFoundError(sub_key)
+            return FakeKey((parent.path[0], sub_key))
+        if parent not in hives or sub_key != updater.UNINSTALL_KEY:
+            raise FileNotFoundError(sub_key)
+        return FakeKey((parent,))
+
+    def enum_key(key, index):
+        names = list(hives[key.path[0]])
+        if index >= len(names):
+            raise OSError("no more data")
+        return names[index]
+
+    def query_value(key, name):
+        values = hives[key.path[0]][key.path[1]]
+        if name not in values:
+            raise FileNotFoundError(name)
+        return values[name], 1
+
+    return types.SimpleNamespace(
+        HKEY_CURRENT_USER="HKCU",
+        HKEY_LOCAL_MACHINE="HKLM",
+        KEY_READ=0x20019,
+        OpenKey=open_key,
+        EnumKey=enum_key,
+        QueryValueEx=query_value,
+    )
+
+
+def winget_entry(**overrides):
+    entry = {
+        "WinGetPackageIdentifier": "yumiaura.myCat",
+        "WinGetInstallerType": "portable",
+        "TargetFullPath": LOCATION_EXE,
+        "InstallLocation": r"D:\Tools\myCat",
+    }
+    entry.update(overrides)
+    return entry
+
+
+def windows_build(monkeypatch, exe):
+    """Pretend to be the frozen Windows exe at ``exe`` (realpath is identity, as
+    on Linux it would prefix the cwd to a Windows path)."""
+    monkeypatch.delenv("FLATPAK_ID", raising=False)
+    monkeypatch.setattr(updater.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(updater.sys, "platform", "win32")
+    monkeypatch.setattr(updater.sys, "executable", exe)
+    monkeypatch.setattr(updater.os.path, "realpath", lambda path: path)
+
+
+@pytest.mark.parametrize(
+    "exe",
+    [
+        USER_WINGET_EXE,
+        r"C:\Program Files\WinGet\Packages\yumiaura.myCat_Microsoft.Winget.Source_8wekyb3d8bbwe\mycat.exe",
+        r"c:\users\a\appdata\local\microsoft\winget\packages\YUMIAURA.MYCAT_msstore\mycat.exe",
+        r"C:\Users\a\AppData\Local\Microsoft\WinGet\Packages\yumiaura.myCat_local\bin\mycat.exe",
+        "C:/Users/a/AppData/Local/Microsoft/WinGet/Packages/yumiaura.myCat_x/mycat.exe",
+    ],
+)
+def test_winget_package_paths_are_recognised(exe):
+    # User and machine scope, any case, any source suffix, either slash.
+    assert updater.is_winget_package_path(exe)
+
+
+@pytest.mark.parametrize(
+    "exe",
+    [
+        r"C:\Users\anna maria\Downloads\mycat-windows-x64.exe",
+        r"C:\Tools\yumiaura.myCat_copy\mycat.exe",
+        r"C:\Tools\Packages\yumiaura.myCat_x\mycat.exe",
+        r"C:\WinGet\Other\Packages\yumiaura.myCat_x\mycat.exe",
+        r"C:\WinGet\Packages\yumiaura.myCatalog_x\mycat.exe",
+        r"C:\WinGet\Packages\yumiaura.myCat\mycat.exe",
+        r"C:\WinGet\Packages\yumiaura.myCat_x.exe",
+        "",
+    ],
+)
+def test_look_alike_paths_are_not_winget(exe):
+    # Only a yumiaura.myCat_* folder directly in WinGet\Packages counts, and the
+    # exe's own file name never does.
+    assert not updater.is_winget_package_path(exe)
+
+
+def test_install_kind_is_winget_in_a_winget_package_folder(monkeypatch):
+    monkeypatch.setitem(sys.modules, "winreg", fake_winreg({}))
+    windows_build(monkeypatch, USER_WINGET_EXE)
+    assert updater.install_kind() == "winget"
+
+
+def test_install_kind_is_windows_for_a_downloaded_exe(monkeypatch):
+    monkeypatch.setitem(sys.modules, "winreg", fake_winreg({"HKCU": {}, "HKLM": {}}))
+    windows_build(monkeypatch, r"C:\Users\anna maria\Downloads\mycat-windows-x64.exe")
+    assert updater.install_kind() == "windows"
+
+
+def test_install_kind_uses_the_real_path_of_the_exe(monkeypatch):
+    # WinGet's Links folder holds a symlink; its target is in Packages.
+    monkeypatch.setitem(sys.modules, "winreg", fake_winreg({}))
+    windows_build(monkeypatch, r"C:\Users\a\AppData\Local\Microsoft\WinGet\Links\mycat.exe")
+    monkeypatch.setattr(updater.os.path, "realpath", lambda path: USER_WINGET_EXE)
+    assert updater.install_kind() == "winget"
+
+
+@pytest.mark.parametrize("hive", ["HKCU", "HKLM"])
+def test_install_kind_is_winget_for_a_location_install(monkeypatch, hive):
+    # `winget install --location D:\Tools\myCat` leaves no Packages folder, only
+    # the uninstall entry, under HKCU (user scope) or HKLM (machine scope).
+    hives = {"HKCU": {"Some.Other_App": {}}, "HKLM": {}}
+    hives[hive]["yumiaura.myCat_Microsoft.Winget.Source_8wekyb3d8bbwe"] = winget_entry()
+    opened = []
+    monkeypatch.setitem(sys.modules, "winreg", fake_winreg(hives, opened))
+    windows_build(monkeypatch, LOCATION_EXE)
+    assert updater.install_kind() == "winget"
+    assert set(opened) == {0x20019}  # read-only access only
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        winget_entry(TargetFullPath=r"d:\tools\MYCAT\mycat-windows-x64.exe", InstallLocation=""),
+        winget_entry(TargetFullPath="", InstallLocation="D:\\Tools\\myCat\\"),
+    ],
+)
+def test_registry_matches_the_target_or_the_install_location(monkeypatch, entry):
+    monkeypatch.setitem(sys.modules, "winreg", fake_winreg({"HKCU": {"yumiaura.myCat_local": entry}}))
+    assert updater.winget_registry_lists(LOCATION_EXE)
+
+
+def test_registry_matches_a_location_install_behind_a_junction(monkeypatch):
+    # `--location D:\Tools\myCat` where D:\Tools is a junction to E:\Apps (or D:
+    # a subst drive): WinGet records the D: path, realpath gives the E: one.
+    resolved = r"E:\Apps\myCat\mycat-windows-x64.exe"
+    monkeypatch.setitem(sys.modules, "winreg", fake_winreg({"HKCU": {"yumiaura.myCat_local": winget_entry()}}))
+    windows_build(monkeypatch, LOCATION_EXE)
+    monkeypatch.setattr(updater.os.path, "realpath", lambda path: resolved if path == LOCATION_EXE else path)
+    assert updater.install_kind() == "winget"
+
+    # sys.executable already resolved: the registry path is resolved to match.
+    monkeypatch.setattr(updater.sys, "executable", resolved)
+    assert updater.install_kind() == "winget"
+
+    location_only = winget_entry(TargetFullPath="", InstallLocation=r"D:\Tools\myCat")
+    monkeypatch.setitem(sys.modules, "winreg", fake_winreg({"HKCU": {"yumiaura.myCat_local": location_only}}))
+    monkeypatch.setattr(
+        updater.os.path, "realpath", lambda path: r"E:\Apps\myCat" if path == r"D:\Tools\myCat" else path
+    )
+    assert updater.winget_registry_lists(r"E:\Apps\myCat\mycat-windows-x64.exe")
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        winget_entry(WinGetPackageIdentifier="someone.myCat"),
+        winget_entry(WinGetInstallerType="zip"),
+        winget_entry(TargetFullPath=r"E:\Elsewhere\mycat.exe", InstallLocation=r"E:\Elsewhere"),
+        {"TargetFullPath": LOCATION_EXE},
+    ],
+)
+def test_registry_entries_that_are_not_this_winget_install(monkeypatch, entry):
+    monkeypatch.setitem(sys.modules, "winreg", fake_winreg({"HKCU": {"yumiaura.myCat_local": entry}, "HKLM": {}}))
+    windows_build(monkeypatch, LOCATION_EXE)
+    assert updater.install_kind() == "windows"
+
+
+def test_registry_key_name_must_be_mycats(monkeypatch):
+    monkeypatch.setitem(sys.modules, "winreg", fake_winreg({"HKCU": {"Other.App_x": winget_entry()}}))
+    assert not updater.winget_registry_lists(LOCATION_EXE)
+
+
+def test_registry_errors_fall_back_to_the_path_test(monkeypatch):
+    # No winreg at all (as on Linux), or one missing what the lookup needs, or
+    # one that fails: the path test alone decides.
+    monkeypatch.setitem(sys.modules, "winreg", None)
+    windows_build(monkeypatch, LOCATION_EXE)
+    assert updater.install_kind() == "windows"
+    monkeypatch.setattr(updater.sys, "executable", USER_WINGET_EXE)
+    assert updater.install_kind() == "winget"
+
+    monkeypatch.setitem(sys.modules, "winreg", types.SimpleNamespace(HKEY_CURRENT_USER=1))
+    assert not updater.winget_registry_lists(LOCATION_EXE)
+
+    def broken(*args):
+        raise PermissionError("access denied")
+
+    failing = fake_winreg({"HKCU": {}, "HKLM": {}})
+    failing.OpenKey = broken
+    monkeypatch.setitem(sys.modules, "winreg", failing)
+    monkeypatch.setattr(updater.sys, "executable", LOCATION_EXE)
+    assert updater.install_kind() == "windows"
+
+
+def test_winget_is_told_to_upgrade_not_self_updated():
+    # Swapping the exe breaks WinGet's hash check on the next upgrade/uninstall.
+    assert not updater.can_self_update("winget")
+    assert updater.update_hint("winget") == "winget upgrade --id yumiaura.myCat --exact"
+    assert updater.asset_name("winget") == ""
+    with pytest.raises(ValueError):
+        updater.apply_and_relaunch("winget", "unused")

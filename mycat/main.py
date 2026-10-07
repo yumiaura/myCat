@@ -1484,7 +1484,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         ``asset`` (from updater.release_asset) and restarts, and is enabled only
         when a self-update is actually possible (Windows/macOS with a newer
         release whose build is listed with a sha256 digest); it is greyed out on
-        pip/git/deb/AppImage installs and whenever there's nothing to update."""
+        pip/git/deb/AppImage/WinGet installs and whenever there's nothing to update."""
         box = QtWidgets.QMessageBox(self)
         box.setWindowTitle(title)
         box.setText(text)
@@ -1530,13 +1530,13 @@ class PixelCatWindow(QtWidgets.QWidget):
             )
             return
         if not updater.can_self_update(kind):
-            # pip / git / deb / AppImage: tell them how, Update stays greyed out.
+            # pip / git / deb / AppImage / WinGet: tell them how, Update stays greyed out.
             hint = updater.update_hint(kind)
             if kind in ("deb", "appimage"):
                 # The .deb and AppImage hints are sentences, translated here.
                 text = i18n.tr("Update available. {instruction}").format(instruction=i18n.tr(hint))
             else:
-                # Flatpak, snap, git and pip hints are commands, kept as typed.
+                # Flatpak, snap, WinGet, git and pip hints are commands, kept as typed.
                 text = i18n.tr("Update available. Update with:\n\n    {hint}").format(hint=hint)
             self.update_box("myCat", versions, text, kind, can_update=False)
             return
