@@ -181,8 +181,14 @@ def test_release_asset_only_from_this_repos_download_url():
 
 
 def test_staging_path_for_temp_kinds():
-    # deb/macos/windows stage in the temp dir under their asset name.
+    # deb/macos stage in the temp dir under their asset name.
     assert updater.staging_path("deb").endswith("mycat-linux-amd64.deb")
+
+
+def test_windows_stages_beside_the_exe(monkeypatch):
+    # Beside the exe, so the swapper's move is a same-volume rename.
+    monkeypatch.setattr(updater.sys, "executable", r"D:\Игры\myCat\mycat.exe")
+    assert updater.staging_path("windows") == r"D:\Игры\myCat\mycat.exe.new"
 
 
 def test_update_hint_is_git_pull_in_checkout():
@@ -553,3 +559,153 @@ def test_winget_is_told_to_upgrade_not_self_updated():
     assert updater.asset_name("winget") == ""
     with pytest.raises(ValueError):
         updater.apply_and_relaunch("winget", "unused")
+
+
+# The Windows swapper. Paths with Cyrillic, Chinese and Korean letters, plus the
+# characters cmd treats specially, must reach it intact through the environment.
+UNICODE_DIR = "Ольга 文件 사용자 & 100% !"
+
+
+def test_swapper_script_is_ascii_and_has_no_paths():
+    script = updater.windows_swapper_script()
+    assert script.isascii()
+    assert "enabledelayedexpansion" not in script.lower()
+    assert "!" not in script
+    for name in ("%NEW%", "%EXE%", "%LOG%", "%PID%", "%RESULT%"):
+        assert name in script
+    assert 'move /Y "%NEW%" "%EXE%"' in script
+    assert 'start "" "%EXE%"' in script
+    # Every line ends CRLF, the way cmd expects.
+    assert script.endswith("\r\n") and "\n" not in script.replace("\r\n", "")
+
+
+def test_swapper_script_keeps_retry_wait_and_reports_outcome():
+    script = updater.windows_swapper_script()
+    assert 'tasklist /FI "PID eq %PID%"' in script
+    assert "if %TRIES% LSS 30" in script
+    assert f'echo {updater.SWAP_FAILED}> "%RESULT%"' in script
+    assert f'echo {updater.SWAP_OK}> "%RESULT%"' in script
+    # The failure still relaunches (the old exe), after writing the result.
+    lines = script.split("\r\n")
+    assert lines.index(":launch") > lines.index(f'echo {updater.SWAP_FAILED}> "%RESULT%"')
+    for name in ("_MEIPASS2", "_PYI_ARCHIVE_FILE", "_PYI_APPLICATION_HOME_DIR", "_PYI_PARENT_PROCESS_LEVEL"):
+        assert f'set "{name}="' in script
+
+
+def test_swapper_env_carries_unicode_paths_and_drops_pyinstaller_vars():
+    environ = {"PATH": "C:\\Windows", "_MEIPASS2": "x", "_PYI_ARCHIVE_FILE": "y", "PID": "stale"}
+    env = updater.windows_swapper_env(
+        "C:\\" + UNICODE_DIR + "\\mycat.exe.new",
+        "C:\\" + UNICODE_DIR + "\\mycat.exe",
+        "C:\\Temp\\Ольга\\mycat-update.log",
+        4242,
+        "C:\\Temp\\Ольга\\mycat-update.result",
+        environ,
+    )
+    assert env["NEW"] == "C:\\" + UNICODE_DIR + "\\mycat.exe.new"
+    assert env["EXE"] == "C:\\" + UNICODE_DIR + "\\mycat.exe"
+    assert env["LOG"] == "C:\\Temp\\Ольга\\mycat-update.log"
+    assert env["RESULT"] == "C:\\Temp\\Ольга\\mycat-update.result"
+    assert env["PID"] == "4242"
+    assert env["PATH"] == "C:\\Windows"
+    assert not [key for key in env if key.startswith(("_PYI", "_MEIPASS"))]
+    assert "_MEIPASS2" in environ  # the caller's dict is left alone
+
+
+def test_apply_windows_launches_ascii_swapper_with_paths_in_env(tmp_path, monkeypatch):
+    temp = tmp_path / "Temp Ольга"
+    temp.mkdir()
+    exe_dir = tmp_path / UNICODE_DIR
+    exe_dir.mkdir()
+    exe = str(exe_dir / "mycat.exe")
+    monkeypatch.setattr(updater.tempfile, "gettempdir", lambda: str(temp))
+    monkeypatch.setattr(updater.sys, "executable", exe)
+    monkeypatch.setattr(updater.os, "getpid", lambda: 31337)
+    monkeypatch.setenv("_MEIPASS2", "stale")
+    (temp / "mycat-update.result").write_text("ok", encoding="ascii")
+    launched = []
+
+    class Recorder:
+        def __init__(self, args, **kwargs):
+            launched.append((args, kwargs))
+
+    monkeypatch.setattr(updater.subprocess, "Popen", Recorder)
+    updater.apply_windows(exe + ".new")
+
+    ((args, kwargs),) = launched
+    script = str(temp / "mycat-update.bat")
+    assert args == ["cmd", "/c", script]
+    assert kwargs["creationflags"] == updater.CREATE_NO_WINDOW
+    raw = (temp / "mycat-update.bat").read_bytes()
+    assert raw.decode("ascii") == updater.windows_swapper_script()  # CRLF kept, not doubled
+    for part in ("Ольга", "文件", "사용자", "31337"):
+        assert part.encode("utf-8") not in raw
+    env = kwargs["env"]
+    assert env["NEW"] == exe + ".new" and env["EXE"] == exe and env["PID"] == "31337"
+    assert env["LOG"] == str(temp / "mycat-update.log")
+    assert env["RESULT"] == str(temp / "mycat-update.result")
+    assert "_MEIPASS2" not in env
+    # A stale result from an earlier update is cleared before the swapper runs.
+    assert not (temp / "mycat-update.result").exists()
+
+
+def test_staging_writable_creates_and_removes_the_probe(tmp_path):
+    path = tmp_path / "mycat.exe.new"
+    assert updater.staging_writable(str(path))
+    assert not path.exists()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_staging_writable_never_touches_a_download_in_progress(tmp_path):
+    # A check that runs while a download writes the staging file must not
+    # truncate it, so the probe is a separate file.
+    path = tmp_path / "mycat.exe.new"
+    path.write_bytes(b"half a download")
+    assert updater.staging_writable(str(path))
+    assert path.read_bytes() == b"half a download"
+
+
+def test_staging_writable_clears_a_probe_left_by_a_crash(tmp_path):
+    (tmp_path / ".mycat-write-test").write_bytes(b"")
+    assert updater.staging_writable(str(tmp_path / "mycat.exe.new"))
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_staging_writable_is_false_when_the_file_cannot_be_created(tmp_path, monkeypatch):
+    def refuse(path, mode="r", *args, **kwargs):
+        raise PermissionError(13, "Access is denied", path)
+
+    monkeypatch.setattr("builtins.open", refuse)
+    assert not updater.staging_writable(str(tmp_path / "mycat.exe.new"))
+
+
+def test_remove_file_ignores_a_missing_file(tmp_path):
+    leftover = tmp_path / "mycat.exe.new"
+    leftover.write_bytes(b"partial")
+    updater.remove_file(str(leftover))
+    assert not leftover.exists()
+    updater.remove_file(str(leftover))  # already gone: no error
+
+
+@pytest.mark.parametrize("written", ["ok\r\n", "swap-failed \r\n"])
+def test_take_update_result_reads_once(tmp_path, monkeypatch, written):
+    monkeypatch.setattr(updater.tempfile, "gettempdir", lambda: str(tmp_path))
+    (tmp_path / "mycat-update.result").write_bytes(written.encode("ascii"))
+    assert updater.take_update_result() == written.strip()
+    assert not (tmp_path / "mycat-update.result").exists()
+    assert updater.take_update_result() == ""
+
+
+def test_new_update_messages_are_in_every_catalog():
+    # Shown by the startup report and the not-writable check in main.py.
+    from mycat import i18n
+
+    texts = [
+        "The folder with myCat is not writable, so it cannot update itself. "
+        "Download the new version from the releases page.",
+        "The new version could not replace the old one, so the old one was started again.",
+    ]
+    for code in ("en", "ru", "zh", "ko"):
+        for text in texts:
+            translated = i18n.CATALOGS[code][text]
+            assert "\u2014" not in translated and "\u00b7" not in translated

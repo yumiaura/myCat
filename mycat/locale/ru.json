@@ -48,6 +48,8 @@
     "Update failed": "Не удалось обновить",
     "Couldn't update: {message}": "Не удалось обновить: {message}",
     "The downloaded file is damaged. Try again later.": "Скачанный файл повреждён. Попробуйте ещё раз позже.",
+    "The folder with myCat is not writable, so it cannot update itself. Download the new version from the releases page.": "myCat не может обновиться сам: в его папку нельзя записывать. Скачайте новую версию на странице релизов.",
+    "The new version could not replace the old one, so the old one was started again.": "Новая версия не смогла заменить старую, поэтому снова запущена прежняя.",
     "Settings": "Настройки",
     "Animation Wait Time (s):": "Пауза перед анимацией (с):",
     "Failed to save settings:\n{e}": "Не удалось сохранить настройки:\n{e}",
