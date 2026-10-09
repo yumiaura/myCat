@@ -50,6 +50,8 @@
     "The downloaded file is damaged. Try again later.": "下载的文件已损坏，请稍后再试。",
     "The folder with myCat is not writable, so it cannot update itself. Download the new version from the releases page.": "myCat 所在的文件夹不可写入，因此无法自动更新。请从发行页面下载新版本。",
     "The new version could not replace the old one, so the old one was started again.": "新版本无法替换旧版本，因此已重新启动旧版本。",
+    "Move mycat.app to the Applications folder, then try again.": "请将 mycat.app 移到“应用程序”文件夹，然后再试一次。",
+    "This copy of myCat cannot update itself. Download the new version from the releases page.": "这个 myCat 副本无法自行更新。请从发布页面下载新版本。",
     "Settings": "设置",
     "Animation Wait Time (s):": "动画等待时间（秒）：",
     "Failed to save settings:\n{e}": "保存设置失败：\n{e}",

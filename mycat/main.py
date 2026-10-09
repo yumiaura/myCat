@@ -1554,8 +1554,34 @@ class PixelCatWindow(QtWidgets.QWidget):
                 can_update=False,
             )
             return
-        if kind == "windows" and not updater.staging_writable(updater.staging_path(kind)):
-            # The exe sits in a folder this user can't write to (Program Files,
+        if kind == "macos" and not updater.is_app_bundle():
+            # Not run from a mycat.app bundle (a bare PyInstaller build): the
+            # helper would move and delete the wrong folder, so never offer it.
+            self.update_box(
+                "myCat",
+                versions,
+                i18n.tr("This copy of myCat cannot update itself. "
+                        "Download the new version from the releases page."),
+                kind,
+                can_update=False,
+            )
+            return
+        if kind == "macos" and updater.is_translocated():
+            # Opened straight from Downloads, macOS runs a read-only copy of the
+            # app: there is nothing to replace until it is moved to Applications.
+            self.update_box(
+                "myCat",
+                versions,
+                i18n.tr("Move mycat.app to the Applications folder, then try again."),
+                kind,
+                can_update=False,
+            )
+            return
+        # The Windows exe stages beside itself, the macOS helper swaps the .app
+        # within its folder: either needs that folder to be writable.
+        swap_target = updater.staging_path(kind) if kind == "windows" else updater.macos_app_path()
+        if not updater.staging_writable(swap_target):
+            # myCat sits in a folder this user can't write to (Program Files,
             # a read-only share): say so now, before anything quits.
             self.update_box(
                 "myCat",
@@ -2447,11 +2473,14 @@ def main() -> None:
         # Only the instance that holds the lock heals a login entry an older
         # version wrote with a command that no longer starts this install.
         autostart.refresh_entry()
-        # The Windows exe: drop a download an interrupted update left beside it,
-        # and pick up how the swapper did with the last update (read once).
-        # Only the lock holder, so a second launch can't touch a running update.
-        if updater.install_kind() == "windows":
+        # The Windows exe drops a download an interrupted update left beside it;
+        # the Windows exe and the macOS app pick up how the swapper or helper did
+        # with the last update (read once). Only the lock holder, so a second
+        # launch can't touch a running update.
+        install_kind = updater.install_kind()
+        if install_kind == "windows":
             updater.remove_file(updater.staging_path("windows"))
+        if install_kind in ("windows", "macos"):
             update_result = updater.take_update_result()
 
     # Setup signal handlers for graceful shutdown
@@ -2530,7 +2559,8 @@ def main() -> None:
         # is the first thing a new user sees, not a dialog in front of it.
         QtCore.QTimer.singleShot(15000, lambda: offer_autostart_on_first_run(window))
         if update_result == updater.SWAP_FAILED:
-            # The swapper could not replace the exe and relaunched the old one.
+            # The swapper could not replace the exe (or the helper the .app) and
+            # relaunched the old one.
             reason = i18n.tr("The new version could not replace the old one, so the old one was started again.")
             QtCore.QTimer.singleShot(
                 1000, lambda: QtWidgets.QMessageBox.warning(window, i18n.tr("Update failed"), reason)
