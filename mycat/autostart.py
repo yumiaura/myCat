@@ -13,6 +13,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from . import updater
+
 logger = logging.getLogger(__name__)
 
 APP_ID = "mycat"          # technical id: .desktop filename, Windows Run key value name
@@ -81,7 +83,7 @@ def flatpak_request_background(enabled: bool) -> None:
 
 
 def linux_set(enabled: bool) -> None:
-    if os.environ.get("FLATPAK_ID"):
+    if updater.install_kind() == "flatpak":
         flatpak_request_background(enabled)
     path = linux_desktop_path()
     if enabled:

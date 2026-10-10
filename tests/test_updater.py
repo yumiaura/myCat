@@ -141,3 +141,10 @@ def test_install_kind_is_flatpak_inside_a_flatpak(monkeypatch):
     assert updater.install_kind() == "flatpak"
     assert not updater.can_self_update("flatpak")
     assert updater.update_hint("flatpak") == "flatpak update io.github.yumiaura.myCat"
+
+
+def test_install_kind_ignores_another_apps_flatpak(monkeypatch):
+    # Every Flatpak app gets a FLATPAK_ID and passes it on, so a checkout run from
+    # a terminal in a Flatpak editor is still a source install.
+    monkeypatch.setenv("FLATPAK_ID", "com.visualstudio.code")
+    assert updater.install_kind() == "source"

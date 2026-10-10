@@ -79,3 +79,19 @@ def test_flatpak_asks_the_background_portal(monkeypatch, tmp_path):
     autostart.linux_set(False)
     assert "'autostart': <false>" in calls[-1][-1]
     assert not autostart.linux_is_enabled()
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux XDG autostart")
+def test_another_apps_flatpak_leaves_the_portal_alone(monkeypatch, tmp_path):
+    # A terminal in another Flatpak (VS Code, say) passes its FLATPAK_ID on; the
+    # portal would then change that app's login entry, not mycat's.
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("FLATPAK_ID", "com.visualstudio.code")
+    calls = []
+    monkeypatch.setattr(autostart.subprocess, "run", lambda args, **kwargs: calls.append(args))
+
+    autostart.linux_set(True)
+    assert autostart.linux_is_enabled()
+    autostart.linux_set(False)
+    assert not autostart.linux_is_enabled()
+    assert calls == []
