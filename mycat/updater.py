@@ -31,6 +31,9 @@ RELEASES_PAGE = "https://github.com/yumiaura/myCat/releases/latest"
 # black window flashes up (and none lingers if the swap stalls).
 CREATE_NO_WINDOW = 0x08000000
 
+# myCat's Flatpak app id, which flatpak exports as FLATPAK_ID inside it.
+FLATPAK_APP_ID = "io.github.yumiaura.myCat"
+
 
 def install_kind() -> str:
     """How this instance was installed.
@@ -39,8 +42,10 @@ def install_kind() -> str:
     ``flatpak``, ``snap``, ``appimage``, ``deb``, ``macos`` or ``windows``.
     """
     # Flatpak runs the package from source inside its sandbox, so it is not
-    # frozen; flatpak sets FLATPAK_ID for every app it runs.
-    if os.environ.get("FLATPAK_ID"):
+    # frozen. flatpak sets FLATPAK_ID for every app it runs, and processes
+    # started from one (a terminal in a Flatpak editor, say) inherit it, so only
+    # myCat's own id counts.
+    if os.environ.get("FLATPAK_ID") == FLATPAK_APP_ID:
         return "flatpak"
     if not getattr(sys, "frozen", False):
         return "source"
@@ -68,7 +73,7 @@ def can_self_update(kind: str) -> bool:
 def update_hint(kind: str) -> str:
     """A one-line 'how to update' for the kinds that don't self-update."""
     if kind == "flatpak":
-        return "flatpak update io.github.yumiaura.myCat"
+        return f"flatpak update {FLATPAK_APP_ID}"
     if kind == "snap":
         return "snap refresh mycat"
     if kind == "deb":

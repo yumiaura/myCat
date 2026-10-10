@@ -105,9 +105,6 @@ CFG_FILE = paths.config_file()
 # running cat's window (so hiding it to a flaky tray is always recoverable).
 SINGLE_INSTANCE_NAME = f"mycat-{getpass.getuser()}"
 
-# The Flatpak's app id (FLATPAK_ID inside it).
-FLATPAK_APP_ID = "io.github.yumiaura.myCat"
-
 # Image scaling settings
 IMAGE_WIDTH_MAX = 300  # Maximum width for images in pixels (images will be scaled down if larger)
 IMAGE_HEIGHT_MAX = 500  # Maximum height for images in pixels (images will be scaled down if larger)
@@ -1978,12 +1975,12 @@ def flatpak_instance_dir() -> Path | None:
     Every `flatpak run` gets a fresh home and its own PID namespace, so neither
     CFG_DIR nor a PID-based lock is shared between two launches; this directory is.
     """
-    if os.environ.get("FLATPAK_ID") != FLATPAK_APP_ID:
+    if updater.install_kind() != "flatpak":
         return None
     runtime = os.environ.get("XDG_RUNTIME_DIR")
     if not runtime:
         return None
-    return Path(runtime) / "app" / FLATPAK_APP_ID
+    return Path(runtime) / "app" / updater.FLATPAK_APP_ID
 
 
 def flatpak_instance_lock(directory: Path) -> int | None:
