@@ -105,6 +105,9 @@ CFG_FILE = paths.config_file()
 # running cat's window (so hiding it to a flaky tray is always recoverable).
 SINGLE_INSTANCE_NAME = f"mycat-{getpass.getuser()}"
 
+# The Flatpak's app id (FLATPAK_ID inside it).
+FLATPAK_APP_ID = "io.github.yumiaura.myCat"
+
 # Image scaling settings
 IMAGE_WIDTH_MAX = 300  # Maximum width for images in pixels (images will be scaled down if larger)
 IMAGE_HEIGHT_MAX = 500  # Maximum height for images in pixels (images will be scaled down if larger)
@@ -1968,6 +1971,41 @@ def ensure_virtual_monitor() -> None:
     logger.info("No active RANDR monitor — registered virtual monitor %s so Qt sees the screen.", geometry)
 
 
+def flatpak_instance_dir() -> Path | None:
+    """The directory the myCat Flatpak shares between all its running instances,
+    ``$XDG_RUNTIME_DIR/app/<app id>``, or None outside that Flatpak.
+
+    Every `flatpak run` gets a fresh home and its own PID namespace, so neither
+    CFG_DIR nor a PID-based lock is shared between two launches; this directory is.
+    """
+    if os.environ.get("FLATPAK_ID") != FLATPAK_APP_ID:
+        return None
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if not runtime:
+        return None
+    return Path(runtime) / "app" / FLATPAK_APP_ID
+
+
+def flatpak_instance_lock(directory: Path) -> int | None:
+    """Take the single-instance lock in ``directory``, or None if another instance holds it.
+
+    The returned descriptor holds the lock until the process exits. flock, not
+    QLockFile: QLockFile spots a dead owner by its PID, and in a Flatpak the app
+    usually gets the same small PID on every run, so a lock left by a crash would
+    look alive for good. The kernel drops a flock as soon as its holder dies.
+    """
+    import fcntl  # Unix only, and the Flatpak is Linux
+
+    directory.mkdir(parents=True, exist_ok=True)
+    fd = os.open(directory / "mycat.lock", os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(fd)
+        return None
+    return fd
+
+
 def activate_running_instance(name: str) -> bool:
     """Ask an already-running mycat (via its local socket) to show its window.
 
@@ -2348,13 +2386,22 @@ def main() -> None:
     # lock for the whole process lifetime (it is released when the process
     # exits). A lock left by a crashed instance is reclaimed automatically
     # because QLockFile records the owner PID and detects a dead owner.
+    # Inside the Flatpak the lock and the activation socket live in the directory
+    # its instances share, and the lock is a flock (see flatpak_instance_lock).
+    instance_dir = flatpak_instance_dir()
+    activation_name = str(instance_dir / "activation") if instance_dir else SINGLE_INSTANCE_NAME
     if platform_name != "offscreen":
-        CFG_DIR.mkdir(parents=True, exist_ok=True)
-        instance_lock = QtCore.QLockFile(str(CFG_DIR / "mycat.lock"))
-        instance_lock.setStaleLockTime(0)
-        if not instance_lock.tryLock(100):
+        if instance_dir is not None:
+            lock_fd = flatpak_instance_lock(instance_dir)
+            locked = lock_fd is not None
+        else:
+            CFG_DIR.mkdir(parents=True, exist_ok=True)
+            instance_lock = QtCore.QLockFile(str(CFG_DIR / "mycat.lock"))
+            instance_lock.setStaleLockTime(0)
+            locked = instance_lock.tryLock(100)
+        if not locked:
             logger.info("Another mycat instance is already running — raising it and exiting.")
-            activate_running_instance(SINGLE_INSTANCE_NAME)
+            activate_running_instance(activation_name)
             sys.exit(0)
 
     # Setup signal handlers for graceful shutdown
@@ -2420,7 +2467,7 @@ def main() -> None:
         window.tray_icon = setup_tray(app, window)
         # Safety net: let a second launch raise this window, so a cat hidden to a
         # tray the panel doesn't render can always be brought back with `mycat`.
-        window.activation_server = start_activation_server(SINGLE_INSTANCE_NAME, window)
+        window.activation_server = start_activation_server(activation_name, window)
         if sys.platform == "darwin" and window.tray_icon is not None:
             install_macos_reopen(app, window)
         # Live in the tray: hiding/closing windows no longer quits the app —
