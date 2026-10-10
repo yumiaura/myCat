@@ -2138,15 +2138,7 @@ def make_app_icon() -> QtGui.QIcon:
 
 def desktop_exec_command() -> str:
     """The command a menu launcher should run to start mycat, for this install."""
-    if getattr(sys, "frozen", False):
-        target = os.environ.get("APPIMAGE") or sys.executable
-        return f'"{target}"'
-    console = shutil.which("mycat")
-    if console:
-        return f'"{console}"'
-    # Running from source, not pip-installed: launch main.py by absolute path
-    # (its import shim works when run as a script from any working directory).
-    return f'"{sys.executable}" "{Path(__file__).resolve()}"'
+    return autostart.start_command()
 
 
 def desktop_version(path) -> str | None:
@@ -2400,6 +2392,9 @@ def main() -> None:
             logger.info("Another mycat instance is already running — raising it and exiting.")
             activate_running_instance(activation_name)
             sys.exit(0)
+        # Only the instance that holds the lock heals a login entry an older
+        # version wrote with a command that no longer starts this install.
+        autostart.refresh_entry()
 
     # Setup signal handlers for graceful shutdown
     def signal_handler(signum, frame):

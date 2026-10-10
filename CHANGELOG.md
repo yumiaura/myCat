@@ -13,6 +13,9 @@ All notable changes to this project are documented in this file.
 ### Changed
 - **The catalog screenshot looks the way the cat does in the README.** `docs/screenshot.png` now has the pupils turned in towards the nose, as in `docs/cat.gif`, instead of centred in each eye; everything else is unchanged. The AppStream metadata links to it on `main`, so the AppImage catalog and software centres pick it up without a release (branch `chore/screenshot-crossed-eyes`).
 
+### Fixed
+- **Start on login works for the Windows exe and the AppImage.** The login entry (the Windows `Run` value, the Linux `~/.config/autostart/mycat.desktop`) ran `"<program>" -m mycat` whenever no `mycat` was on `PATH`. A frozen build is its own program and does not understand `-m`, so the downloaded Windows exe and the AppImage never started at login; the AppImage's path also pointed inside its temporary mount, which changes on every run, and a frozen build with a pip `mycat` on `PATH` started the pip one. The login entry and the applications-menu entry now share one command: a frozen build names its own binary (an AppImage its `.AppImage` file), otherwise the installed `mycat` script, otherwise `main.py` by absolute path, which starts from any directory. Entries a frozen build already enabled are healed at its next start without toggling Autostart: only their command is rewritten, so an entry turned off in GNOME or KDE stays off, and a run from a checkout, pip or `./run.sh` never takes the entry over. The snap's command is used only inside mycat's own snap, not whenever some snap's `SNAP_NAME` is inherited, such as `code` from a terminal in the VS Code snap (branch `fix/autostart-frozen-command`).
+
 ## [0.1.37] - 2026-10-01
 
 ### Added
