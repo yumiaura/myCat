@@ -36,12 +36,33 @@ Ambil build untuk OS Anda - setiap tombol mengunduh **rilis terbaru**:
 
 Lalu jalankan:
 
-- **Windows** - klik dua kali `.exe`.
+- **Windows (x64)** - unduh `mycat-windows-x64.exe` dan klik dua kali untuk menjalankannya. Aplikasi ini portabel; tidak perlu instalasi atau Python.
 - **macOS** - ekstrak dan buka `mycat.app` (peluncuran pertama: klik kanan → **Open** untuk melewati Gatekeeper).
 - **Linux `.deb`** - `sudo apt install ./mycat-linux-amd64.deb`.
 - **Linux AppImage** - `chmod +x mycat-linux-x86_64.AppImage && ./mycat-linux-x86_64.AppImage` (perlu FUSE: `sudo apt install libfuse2`).
 
 > Build untuk setiap rilis ada di halaman **[Releases](https://github.com/yumiaura/myCat/releases)**.
+
+#### Windows dengan WinGet
+
+> [Paket WinGet pertama](https://github.com/microsoft/winget-pkgs/pull/445631)
+> sedang menunggu persetujuan. Sebelum diterbitkan, gunakan tautan unduhan Windows di atas.
+
+Setelah paket tersedia, instal melalui PowerShell atau Windows Terminal:
+
+```powershell
+winget install --id yumiaura.myCat --exact
+```
+
+Buka jendela terminal baru dan jalankan `mycat` untuk memunculkan kucing.
+
+Perbarui ke versi yang tersedia di WinGet:
+
+```powershell
+winget upgrade --id yumiaura.myCat --exact
+```
+
+Untuk menghapusnya, jalankan `winget uninstall --id yumiaura.myCat --exact`.
 
 ### Opsi B - pip (Windows / macOS / Linux, Python ≥ 3.10)
 

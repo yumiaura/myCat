@@ -68,7 +68,7 @@ Grab the build for your OS - each button downloads the **latest release**:
 
 Then run it:
 
-- **Windows** - double-click the `.exe`.
+- **Windows (x64)** - download `mycat-windows-x64.exe` and double-click it. This is a portable app; no installer or Python is needed.
 - **macOS** - unzip and open `mycat.app` (first launch: right-click → **Open** to get past Gatekeeper).
 - **macOS with Homebrew** - `brew install --cask yumiaura/tap/mycat`.
 - **Linux `.deb`** - `sudo apt install ./mycat-linux-amd64.deb`.
@@ -76,6 +76,27 @@ Then run it:
 - **Linux snap** - `sudo snap install mycat` (keeps its own settings in `~/snap/mycat/`).
 
 > Builds for every release live on the **[Releases](https://github.com/yumiaura/myCat/releases)** page.
+
+#### Windows with WinGet
+
+> The [first WinGet package](https://github.com/microsoft/winget-pkgs/pull/445631)
+> is awaiting approval. Until it is published, use the Windows download above.
+
+Once the package is available, install it from PowerShell or Windows Terminal:
+
+```powershell
+winget install --id yumiaura.myCat --exact
+```
+
+Open a new terminal and run `mycat` to launch the cat.
+
+Update to the version available in WinGet:
+
+```powershell
+winget upgrade --id yumiaura.myCat --exact
+```
+
+To remove it, run `winget uninstall --id yumiaura.myCat --exact`.
 
 ### Option B - pip (Windows / macOS / Linux, Python ≥ 3.10)
 

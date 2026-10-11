@@ -36,12 +36,33 @@
 
 然后运行：
 
-- **Windows** —— 双击 `.exe`。
+- **Windows (x64)** - 下载 `mycat-windows-x64.exe` 并双击运行。这是便携版应用，无需安装，也不需要 Python。
 - **macOS** —— 解压并打开 `mycat.app`（首次启动：右键 → **打开** 以绕过 Gatekeeper）。
 - **Linux `.deb`** —— `sudo apt install ./mycat-linux-amd64.deb`。
 - **Linux AppImage** —— `chmod +x mycat-linux-x86_64.AppImage && ./mycat-linux-x86_64.AppImage`（需要 FUSE：`sudo apt install libfuse2`）。
 
 > 所有版本的构建都在 **[Releases](https://github.com/yumiaura/myCat/releases)** 页面。
+
+#### 在 Windows 上通过 WinGet 安装
+
+> [首个 WinGet 软件包](https://github.com/microsoft/winget-pkgs/pull/445631)
+> 正在等待审核。发布前，请使用上方的 Windows 下载链接。
+
+软件包发布后，可在 PowerShell 或 Windows Terminal 中安装：
+
+```powershell
+winget install --id yumiaura.myCat --exact
+```
+
+打开一个新的终端窗口，运行 `mycat` 即可启动猫咪。
+
+更新到 WinGet 中可用的版本：
+
+```powershell
+winget upgrade --id yumiaura.myCat --exact
+```
+
+如需卸载，请运行 `winget uninstall --id yumiaura.myCat --exact`。
 
 ### 方式 B —— pip（Windows / macOS / Linux，Python ≥ 3.10）
 
