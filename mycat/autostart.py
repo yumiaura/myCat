@@ -13,6 +13,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from . import updater
+
 logger = logging.getLogger(__name__)
 
 APP_ID = "mycat"          # technical id: .desktop filename, Windows Run key value name
@@ -20,8 +22,26 @@ APP_NAME = "myCat"        # display name shown to the user (Name= in the .deskto
 WIN_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 
+def start_command() -> str:
+    """The quoted command that starts this install from any working directory.
+
+    A frozen build is its own binary (an AppImage names its .AppImage file,
+    because sys.executable points inside a mount that changes on every run);
+    otherwise the installed console script; otherwise main.py by absolute
+    path, whose import shim lets it run as a script from anywhere.
+    """
+    if getattr(sys, "frozen", False):
+        target = os.environ.get("APPIMAGE") or sys.executable
+        return f'"{target}"'
+    console = shutil.which("mycat")
+    if console:
+        return f'"{console}"'
+    main_script = Path(__file__).resolve().parent / "main.py"
+    return f'"{sys.executable}" "{main_script}"'
+
+
 def launch_command() -> str:
-    """Command that starts mycat — the installed console script, else python -m.
+    """Command that starts mycat at login: start_command(), or the snap's name.
 
     The path is always quoted: the .desktop Exec line is word-split on
     spaces, so an unquoted script path with a space in it (e.g. a home
@@ -32,13 +52,12 @@ def launch_command() -> str:
     Inside a snap the path under $SNAP changes with every revision, so the
     entry names the snap's command instead; snapd starts the app from the
     ``autostart:`` key in snapcraft.yaml, which matches this file by name.
+    Every snap sets SNAP_NAME and passes it on (a terminal in the VS Code snap
+    has SNAP_NAME=code), so only mycat's own counts.
     """
-    if os.environ.get("SNAP_NAME"):
-        return os.environ["SNAP_NAME"]
-    exe = shutil.which("mycat")
-    if exe:
-        return f'"{exe}"'
-    return f'"{sys.executable}" -m mycat'
+    if os.environ.get("SNAP_NAME") == "mycat":
+        return "mycat"
+    return start_command()
 
 
 # -- Linux (XDG autostart) --------------------------------------------------
@@ -81,7 +100,7 @@ def flatpak_request_background(enabled: bool) -> None:
 
 
 def linux_set(enabled: bool) -> None:
-    if os.environ.get("FLATPAK_ID"):
+    if updater.install_kind() == "flatpak":
         flatpak_request_background(enabled)
     path = linux_desktop_path()
     if enabled:
@@ -97,6 +116,36 @@ def linux_set(enabled: bool) -> None:
         )
     elif path.exists():
         path.unlink()
+
+
+def linux_refresh(command: str) -> bool:
+    """Point Exec= of the [Desktop Entry] group at ``command``, nothing else.
+
+    Every other line, a user's Hidden=true or X-GNOME-Autostart-enabled=false
+    included, is kept byte for byte, line endings too.
+    """
+    path = linux_desktop_path()
+    with open(path, encoding="utf-8", newline="") as handle:
+        lines = handle.read().splitlines(keepends=True)
+    in_entry = False
+    changed = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("["):
+            in_entry = stripped == "[Desktop Entry]"
+            continue
+        if not in_entry or "=" not in stripped or stripped.startswith("#"):
+            continue
+        key, sep, value = stripped.partition("=")
+        if key.strip() != "Exec" or value.strip() == command:
+            continue
+        ending = line[len(line.rstrip("\r\n")):]
+        lines[index] = f"Exec={command}{ending}"
+        changed = True
+    if changed:
+        with open(path, "w", encoding="utf-8", newline="") as handle:
+            handle.write("".join(lines))
+    return changed
 
 
 # -- Windows (HKCU Run key) -------------------------------------------------
@@ -123,6 +172,22 @@ def windows_set(enabled: bool) -> None:
                 winreg.DeleteValue(key, APP_ID)
             except OSError:
                 pass
+
+
+def windows_refresh(command: str) -> bool:
+    """Rewrite the Run value's data in place when it is not ``command``."""
+    import winreg
+
+    access = winreg.KEY_QUERY_VALUE | winreg.KEY_SET_VALUE
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, WIN_RUN_KEY, 0, access) as key:
+        try:
+            stored, kind = winreg.QueryValueEx(key, APP_ID)
+        except FileNotFoundError:
+            return False
+        if stored == command:
+            return False
+        winreg.SetValueEx(key, APP_ID, 0, winreg.REG_SZ, command)
+        return True
 
 
 # -- public API -------------------------------------------------------------
@@ -153,4 +218,43 @@ def set_enabled(enabled: bool) -> None:
         logger.warning("autostart set_enabled failed: %s", exc)
 
 
-__all__ = ["is_supported", "is_enabled", "set_enabled", "launch_command"]
+def refresh_entry() -> bool:
+    """Heal an enabled entry whose command no longer starts this install.
+
+    Entries written by older versions may hold a command that cannot start
+    the cat (``-m mycat`` given to a frozen binary, a path inside an
+    AppImage's temporary mount). Only the stored command is rewritten; an
+    entry that is off stays off. Flatpak and snap entries are left alone:
+    the portal and snapd start the app, not the stored command. Only frozen
+    builds heal, since only their command was broken: a run from a checkout,
+    pip or ./run.sh must not take over the entry of the installed cat.
+    Returns True when something was rewritten.
+    """
+    try:
+        if not getattr(sys, "frozen", False):
+            return False
+        if not is_supported() or not is_enabled():
+            return False
+        if updater.install_kind() in ("flatpak", "snap"):
+            return False
+        command = launch_command()
+        if sys.platform.startswith("win"):
+            changed = windows_refresh(command)
+        else:
+            changed = linux_refresh(command)
+        if changed:
+            logger.info("Autostart entry now runs %s", command)
+        return changed
+    except Exception as exc:  # noqa: BLE001 - never let autostart crash the app
+        logger.warning("autostart refresh_entry failed: %s", exc)
+        return False
+
+
+__all__ = [
+    "is_supported",
+    "is_enabled",
+    "set_enabled",
+    "launch_command",
+    "start_command",
+    "refresh_entry",
+]

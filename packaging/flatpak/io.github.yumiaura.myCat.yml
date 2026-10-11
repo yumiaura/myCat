@@ -30,6 +30,12 @@ finish-args:
   - --share=network
   # The tray icon (StatusNotifierItem).
   - --talk-name=org.kde.StatusNotifierWatcher
+  # myCat keeps config.ini and the chat history in ~/.config/mycat on every
+  # platform, and Autostart records what it asked the portal in
+  # ~/.config/autostart. The sandbox's home is new on every run, so keep both
+  # in ~/.var/app/io.github.yumiaura.myCat/.config/.
+  - --persist=.config/mycat
+  - --persist=.config/autostart
 modules:
   - python3-deps.json
 
