@@ -1482,9 +1482,9 @@ class PixelCatWindow(QtWidgets.QWidget):
 
         Releases always opens the GitHub releases page. Update downloads
         ``asset`` (from updater.release_asset) and restarts, and is enabled only
-        when a self-update is actually possible (Windows/macOS with a newer
-        release whose build is listed with a sha256 digest); it is greyed out on
-        pip/git/deb/AppImage/WinGet installs and whenever there's nothing to update."""
+        when a self-update is actually possible (Windows/macOS/AppImage with a
+        newer release whose build is listed with a sha256 digest); it is greyed
+        out on pip/git/deb/WinGet installs and whenever there's nothing to update."""
         box = QtWidgets.QMessageBox(self)
         box.setWindowTitle(title)
         box.setText(text)
@@ -1530,15 +1530,27 @@ class PixelCatWindow(QtWidgets.QWidget):
             )
             return
         if not updater.can_self_update(kind):
-            # pip / git / deb / AppImage / WinGet: tell them how, Update stays greyed out.
+            # pip / git / deb / WinGet: tell them how, Update stays greyed out.
             hint = updater.update_hint(kind)
-            if kind in ("deb", "appimage"):
-                # The .deb and AppImage hints are sentences, translated here.
+            if kind == "deb":
+                # The .deb hint is a sentence, translated here.
                 text = i18n.tr("Update available. {instruction}").format(instruction=i18n.tr(hint))
             else:
                 # Flatpak, snap, WinGet, git and pip hints are commands, kept as typed.
                 text = i18n.tr("Update available. Update with:\n\n    {hint}").format(hint=hint)
             self.update_box("myCat", versions, text, kind, can_update=False)
+            return
+        if kind == "appimage" and not updater.appimage_updatable():
+            # Only an x86_64 AppImage is released: never put it over an AppImage
+            # built for another machine, or swap a file this process doesn't run from.
+            self.update_box(
+                "myCat",
+                versions,
+                i18n.tr("This copy of myCat cannot update itself. "
+                        "Download the new version from the releases page."),
+                kind,
+                can_update=False,
+            )
             return
         asset = updater.release_asset(release, updater.asset_name(kind))
         if asset is None:
@@ -1577,9 +1589,10 @@ class PixelCatWindow(QtWidgets.QWidget):
                 can_update=False,
             )
             return
-        # The Windows exe stages beside itself, the macOS helper swaps the .app
-        # within its folder: either needs that folder to be writable.
-        swap_target = updater.staging_path(kind) if kind == "windows" else updater.macos_app_path()
+        # The Windows exe and the AppImage stage beside themselves, the macOS
+        # helper swaps the .app within its folder: each needs that folder to be
+        # writable.
+        swap_target = updater.macos_app_path() if kind == "macos" else updater.staging_path(kind)
         if not updater.staging_writable(swap_target):
             # myCat sits in a folder this user can't write to (Program Files,
             # a read-only share): say so now, before anything quits.
@@ -1592,7 +1605,7 @@ class PixelCatWindow(QtWidgets.QWidget):
                 can_update=False,
             )
             return
-        # Windows / macOS with a newer, verifiable release: Update is enabled.
+        # Windows / macOS / AppImage with a newer, verifiable release: Update is enabled.
         self.update_box(
             "myCat",
             versions,
@@ -1642,6 +1655,22 @@ class PixelCatWindow(QtWidgets.QWidget):
                 logger.warning("Update download rejected: %s", exc)
                 if not cancelled.is_set():
                     signals.failed.emit(i18n.tr("The downloaded file is damaged. Try again later."))
+            except updater.SwapFailed as exc:
+                # The AppImage could not be replaced; the old file is untouched
+                # and keeps running.
+                logger.warning("Update not applied: %s", exc)
+                if not cancelled.is_set():
+                    signals.failed.emit(
+                        i18n.tr("The new version could not replace the old one, so the old one was kept. "
+                                "Download the new version from the releases page.")
+                    )
+            except updater.RelaunchFailed as exc:
+                # The AppImage is already the new version; only the restart failed.
+                logger.warning("Update installed, restart failed: %s", exc)
+                signals.failed.emit(
+                    i18n.tr("The new version is installed, but myCat could not restart itself. "
+                            "Quit myCat and start it again.")
+                )
             except Exception as exc:  # noqa: BLE001 - surfaced to the user
                 if not cancelled.is_set():
                     signals.failed.emit(str(exc))
@@ -1650,6 +1679,10 @@ class PixelCatWindow(QtWidgets.QWidget):
                     # A cancelled exe.new beside the exe goes now, from this
                     # thread, which has closed it: Windows won't delete an open file.
                     # Once the swapper is being started, the file is its own.
+                    updater.remove_file(dest)
+                if kind == "appimage":
+                    # A cancelled or failed download must not stay beside the
+                    # user's AppImage; after a successful swap it is gone already.
                     updater.remove_file(dest)
 
         threading.Thread(target=worker, name="mycat-update", daemon=True).start()
@@ -2473,14 +2506,14 @@ def main() -> None:
         # Only the instance that holds the lock heals a login entry an older
         # version wrote with a command that no longer starts this install.
         autostart.refresh_entry()
-        # The Windows exe drops a download an interrupted update left beside it;
-        # the Windows exe and the macOS app pick up how the swapper or helper did
-        # with the last update (read once). Only the lock holder, so a second
-        # launch can't touch a running update.
+        # The Windows exe and the AppImage drop a download an interrupted update
+        # left beside them; the Windows exe, the macOS app and the AppImage pick
+        # up how the last update went (read once). Only the lock holder, so a
+        # second launch can't touch a running update.
         install_kind = updater.install_kind()
-        if install_kind == "windows":
-            updater.remove_file(updater.staging_path("windows"))
-        if install_kind in ("windows", "macos"):
+        if install_kind in ("windows", "appimage"):
+            updater.remove_file(updater.staging_path(install_kind))
+        if install_kind in ("windows", "macos", "appimage"):
             update_result = updater.take_update_result()
 
     # Setup signal handlers for graceful shutdown
