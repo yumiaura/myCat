@@ -2,9 +2,12 @@
 
 import copy
 import hashlib
+import importlib.metadata
 import json
+import subprocess
 import sys
 import types
+import urllib.error
 import urllib.request
 
 import pytest
@@ -1102,3 +1105,498 @@ def test_apply_appimage_starts_nothing_when_the_swap_fails(tmp_path, monkeypatch
     assert not part.exists()
     # The failure is shown right away, so nothing is left to report at the next start.
     assert updater.take_update_result() == ""
+
+
+# PyPI installs: pip, pipx and uv tool, told apart from a checkout by the
+# installed distribution's own metadata.
+def fake_site(tmp_path, record=True, direct_url=None):
+    """A site-packages with mycat 0.1.37 installed, as a wheel install leaves it."""
+    site_dir = tmp_path / "site-packages"
+    package = site_dir / "mycat"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    info = site_dir / "mycat-0.1.37.dist-info"
+    info.mkdir()
+    (info / "METADATA").write_text("Metadata-Version: 2.1\nName: mycat\nVersion: 0.1.37\n", encoding="utf-8")
+    if record:
+        (info / "RECORD").write_text("mycat/__init__.py,,\nmycat-0.1.37.dist-info/METADATA,,\n", encoding="utf-8")
+    if direct_url is not None:
+        (info / "direct_url.json").write_text(json.dumps(direct_url), encoding="utf-8")
+    return site_dir, importlib.metadata.Distribution.at(info)
+
+
+def use_site(monkeypatch, tmp_path, dist, package, venv=True):
+    prefix = tmp_path / "prefix"
+    prefix.mkdir(exist_ok=True)
+    monkeypatch.setattr(updater, "package_dir", lambda: package)
+    monkeypatch.setattr(updater, "installed_distribution", lambda: dist)
+    monkeypatch.setattr(updater.sys, "prefix", str(prefix))
+    monkeypatch.setattr(updater.sys, "base_prefix", str(tmp_path / "base") if venv else str(prefix))
+    return prefix
+
+
+def test_package_kind_is_pip_for_a_wheel_install(tmp_path, monkeypatch):
+    site_dir, dist = fake_site(tmp_path)
+    use_site(monkeypatch, tmp_path, dist, site_dir / "mycat")
+    assert updater.package_kind() == "pip"
+
+
+def test_install_kind_asks_package_kind_when_not_frozen(monkeypatch):
+    monkeypatch.delenv("FLATPAK_ID", raising=False)
+    monkeypatch.setattr(updater, "package_kind", lambda: "pipx")
+    assert updater.install_kind() == "pipx"
+
+
+def test_package_kind_is_pipx_or_uvtool_by_their_venv_marker(tmp_path, monkeypatch):
+    site_dir, dist = fake_site(tmp_path)
+    prefix = use_site(monkeypatch, tmp_path, dist, site_dir / "mycat")
+    (prefix / "uv-receipt.toml").write_text("[tool]\n", encoding="utf-8")
+    assert updater.package_kind() == "uvtool"
+    (prefix / "pipx_metadata.json").write_text("{}", encoding="utf-8")
+    assert updater.package_kind() == "pipx"
+
+
+def test_package_kind_is_source_in_a_git_checkout(tmp_path, monkeypatch):
+    site_dir, dist = fake_site(tmp_path)
+    (site_dir / ".git").mkdir()
+    use_site(monkeypatch, tmp_path, dist, site_dir / "mycat")
+    assert updater.package_kind() == "source"
+
+
+def test_package_kind_is_source_without_a_distribution(tmp_path, monkeypatch):
+    site_dir, dist = fake_site(tmp_path)
+    use_site(monkeypatch, tmp_path, None, site_dir / "mycat")
+    assert updater.package_kind() == "source"
+
+
+def test_package_kind_is_source_when_the_dist_is_another_copy(tmp_path, monkeypatch):
+    # A checkout run while another mycat is pip-installed elsewhere.
+    site_dir, dist = fake_site(tmp_path)
+    checkout = tmp_path / "checkout" / "mycat"
+    checkout.mkdir(parents=True)
+    (checkout / "__init__.py").write_text("", encoding="utf-8")
+    use_site(monkeypatch, tmp_path, dist, checkout)
+    assert updater.package_kind() == "source"
+
+
+def test_package_kind_is_source_when_the_dist_lists_no_files(tmp_path, monkeypatch):
+    site_dir, dist = fake_site(tmp_path, record=False)
+    use_site(monkeypatch, tmp_path, dist, site_dir / "mycat")
+    assert updater.package_kind() == "source"
+
+
+@pytest.mark.parametrize(
+    "direct_url",
+    [
+        {"url": "file:///home/olya/myCat", "dir_info": {"editable": True}},
+        {"url": "file:///home/olya/myCat", "dir_info": {}},
+    ],
+)
+def test_package_kind_is_source_for_a_local_folder_install(tmp_path, monkeypatch, direct_url):
+    site_dir, dist = fake_site(tmp_path, direct_url=direct_url)
+    use_site(monkeypatch, tmp_path, dist, site_dir / "mycat")
+    assert updater.package_kind() == "source"
+
+
+def test_package_kind_is_pip_for_a_wheel_from_an_index_url(tmp_path, monkeypatch):
+    direct_url = {"url": "https://files.example.com/mycat-0.1.37-py3-none-any.whl", "archive_info": {}}
+    site_dir, dist = fake_site(tmp_path, direct_url=direct_url)
+    use_site(monkeypatch, tmp_path, dist, site_dir / "mycat")
+    assert updater.package_kind() == "pip"
+
+
+def pip_env(monkeypatch, tmp_path, venv=True, user_site=None, pip=True):
+    """A writable site-packages and an interpreter with pip, in a venv or not."""
+    site_dir = tmp_path / "site-packages"
+    site_dir.mkdir(exist_ok=True)
+    stdlib = tmp_path / "stdlib"
+    stdlib.mkdir(exist_ok=True)
+    prefix = str(tmp_path / "prefix")
+    monkeypatch.setattr(updater.sys, "prefix", prefix)
+    monkeypatch.setattr(updater.sys, "base_prefix", str(tmp_path / "base") if venv else prefix)
+    monkeypatch.setattr(updater.sys, "executable", "/home/olya/.venv/bin/python")
+    monkeypatch.setattr(updater.sysconfig, "get_path", lambda name: str(stdlib))
+    monkeypatch.setattr(updater.site, "getusersitepackages", lambda: str(user_site or tmp_path / "user-site"))
+    monkeypatch.setattr(updater, "pip_available", lambda: pip)
+    return site_dir, stdlib
+
+
+def test_upgrade_command_for_pip_pins_the_announced_version(tmp_path, monkeypatch):
+    site_dir, stdlib = pip_env(monkeypatch, tmp_path)
+    assert updater.upgrade_command("pip", "v0.1.38", site_dir) == [
+        "/home/olya/.venv/bin/python", "-m", "pip", "install", "--upgrade", "mycat==0.1.38",
+    ]
+    # Nothing was left behind by the writability probe.
+    assert list(site_dir.iterdir()) == []
+
+
+def test_upgrade_command_for_pip_in_the_user_site_adds_user(tmp_path, monkeypatch):
+    site_dir, stdlib = pip_env(monkeypatch, tmp_path, venv=False, user_site=tmp_path / "site-packages")
+    assert updater.upgrade_command("pip", "0.1.38", site_dir) == [
+        "/home/olya/.venv/bin/python", "-m", "pip", "install", "--user", "--upgrade", "mycat==0.1.38",
+    ]
+
+
+def test_upgrade_command_for_pip_outside_the_user_site_has_no_user(tmp_path, monkeypatch):
+    site_dir, stdlib = pip_env(monkeypatch, tmp_path, venv=False)
+    assert "--user" not in updater.upgrade_command("pip", "0.1.38", site_dir)
+
+
+def test_upgrade_command_is_empty_on_an_externally_managed_python(tmp_path, monkeypatch):
+    site_dir, stdlib = pip_env(monkeypatch, tmp_path, venv=False, user_site=tmp_path / "site-packages")
+    (stdlib / "EXTERNALLY-MANAGED").write_text("[externally-managed]\n", encoding="utf-8")
+    assert updater.externally_managed()
+    assert updater.upgrade_command("pip", "0.1.38", site_dir) == []
+
+
+def test_marker_does_not_matter_inside_a_venv(tmp_path, monkeypatch):
+    site_dir, stdlib = pip_env(monkeypatch, tmp_path, venv=True)
+    (stdlib / "EXTERNALLY-MANAGED").write_text("[externally-managed]\n", encoding="utf-8")
+    assert not updater.externally_managed()
+    assert updater.upgrade_command("pip", "0.1.38", site_dir)
+
+
+def test_upgrade_command_is_empty_without_pip_or_for_an_odd_version(tmp_path, monkeypatch):
+    site_dir, stdlib = pip_env(monkeypatch, tmp_path, pip=False)
+    assert updater.upgrade_command("pip", "0.1.38", site_dir) == []
+    monkeypatch.setattr(updater, "pip_available", lambda: True)
+    for latest in ("", "latest", "0.1.38 --index-url=https://example.com", "0.1.38;rm"):
+        assert updater.upgrade_command("pip", latest, site_dir) == []
+
+
+def test_upgrade_command_is_empty_when_the_site_is_not_writable(tmp_path, monkeypatch):
+    site_dir, stdlib = pip_env(monkeypatch, tmp_path)
+
+    def refuse(path, mode="r", *args, **kwargs):
+        raise PermissionError(13, "Permission denied", path)
+
+    monkeypatch.setattr("builtins.open", refuse)
+    assert updater.upgrade_command("pip", "0.1.38", site_dir) == []
+    monkeypatch.setattr(updater.shutil, "which", lambda name: "/home/olya/.local/bin/" + name)
+    assert updater.upgrade_command("pipx", "0.1.38", site_dir) == []
+
+
+def test_upgrade_command_for_pipx_and_uv_needs_their_tool(tmp_path, monkeypatch):
+    site_dir, stdlib = pip_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(updater.shutil, "which", lambda name: "/home/olya/.local/bin/" + name)
+    assert updater.upgrade_command("pipx", "0.1.38", site_dir) == ["/home/olya/.local/bin/pipx", "upgrade", "mycat"]
+    assert updater.upgrade_command("uvtool", "0.1.38", site_dir) == [
+        "/home/olya/.local/bin/uv", "tool", "upgrade", "mycat",
+    ]
+    monkeypatch.setattr(updater.shutil, "which", lambda name: None)
+    assert updater.upgrade_command("pipx", "0.1.38", site_dir) == []
+    assert updater.upgrade_command("uvtool", "0.1.38", site_dir) == []
+
+
+def test_upgrade_command_is_empty_for_other_kinds(tmp_path, monkeypatch):
+    site_dir, stdlib = pip_env(monkeypatch, tmp_path)
+    for kind in ("source", "deb", "windows", "flatpak"):
+        assert updater.upgrade_command(kind, "0.1.38", site_dir) == []
+
+
+def test_package_kinds_have_hints_and_no_download():
+    assert updater.update_hint("pipx") == "pipx upgrade mycat"
+    assert updater.update_hint("uvtool") == "uv tool upgrade mycat"
+    assert updater.update_hint("pip") == "pip install --upgrade mycat"
+    for kind in updater.PACKAGE_KINDS:
+        assert not updater.can_self_update(kind)
+        assert updater.asset_name(kind) == ""
+
+
+def test_pypi_has_version_reads_the_release_json_without_a_token(monkeypatch):
+    seen = []
+    body = json.dumps({"info": {"version": "0.1.38"}, "urls": [{"filename": "mycat-0.1.38.tar.gz"}]}).encode()
+
+    def urlopen(request, timeout):
+        seen.append(request)
+        return FakeResponse(body, len(body))
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    assert updater.pypi_has_version("v0.1.38")
+    (request,) = seen
+    assert request.full_url == "https://pypi.org/pypi/mycat/0.1.38/json"
+    assert request.get_header("Authorization") is None
+
+
+def test_pypi_has_version_is_false_when_missing_empty_or_offline(monkeypatch):
+    def missing(request, timeout):
+        raise urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(urllib.request, "urlopen", missing)
+    assert not updater.pypi_has_version("0.1.38")
+    body = json.dumps({"info": {}, "urls": []}).encode()
+    monkeypatch.setattr(urllib.request, "urlopen", lambda request, timeout: FakeResponse(body, len(body)))
+    assert not updater.pypi_has_version("0.1.38")
+
+    def offline(request, timeout):
+        raise urllib.error.URLError("no network")
+
+    monkeypatch.setattr(urllib.request, "urlopen", offline)
+    assert not updater.pypi_has_version("0.1.38")
+    assert not updater.pypi_has_version("../../evil")
+
+
+def test_run_package_upgrade_runs_quietly_without_stdin(monkeypatch):
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, stdout="Successfully installed mycat-0.1.38\n", stderr="")
+
+    monkeypatch.setattr(updater.subprocess, "run", run)
+    updater.run_package_upgrade(["/usr/bin/python3", "-m", "pip", "install", "--upgrade", "mycat==0.1.38"])
+    ((command, kwargs),) = calls
+    assert command[-1] == "mycat==0.1.38"
+    assert kwargs["stdin"] is subprocess.DEVNULL
+    assert kwargs["capture_output"] is True and kwargs["encoding"] == "utf-8"
+    assert kwargs["timeout"] == updater.UPGRADE_TIMEOUT
+    assert "shell" not in kwargs
+
+
+def test_run_package_upgrade_reports_the_end_of_stderr(monkeypatch):
+    stderr = "".join(f"line {number}\n" for number in range(40)) + "ERROR: No matching distribution found\n"
+    monkeypatch.setattr(
+        updater.subprocess, "run", lambda command, **kwargs: subprocess.CompletedProcess(command, 1, "", stderr)
+    )
+    with pytest.raises(updater.UpgradeFailed) as error:
+        updater.run_package_upgrade(["pip"])
+    message = str(error.value)
+    assert message.endswith("ERROR: No matching distribution found")
+    assert "line 26" in message and "line 25" not in message
+
+
+def test_run_package_upgrade_reports_timeout_and_missing_tool(monkeypatch):
+    def slow(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr(updater.subprocess, "run", slow)
+    with pytest.raises(updater.UpgradeFailed) as error:
+        updater.run_package_upgrade(["/home/olya/.local/bin/pipx", "upgrade", "mycat"])
+    # The UI translates the sentence from the reason and its details.
+    assert error.value.reason == "timeout"
+    assert error.value.details == {"tool": "pipx", "seconds": updater.UPGRADE_TIMEOUT}
+
+    def missing(command, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory", command[0])
+
+    monkeypatch.setattr(updater.subprocess, "run", missing)
+    with pytest.raises(updater.UpgradeFailed) as error:
+        updater.run_package_upgrade(["/home/olya/.local/bin/pipx", "upgrade", "mycat"])
+    assert error.value.reason == "output"
+
+
+def test_run_package_upgrade_silent_failure_carries_tool_and_code(monkeypatch):
+    monkeypatch.setattr(
+        updater.subprocess, "run", lambda command, **kwargs: subprocess.CompletedProcess(command, 3, "", "\n")
+    )
+    with pytest.raises(updater.UpgradeFailed) as error:
+        updater.run_package_upgrade(["/usr/bin/python3", "-m", "pip", "install", "--upgrade", "mycat==0.1.38"])
+    assert error.value.reason == "exit"
+    assert error.value.details == {"tool": "pip", "code": 3}
+
+
+def test_tool_name_names_pip_pipx_and_uv():
+    assert updater.tool_name(["C:\\Python\\python.exe", "-m", "pip", "install"]) == "pip"
+    assert updater.tool_name(["C:\\Users\\Ольга\\pipx.EXE", "upgrade", "mycat"]) == "pipx"
+    assert updater.tool_name(["/home/olya/.local/bin/uv", "tool", "upgrade", "mycat"]) == "uv"
+
+
+def test_check_upgraded_wants_the_announced_version_on_disk(monkeypatch):
+    # pipx and uv tool exit 0 when their view of PyPI has nothing newer yet.
+    monkeypatch.setattr(updater.importlib.metadata, "version", lambda name: "0.1.38")
+    with pytest.raises(updater.UpgradeFailed) as error:
+        updater.check_upgraded(["/usr/bin/pipx", "upgrade", "mycat"], "v0.1.39")
+    assert error.value.reason == "stale"
+    assert error.value.details == {"tool": "pipx", "latest": "0.1.39"}
+    updater.check_upgraded(["/usr/bin/pipx", "upgrade", "mycat"], "v0.1.38")
+
+    def missing(name):
+        raise importlib.metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(updater.importlib.metadata, "version", missing)
+    assert updater.installed_version() == ""
+    with pytest.raises(updater.UpgradeFailed):
+        updater.check_upgraded(["/usr/bin/uv", "tool", "upgrade", "mycat"], "0.1.38")
+
+
+def test_relaunch_command_reuses_the_console_script(tmp_path):
+    script = tmp_path / "Ольга bin" / "mycat"
+    script.parent.mkdir()
+    script.write_text("", encoding="utf-8")
+    argv = [str(script), "--image", "/home/Ольга/my cat.zip", "--debug"]
+    assert updater.relaunch_command(argv, "/usr/bin/python3") == argv
+
+
+def test_relaunch_command_finds_the_windows_launcher_exe(tmp_path):
+    launcher = tmp_path / "Scripts" / "mycat.exe"
+    launcher.parent.mkdir()
+    launcher.write_text("", encoding="utf-8")
+    argv = [str(tmp_path / "Scripts" / "mycat"), "--pos", "10", "20"]
+    assert updater.relaunch_command(argv, "python.exe") == [str(launcher), "--pos", "10", "20"]
+
+
+def test_relaunch_command_falls_back_to_the_module(tmp_path):
+    argv = [str(tmp_path / "site-packages" / "mycat" / "__main__.py"), "--ollama"]
+    assert updater.relaunch_command(argv, "/opt/venv/bin/python") == ["/opt/venv/bin/python", "-m", "mycat", "--ollama"]
+
+
+def test_relaunch_after_exit_waits_for_the_pid_then_runs_the_command(monkeypatch):
+    launched = []
+
+    class Recorder:
+        def __init__(self, args, **kwargs):
+            launched.append((args, kwargs))
+
+    monkeypatch.setattr(updater.subprocess, "Popen", Recorder)
+    monkeypatch.setattr(updater.os, "getpid", lambda: 31337)
+    command = ["/home/olya/.local/bin/mycat", "--image", "/home/Ольга/a cat's $HOME.zip"]
+    updater.relaunch_after_exit(command)
+    ((args, kwargs),) = launched
+    assert args == ["/bin/sh", "-c", updater.PACKAGE_RELAUNCH_SCRIPT, "mycat-relaunch", *command]
+    assert kwargs["start_new_session"] is True
+    assert kwargs["env"]["PID"] == "31337"
+    script = updater.PACKAGE_RELAUNCH_SCRIPT
+    assert script.isascii() and script.index('kill -0 "$PID"') < script.index('exec "$@"')
+
+
+def test_relaunch_after_exit_reports_a_helper_that_cannot_start(monkeypatch):
+    def refuse(*args, **kwargs):
+        raise BlockingIOError(11, "Resource temporarily unavailable")
+
+    monkeypatch.setattr(updater.subprocess, "Popen", refuse)
+    with pytest.raises(updater.RelaunchFailed):
+        updater.relaunch_after_exit(["/usr/bin/mycat"])
+
+
+def test_windows_package_script_is_ascii_waits_then_upgrades_then_relaunches():
+    script = updater.windows_package_script()
+    assert script.isascii()
+    assert script.endswith("\r\n") and "\n" not in script.replace("\r\n", "")
+    assert "enabledelayedexpansion" not in script.lower()
+    lines = script.split("\r\n")
+    wait = lines.index('tasklist /FI "PID eq %PID%" 2>nul | find "%PID%" >nul')
+    # "call" so a .bat or .cmd shim of pipx or uv returns to the helper.
+    tool = lines.index('call "%TOOL%" %TOOLARGS% >>"%LOG%" 2>&1')
+    verify = lines.index(f'"%PY%" -c "{updater.WINDOWS_VERSION_CODE}" >>"%LOG%" 2>&1')
+    assert lines[tool + 1] == lines[verify + 1] == "if errorlevel 1 goto failed"
+    ok = lines.index(f'echo {updater.SWAP_OK}> "%RESULT%"')
+    failed = lines.index(f'echo {updater.UPGRADE_FAILED}> "%RESULT%"')
+    launch = lines.index(f'"%PY%" -c "{updater.WINDOWS_RELAUNCH_CODE}" >>"%LOG%" 2>&1')
+    assert wait < tool < verify < ok < failed < launch
+    # The Python lines have no double quote or percent sign to break the cmd line.
+    for code in (updater.WINDOWS_RELAUNCH_CODE, updater.WINDOWS_VERSION_CODE):
+        assert '"' not in code and "%" not in code
+
+
+def test_windows_version_code_fails_unless_the_version_is_installed(monkeypatch):
+    monkeypatch.setattr(updater.importlib.metadata, "version", lambda name: "0.1.38")
+    for wanted, code in (("0.1.38", 0), ("0.1.39", 1)):
+        monkeypatch.setenv("VERSION", wanted)
+        with pytest.raises(SystemExit) as stop:
+            exec(updater.WINDOWS_VERSION_CODE, {})  # noqa: S102 - our own constant
+        assert int(stop.value.code) == code
+
+
+def test_windows_package_env_carries_unicode_paths_and_the_relaunch_as_json():
+    environ = {"PATH": "C:\\Windows", "PID": "stale"}
+    relaunch = ["C:\\" + UNICODE_DIR + "\\Scripts\\mycat.exe", "--image", "C:\\" + UNICODE_DIR + "\\cat.zip"]
+    env = updater.windows_package_env(
+        ["C:\\" + UNICODE_DIR + "\\python.exe", "-m", "pip", "install", "--user", "--upgrade", "mycat==0.1.38"],
+        relaunch,
+        "C:\\" + UNICODE_DIR + "\\pythonw.exe",
+        "C:\\Temp\\Ольга\\mycat-update.log",
+        4242,
+        "C:\\Temp\\Ольга\\mycat-update.result",
+        "v0.1.38",
+        environ,
+    )
+    assert env["VERSION"] == "0.1.38"
+    assert env["TOOL"] == "C:\\" + UNICODE_DIR + "\\python.exe"
+    assert env["TOOLARGS"] == "-m pip install --user --upgrade mycat==0.1.38"
+    assert json.loads(env["RELAUNCH"]) == relaunch
+    assert env["PY"] == "C:\\" + UNICODE_DIR + "\\pythonw.exe"
+    assert env["PID"] == "4242" and env["PATH"] == "C:\\Windows"
+    assert environ["PID"] == "stale"  # the caller's dict is left alone
+
+
+def test_windows_package_env_refuses_arguments_cmd_would_parse():
+    for argument in ("mycat==0.1.38&calc", "a b", '"x"', "100%"):
+        with pytest.raises(ValueError):
+            updater.windows_package_env(["pip.exe", argument], [], "py", "log", 1, "result", "0.1.38", {})
+    for version in ("0.1.38&calc", "", "1 2"):
+        with pytest.raises(ValueError):
+            updater.windows_package_env(["pip.exe", "-m", "pip"], [], "py", "log", 1, "result", version, {})
+
+
+def test_apply_package_windows_writes_the_helper_and_starts_it(tmp_path, monkeypatch):
+    monkeypatch.setattr(updater.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(updater.os, "getpid", lambda: 31337)
+    monkeypatch.setattr(updater.sys, "executable", str(tmp_path / "python.exe"))
+    monkeypatch.setattr(updater.sys, "argv", [str(tmp_path / "mycat" / "__main__.py"), "--debug"])
+    (tmp_path / "mycat-update.result").write_text("swap-failed", encoding="ascii")
+    launched = []
+
+    class Recorder:
+        def __init__(self, args, **kwargs):
+            launched.append((args, kwargs))
+
+    monkeypatch.setattr(updater.subprocess, "Popen", Recorder)
+    updater.apply_package_windows(
+        [str(tmp_path / "python.exe"), "-m", "pip", "install", "--upgrade", "mycat==0.1.38"], "0.1.38"
+    )
+    script = tmp_path / "mycat-update.bat"
+    assert script.read_bytes() == updater.windows_package_script().encode("ascii")
+    ((args, kwargs),) = launched
+    assert args == ["cmd", "/c", str(script)]
+    assert kwargs["creationflags"] == updater.CREATE_NO_WINDOW
+    env = kwargs["env"]
+    assert env["PID"] == "31337" and env["VERSION"] == "0.1.38"
+    assert json.loads(env["RELAUNCH"]) == [str(tmp_path / "python.exe"), "-m", "mycat", "--debug"]
+    # The stale result is gone; the helper writes this run's outcome.
+    assert updater.take_update_result() == ""
+
+
+def test_windowless_python_prefers_pythonw(tmp_path):
+    python = tmp_path / "python.exe"
+    assert updater.windowless_python(str(python)) == str(python)
+    (tmp_path / "pythonw.exe").write_text("", encoding="utf-8")
+    assert updater.windowless_python(str(python)) == str(tmp_path / "pythonw.exe")
+
+
+def test_pip_update_messages_are_in_every_catalog():
+    # Shown by on_update_checked, install_update and the startup report in main.py.
+    from mycat import i18n
+
+    texts = [
+        "Update available. Click Update to install it and restart.",
+        "Installing update…",
+        "Version {latest} is not on PyPI yet. Try again later.",
+        "The new version could not be installed, so the old one was started again.",
+        "{tool} did not finish in {seconds} seconds.",
+        "{tool} failed with exit code {code}.",
+        "{tool} finished, but version {latest} is not installed yet. Try again later.",
+    ]
+    for code in ("en", "ru", "zh", "ko"):
+        for text in texts:
+            translated = i18n.CATALOGS[code][text]
+            assert "\u2014" not in translated and "\u00b7" not in translated
+            for placeholder in ("{latest}", "{tool}", "{seconds}", "{code}"):
+                assert (placeholder in text) == (placeholder in translated)
+
+
+def test_busy_dialog_ignores_escape_and_close_until_the_work_ends(qapp):
+    from PySide6 import QtCore, QtGui
+
+    from mycat.main import BusyProgressDialog
+
+    dialog = BusyProgressDialog("Installing update…")
+    dialog.show()
+    escape = QtGui.QKeyEvent(
+        QtCore.QEvent.Type.KeyPress, QtCore.Qt.Key.Key_Escape, QtCore.Qt.KeyboardModifier.NoModifier
+    )
+    qapp.sendEvent(dialog, escape)
+    dialog.reject()
+    assert not dialog.close()
+    assert dialog.isVisible()
+    dialog.finish_busy()
+    assert not dialog.isVisible()

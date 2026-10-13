@@ -2,10 +2,12 @@
 """In-app self-update for the prebuilt binaries.
 
 Downloads this platform's asset from the latest GitHub release, swaps it in, and
-relaunches. Source / pip installs are never modified — they only learn that a
-newer version exists (the caller shows a message and a link). The asset is
-fetched over HTTPS from the versioned download URL listed in the release JSON
-the update check read, and its sha256 must match the digest GitHub lists there.
+relaunches. The asset is fetched over HTTPS from the versioned download URL
+listed in the release JSON the update check read, and its sha256 must match the
+digest GitHub lists there. A PyPI install (pip, pipx or uv tool) is upgraded by
+its own tool, pinned for pip to the announced version, which the check finds on
+PyPI first. A git checkout or an editable install is never modified: it only
+learns that a newer version exists (the caller shows a message and a link).
 
 The GUI flow (menu action, confirm dialog, progress, relaunch) lives in
 ``main.py``; this module is pure logic so it stays testable.
@@ -14,15 +16,23 @@ The GUI flow (menu action, confirm dialog, progress, relaunch) lives in
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
+import importlib.util
+import json
 import logging
 import ntpath
 import os
 import platform
 import re
+import shutil
+import site
 import stat
 import subprocess
 import sys
+import sysconfig
 import tempfile
+import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -50,9 +60,10 @@ UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall"
 def install_kind() -> str:
     """How this instance was installed.
 
-    One of ``source`` (running from a checkout or pip — nothing to swap),
-    ``flatpak``, ``snap``, ``appimage``, ``deb``, ``macos``, ``winget`` (the
-    Windows exe installed by WinGet) or ``windows``.
+    One of ``source`` (a git checkout or an editable install, nothing to
+    update), ``pip``, ``pipx`` and ``uvtool`` (installed from PyPI, see
+    ``package_kind``), ``flatpak``, ``snap``, ``appimage``, ``deb``, ``macos``,
+    ``winget`` (the Windows exe installed by WinGet) or ``windows``.
     """
     # Flatpak runs the package from source inside its sandbox, so it is not
     # frozen. flatpak sets FLATPAK_ID for every app it runs, and processes
@@ -61,7 +72,7 @@ def install_kind() -> str:
     if os.environ.get("FLATPAK_ID") == FLATPAK_APP_ID:
         return "flatpak"
     if not getattr(sys, "frozen", False):
-        return "source"
+        return package_kind()
     if sys.platform == "darwin":
         return "macos"
     if sys.platform.startswith("win"):
@@ -81,6 +92,164 @@ def install_kind() -> str:
     if runs_from_appimage():
         return "appimage"
     return "deb"
+
+
+# The unfrozen kinds installed from PyPI, which their own tool upgrades.
+PACKAGE_KINDS = ("pip", "pipx", "uvtool")
+
+PYPI_RELEASE_JSON = "https://pypi.org/pypi/mycat/{version}/json"
+# A release's JSON is a few KB; never read more than this from it.
+PYPI_JSON_LIMIT = 1 << 20
+
+# A version as it may go into a pip requirement and the Windows helper's
+# command line: digits first, then only letters, digits, ".", "+" and "-".
+VERSION_RE = re.compile(r"[0-9][0-9A-Za-z.+-]*")
+
+
+def package_dir() -> Path:
+    """The folder of the running mycat package."""
+    return Path(__file__).resolve().parent
+
+
+def installed_distribution():
+    """The installed ``mycat`` distribution importlib.metadata finds, or None."""
+    try:
+        return importlib.metadata.distribution("mycat")
+    except Exception:  # noqa: BLE001 - no or unreadable metadata counts as none
+        return None
+
+
+def distribution_owns(dist, init_file: Path) -> bool:
+    """Whether the files ``dist`` installed include ``init_file``, the running
+    mycat/__init__.py. They do not when the code runs from a checkout while
+    another mycat is installed, or when the dist lists no files at all."""
+    try:
+        files = dist.files or []
+        for entry in files:
+            if str(entry).replace("\\", "/") == "mycat/__init__.py":
+                return Path(entry.locate()).resolve() == init_file.resolve()
+    except Exception:  # noqa: BLE001 - broken metadata is not an install we own
+        logger.debug("mycat distribution files unreadable", exc_info=True)
+    return False
+
+
+def installed_from_directory(dist) -> bool:
+    """Whether ``dist`` came from a local folder: its PEP 610 direct_url.json
+    names a ``dir_info`` (``pip install -e .`` or ``pip install .``)."""
+    try:
+        direct_url = json.loads(dist.read_text("direct_url.json") or "{}")
+    except (ValueError, OSError):
+        return False
+    return isinstance(direct_url, dict) and "dir_info" in direct_url
+
+
+def package_kind() -> str:
+    """How an unfrozen mycat outside its Flatpak was installed.
+
+    ``source`` for a git checkout (a .git next to the package, tested first
+    because it is the cheapest) and for any code that is not a PyPI install:
+    no mycat distribution, a distribution whose files are not the running
+    package, or one installed from a local folder. Otherwise ``pipx`` or
+    ``uvtool`` when the environment is one of their tool venvs (they leave
+    pipx_metadata.json or uv-receipt.toml in it), else ``pip``."""
+    folder = package_dir()
+    if (folder.parent / ".git").exists():
+        return "source"
+    dist = installed_distribution()
+    if dist is None or not distribution_owns(dist, folder / "__init__.py") or installed_from_directory(dist):
+        return "source"
+    prefix = Path(sys.prefix)
+    if (prefix / "pipx_metadata.json").is_file():
+        return "pipx"
+    if (prefix / "uv-receipt.toml").is_file():
+        return "uvtool"
+    return "pip"
+
+
+def in_virtualenv() -> bool:
+    """Whether this interpreter runs in a venv (the test pip itself uses)."""
+    return sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+
+
+def externally_managed() -> bool:
+    """Whether pip refuses to install here (PEP 668): outside a venv, the
+    interpreter's stdlib folder holds an EXTERNALLY-MANAGED marker, as on a
+    Debian or Ubuntu system Python. pip refuses ``--user`` there too."""
+    if in_virtualenv():
+        return False
+    stdlib = sysconfig.get_path("stdlib") or ""
+    return bool(stdlib) and os.path.isfile(os.path.join(stdlib, "EXTERNALLY-MANAGED"))
+
+
+def in_user_site(site_dir) -> bool:
+    """Whether ``site_dir`` is this user's site-packages (``pip --user``)."""
+    if in_virtualenv():
+        return False
+    try:
+        user_site = site.getusersitepackages()
+    except Exception:  # noqa: BLE001 - no user site on this interpreter
+        return False
+    return bool(user_site) and Path(site_dir).resolve() == Path(user_site).resolve()
+
+
+def pip_available() -> bool:
+    """Whether this interpreter has pip (a venv uv created has none)."""
+    try:
+        return importlib.util.find_spec("pip") is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def upgrade_command(kind: str, latest: str, site_dir=None) -> list:
+    """The command that upgrades a PyPI install of ``kind`` to ``latest``, or
+    [] when there is no safe one and the dialog shows the hint instead.
+
+    pipx and uv tool upgrade their own venv, when their tool is on PATH. pip
+    installs exactly ``mycat==<latest>`` with this interpreter, ``--user`` when
+    the package lives in the user site. There is no command for a PEP 668
+    system Python (no ``--break-system-packages`` from a button), without pip,
+    or when ``site_dir`` (default: the folder holding the running package) does
+    not take new files, as with a root-owned /usr/local: pip would then quietly
+    install a second copy in the user site. The folder is tested by creating a
+    file in it (``staging_writable``), as os.access is no answer on Windows."""
+    site_dir = str(package_dir().parent if site_dir is None else site_dir)
+    if kind == "pipx":
+        tool = shutil.which("pipx")
+        command = [tool, "upgrade", "mycat"] if tool else []
+    elif kind == "uvtool":
+        tool = shutil.which("uv")
+        command = [tool, "tool", "upgrade", "mycat"] if tool else []
+    elif kind == "pip":
+        version = latest.strip().lstrip("vV")
+        if not VERSION_RE.fullmatch(version) or not pip_available() or externally_managed():
+            return []
+        command = [sys.executable, "-m", "pip", "install", "--upgrade", f"mycat=={version}"]
+        if in_user_site(site_dir):
+            command.insert(4, "--user")
+    else:
+        return []
+    if command and not staging_writable(os.path.join(site_dir, "mycat")):
+        return []
+    return command
+
+
+def pypi_has_version(latest: str, timeout: float = 15) -> bool:
+    """Whether PyPI already serves files for mycat ``latest``. The GitHub tag
+    comes first and the PyPI upload a moment later, so a pinned pip install
+    would fail in between. Asked without the GitHub token; any error (not
+    there yet, offline) is a no."""
+    version = latest.strip().lstrip("vV")
+    if not VERSION_RE.fullmatch(version):
+        return False
+    url = PYPI_RELEASE_JSON.format(version=urllib.parse.quote(version, safe=""))
+    request = urllib.request.Request(url, headers={"User-Agent": "mycat", "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - fixed HTTPS PyPI URL
+            data = json.loads(response.read(PYPI_JSON_LIMIT).decode("utf-8"))
+    except (OSError, ValueError) as error:
+        logger.info("mycat %s not found on PyPI: %s", version, error)
+        return False
+    return isinstance(data, dict) and bool(data.get("urls"))
 
 
 def runs_from_appimage(environ=None, executable=None) -> bool:
@@ -189,8 +358,9 @@ def winget_entry_matches(winreg, uninstall, name: str, targets: set, folders: se
 def can_self_update(kind: str) -> bool:
     """Kinds that download + swap + relaunch on their own: the Windows exe, the
     macOS .app and the AppImage (on x86_64, see ``appimage_updatable``).
-    pip/deb/snap/flatpak/WinGet installs are only *told* an update exists
-    (their package manager / a fresh download should apply it)."""
+    deb/snap/flatpak/WinGet installs and checkouts are only *told* an update
+    exists (their package manager / a fresh download should apply it); PyPI
+    installs run ``upgrade_command`` instead."""
     return kind in ("macos", "windows", "appimage")
 
 
@@ -219,6 +389,12 @@ def update_hint(kind: str) -> str:
         return "Download the new .deb from the releases page and install it."
     if kind == "appimage":
         return "Download the new AppImage from the releases page."
+    if kind == "pipx":
+        return "pipx upgrade mycat"
+    if kind == "uvtool":
+        return "uv tool upgrade mycat"
+    if kind == "pip":
+        return "pip install --upgrade mycat"
     if (Path(__file__).resolve().parent.parent / ".git").is_dir():
         return "git pull"
     return "pip install --upgrade mycat"
@@ -399,6 +575,8 @@ def staging_writable(path: str) -> bool:
 # once on the next start.
 SWAP_OK = "ok"
 SWAP_FAILED = "swap-failed"
+# What the Windows package helper writes when pip, pipx or uv failed.
+UPGRADE_FAILED = "upgrade-failed"
 
 
 def update_result_path() -> str:
@@ -726,8 +904,278 @@ def apply_appimage(downloaded: str) -> None:
     logger.info("AppImage replaced, relaunch helper started for %s", appimage)
 
 
+class UpgradeFailed(Exception):
+    """pip, pipx or uv could not upgrade mycat; the installed version is
+    whatever the tool left. ``reason`` says what went wrong: ``output`` (the
+    message is the end of what the tool printed, or why it could not start),
+    ``timeout``, ``exit`` (a non-zero exit with no output) or ``stale`` (the
+    tool succeeded but the announced version is not installed). ``details``
+    hold the values the UI puts in its translated sentence for the last three
+    (``tool``, ``seconds``, ``code``, ``latest``); the message itself is English
+    for the log."""
+
+    def __init__(self, message: str, reason: str = "output", **details) -> None:
+        super().__init__(message)
+        self.reason = reason
+        self.details = details
+
+
+UPGRADE_TIMEOUT = 900
+UPGRADE_TAIL_LINES = 15
+
+
+def output_tail(text: str, lines: int = UPGRADE_TAIL_LINES) -> str:
+    """The last ``lines`` non-blank lines of a tool's output."""
+    kept = [line.rstrip() for line in (text or "").splitlines() if line.strip()]
+    return "\n".join(kept[-lines:])
+
+
+def run_package_upgrade(command: list, timeout: float = UPGRADE_TIMEOUT) -> None:
+    """Run ``command`` (from ``upgrade_command``) and wait for it, with no
+    console window on Windows and no stdin, so a tool that wants to ask
+    something fails instead of hanging. A non-zero exit, a timeout or a tool
+    that cannot start raise UpgradeFailed with the tool's last lines."""
+    try:
+        completed = subprocess.run(  # noqa: S603 - a fixed tool command, no shell
+            command,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            creationflags=CREATE_NO_WINDOW if sys.platform.startswith("win") else 0,
+        )
+    except subprocess.TimeoutExpired as error:
+        tool = tool_name(command)
+        raise UpgradeFailed(
+            f"{tool} did not finish in {int(timeout)} s", "timeout", tool=tool, seconds=int(timeout)
+        ) from error
+    except OSError as error:
+        raise UpgradeFailed(str(error)) from error
+    if completed.returncode != 0:
+        tail = output_tail(completed.stderr) or output_tail(completed.stdout)
+        if tail:
+            raise UpgradeFailed(tail)
+        tool = tool_name(command)
+        raise UpgradeFailed(
+            f"{tool} exited with code {completed.returncode}", "exit", tool=tool, code=completed.returncode
+        )
+    logger.info("package upgrade finished: %s", output_tail(completed.stdout, 3))
+
+
+def tool_name(command: list) -> str:
+    """The name to show for the tool of ``command``: ``pip`` for
+    ``<python> -m pip``, else the program's file name without ``.exe``
+    (ntpath splits at "/" and at "\\", so Windows paths work everywhere)."""
+    if command[1:3] == ["-m", "pip"]:
+        return "pip"
+    name = ntpath.basename(command[0]) if command else ""
+    return name[:-4] if name.lower().endswith(".exe") else name
+
+
+def installed_version() -> str:
+    """The version of the mycat distribution on disk now, read afresh after
+    an upgrade (the import caches are dropped first); "" when unreadable."""
+    importlib.invalidate_caches()
+    try:
+        return importlib.metadata.version("mycat")
+    except Exception:  # noqa: BLE001 - no or unreadable metadata counts as none
+        return ""
+
+
+def check_upgraded(command: list, latest: str) -> None:
+    """Raise UpgradeFailed (``stale``) unless ``latest`` is now installed.
+    pipx and uv tool exit 0 when they find nothing newer, as when their view
+    of PyPI is a few minutes behind the GitHub tag."""
+    version = latest.strip().lstrip("vV")
+    found = installed_version()
+    if found != version:
+        tool = tool_name(command)
+        raise UpgradeFailed(
+            f"{tool} finished, but mycat {found or 'unknown'} is installed, not {version}",
+            "stale",
+            tool=tool,
+            latest=version,
+        )
+
+
+def relaunch_command(argv=None, executable=None) -> list:
+    """The command that starts mycat again the way it was started, with the
+    same options: the console script (``mycat``, ``mycat.exe`` on Windows) when
+    argv[0] is one, else ``<python> -m mycat``."""
+    argv = sys.argv if argv is None else argv
+    executable = sys.executable if executable is None else executable
+    script = argv[0] if argv else ""
+    name = os.path.basename(script).lower()
+    if name in ("mycat", "mycat.exe"):
+        if os.path.isfile(script):
+            return [script, *argv[1:]]
+        if os.path.isfile(script + ".exe"):
+            return [script + ".exe", *argv[1:]]
+    return [executable, "-m", "mycat", *argv[1:]]
+
+
+# The POSIX relaunch helper for a PyPI install: it waits for the old process to
+# exit, so its single-instance lock is free, then runs the relaunch command,
+# which arrives as the script's arguments ("$@") and the PID in the environment.
+PACKAGE_RELAUNCH_SCRIPT = 'while kill -0 "$PID" 2>/dev/null; do sleep 0.2; done; exec "$@"'
+
+
+def relaunch_after_exit(command=None) -> None:
+    """Start the detached helper that runs ``command`` (default:
+    ``relaunch_command()``) once this process has exited. The caller must quit
+    right afterwards. RelaunchFailed when the helper cannot start: the new
+    version is installed, only the restart is missing."""
+    command = relaunch_command() if command is None else command
+    env = dict(os.environ)
+    env["PID"] = str(os.getpid())
+    try:
+        subprocess.Popen(  # noqa: S603
+            ["/bin/sh", "-c", PACKAGE_RELAUNCH_SCRIPT, "mycat-relaunch", *command],
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=env,
+        )
+    except OSError as error:
+        raise RelaunchFailed(f"could not start the relaunch helper: {error}") from error
+    logger.info("package upgraded, relaunch helper started: %s", command)
+
+
+# The relaunch line of the Windows package helper: Python itself starts the
+# command, read as JSON from RELAUNCH, so arguments with any letters, spaces or
+# cmd's special characters arrive intact (a .bat cannot carry a list).
+# 134217728 is CREATE_NO_WINDOW, so the console script opens no window.
+WINDOWS_RELAUNCH_CODE = (
+    "import json, os, subprocess; "
+    "subprocess.Popen(json.loads(os.environ['RELAUNCH']), close_fds=True, creationflags=134217728)"
+)
+
+# The helper's check that the upgrade installed VERSION: exit code 1 otherwise.
+# Like the relaunch code it has no double quote or percent sign.
+WINDOWS_VERSION_CODE = (
+    "import importlib.metadata, os, sys; "
+    "sys.exit(importlib.metadata.version('mycat') != os.environ['VERSION'])"
+)
+
+# What may appear unquoted on the helper's tool line (%TOOLARGS%): only the
+# fixed words upgrade_command builds, never a path.
+SAFE_ARGUMENT_RE = re.compile(r"[A-Za-z0-9._=+-]+")
+
+
+def windows_package_script() -> str:
+    """The Windows package helper batch file: plain ASCII, with no path in it,
+    like ``windows_swapper_script``. pip cannot replace the PySide6 DLLs and
+    .pyd files the running app has loaded, so the upgrade runs only after it
+    has quit.
+
+    It waits for the app's PID to exit, runs the tool (%TOOL% with
+    %TOOLARGS%) with its output in the log, checks through %PY% that %VERSION%
+    is now installed (pipx and uv tool exit 0 when they find nothing newer),
+    writes the outcome to the result file and starts myCat again (the new
+    version, or the old one when the tool failed) through %PY%. The tool runs
+    with ``call``, so a .bat or .cmd shim returns to the helper."""
+    lines = [
+        "@echo off",
+        'echo package helper started %DATE% %TIME% > "%LOG%"',
+        ":wait",
+        'tasklist /FI "PID eq %PID%" 2>nul | find "%PID%" >nul',
+        "if not errorlevel 1 ( ping -n 2 127.0.0.1 >nul & goto wait )",
+        'echo app exited >> "%LOG%"',
+        'call "%TOOL%" %TOOLARGS% >>"%LOG%" 2>&1',
+        "if errorlevel 1 goto failed",
+        f'"%PY%" -c "{WINDOWS_VERSION_CODE}" >>"%LOG%" 2>&1',
+        "if errorlevel 1 goto failed",
+        f'echo {SWAP_OK}> "%RESULT%"',
+        "goto launch",
+        ":failed",
+        'echo upgrade failed >> "%LOG%"',
+        f'echo {UPGRADE_FAILED}> "%RESULT%"',
+        ":launch",
+        'echo launching >> "%LOG%"',
+        f'"%PY%" -c "{WINDOWS_RELAUNCH_CODE}" >>"%LOG%" 2>&1',
+        'echo done >> "%LOG%"',
+        'del "%~f0"',
+    ]
+    return "".join(line + "\r\n" for line in lines)
+
+
+def windows_package_env(command: list, relaunch: list, python: str, log: str, pid: int, result: str,
+                        latest: str, environ=None) -> dict:
+    """The package helper's environment: the tool path, its arguments, the
+    version it must install, the relaunch command as JSON and the other
+    paths, all as Unicode. The tool's arguments are joined unquoted, so
+    anything but the fixed words ``upgrade_command`` builds, or a version that
+    is not one, is refused with ValueError."""
+    tool, *arguments = command
+    if not all(SAFE_ARGUMENT_RE.fullmatch(argument) for argument in arguments):
+        raise ValueError(f"unsafe upgrade arguments: {arguments!r}")
+    version = latest.strip().lstrip("vV")
+    if not VERSION_RE.fullmatch(version):
+        raise ValueError(f"unsafe version: {latest!r}")
+    env = dict(os.environ if environ is None else environ)
+    env.update({
+        "TOOL": tool,
+        "TOOLARGS": " ".join(arguments),
+        "VERSION": version,
+        "RELAUNCH": json.dumps(relaunch),
+        "PY": python,
+        "LOG": log,
+        "PID": str(pid),
+        "RESULT": result,
+    })
+    return env
+
+
+def windowless_python(executable=None) -> str:
+    """pythonw.exe beside ``executable`` (default: this interpreter) when it is
+    there, so the helper's relaunch line opens no console; else ``executable``."""
+    executable = sys.executable if executable is None else executable
+    pythonw = os.path.join(os.path.dirname(executable), "pythonw.exe")
+    return pythonw if os.path.isfile(pythonw) else executable
+
+
+def apply_package_windows(command: list, latest: str) -> None:
+    """Hand ``command`` to the Windows package helper, which runs it after this
+    process exits, checks that ``latest`` is installed and then starts myCat
+    again. The caller must quit right afterwards; the outcome is read at the
+    next start."""
+    temp = tempfile.gettempdir()
+    log = os.path.join(temp, "mycat-update.log")
+    script = os.path.join(temp, "mycat-update.bat")
+    result = update_result_path()
+    env = windows_package_env(
+        command, relaunch_command(), windowless_python(), log, os.getpid(), result, latest
+    )
+    # A result left from an earlier run must not be reported for this one.
+    remove_file(result)
+    with open(script, "w", encoding="ascii", newline="") as handle:
+        handle.write(windows_package_script())
+    subprocess.Popen(  # noqa: S603
+        ["cmd", "/c", script],
+        creationflags=CREATE_NO_WINDOW,
+        close_fds=True,
+        env=env,
+    )
+    logger.info("Windows package helper launched (log: %s)", log)
+
+
 __all__ = [
     "install_kind",
+    "PACKAGE_KINDS",
+    "package_dir",
+    "installed_distribution",
+    "distribution_owns",
+    "installed_from_directory",
+    "package_kind",
+    "in_virtualenv",
+    "externally_managed",
+    "in_user_site",
+    "pip_available",
+    "upgrade_command",
+    "pypi_has_version",
     "runs_from_appimage",
     "is_winget_package_path",
     "winget_registry_lists",
@@ -747,6 +1195,7 @@ __all__ = [
     "staging_writable",
     "SWAP_OK",
     "SWAP_FAILED",
+    "UPGRADE_FAILED",
     "update_result_path",
     "take_update_result",
     "clean_env",
@@ -762,5 +1211,19 @@ __all__ = [
     "appimage_relaunch_env",
     "replace_appimage",
     "apply_and_relaunch",
+    "UpgradeFailed",
+    "output_tail",
+    "run_package_upgrade",
+    "tool_name",
+    "installed_version",
+    "check_upgraded",
+    "relaunch_command",
+    "PACKAGE_RELAUNCH_SCRIPT",
+    "relaunch_after_exit",
+    "WINDOWS_VERSION_CODE",
+    "windows_package_script",
+    "windows_package_env",
+    "windowless_python",
+    "apply_package_windows",
     "RELEASES_PAGE",
 ]
