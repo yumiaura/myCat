@@ -4,6 +4,8 @@ import copy
 import hashlib
 import importlib.metadata
 import json
+import os
+import stat
 import subprocess
 import sys
 import types
@@ -1022,13 +1024,13 @@ def test_replace_appimage_keeps_the_old_file_when_the_rename_fails(tmp_path, mon
     assert not part.exists()
 
 
-def test_appimage_relaunch_script_waits_for_the_pid_and_has_no_paths():
-    script = updater.APPIMAGE_RELAUNCH_SCRIPT
+def test_relaunch_helper_script_waits_for_the_pid_and_has_no_paths():
+    script = updater.RELAUNCH_HELPER_SCRIPT
     assert script.isascii()
-    assert script.index('kill -0 "$PID"') < script.index('exec "$APPIMAGE"')
+    assert script.index('kill -0 "$PID"') < script.index('exec "$RELAUNCH"')
 
 
-def test_appimage_relaunch_env_is_clean_and_carries_path_and_pid():
+def test_relaunch_helper_env_is_clean_and_carries_path_and_pid():
     environ = {
         "PATH": "/usr/bin",
         "_MEIPASS2": "x",
@@ -1037,8 +1039,8 @@ def test_appimage_relaunch_env_is_clean_and_carries_path_and_pid():
         "LD_LIBRARY_PATH_ORIG": "/opt/lib",
         "APPIMAGE": "stale",
     }
-    env = updater.appimage_relaunch_env("/home/Ольга/Apps/mycat.AppImage", 4242, environ)
-    assert env["APPIMAGE"] == "/home/Ольга/Apps/mycat.AppImage"
+    env = updater.relaunch_helper_env("/home/Ольга/Apps/mycat.AppImage", 4242, environ)
+    assert env["RELAUNCH"] == "/home/Ольга/Apps/mycat.AppImage"
     assert env["PID"] == "4242"
     assert env["PATH"] == "/usr/bin"
     assert env["LD_LIBRARY_PATH"] == "/opt/lib"
@@ -1066,10 +1068,10 @@ def test_apply_appimage_replaces_the_file_and_starts_the_helper(tmp_path, monkey
     assert old.read_bytes() == APPIMAGE_HEAD + b"new build"
     assert not part.exists()
     ((args, kwargs),) = launched
-    assert args == ["/bin/sh", "-c", updater.APPIMAGE_RELAUNCH_SCRIPT]
+    assert args == ["/bin/sh", "-c", updater.RELAUNCH_HELPER_SCRIPT]
     assert kwargs["start_new_session"] is True
     env = kwargs["env"]
-    assert env["APPIMAGE"] == str(old) and env["PID"] == "31337"
+    assert env["RELAUNCH"] == str(old) and env["PID"] == "31337"
     assert "_MEIPASS2" not in env and "LD_LIBRARY_PATH" not in env
     # The stale result is replaced by this update's outcome, read once later.
     assert updater.take_update_result() == updater.SWAP_OK
@@ -1600,3 +1602,293 @@ def test_busy_dialog_ignores_escape_and_close_until_the_work_ends(qapp):
     assert dialog.isVisible()
     dialog.finish_busy()
     assert not dialog.isVisible()
+
+
+def deb_install(tmp_path, monkeypatch, machine="x86_64", pkexec="/usr/bin/pkexec"):
+    """Make this process look like the binary of an installed .deb: dpkg's
+    file list exists, sys.executable is the package's binary, and the machine
+    and pkexec are as given."""
+    listed = tmp_path / "mycat.list"
+    listed.write_text("/usr/bin/mycat\n", encoding="utf-8")
+    binary = tmp_path / "mycat"
+    binary.write_bytes(b"\x7fELF")
+    monkeypatch.setattr(updater, "DPKG_LIST", str(listed))
+    monkeypatch.setattr(updater, "DEB_BINARY", str(binary))
+    monkeypatch.setattr(updater.sys, "executable", str(binary))
+    monkeypatch.setattr(updater.platform, "machine", lambda: machine)
+    monkeypatch.setattr(updater.shutil, "which", lambda name: pkexec if name == "pkexec" else None)
+    return listed, binary
+
+
+def test_deb_self_updates_only_when_dpkg_installed_it_and_pkexec_is_there(tmp_path, monkeypatch):
+    listed, binary = deb_install(tmp_path, monkeypatch)
+    assert updater.can_self_update("deb")
+
+    # A frozen build started from somewhere else (a copy, a symlinked copy).
+    copy_dir = tmp_path / "copy"
+    copy_dir.mkdir()
+    copied = copy_dir / "mycat"
+    copied.write_bytes(b"\x7fELF")
+    monkeypatch.setattr(updater.sys, "executable", str(copied))
+    assert not updater.can_self_update("deb")
+    link = tmp_path / "link"
+    link.symlink_to(binary)
+    monkeypatch.setattr(updater.sys, "executable", str(link))
+    assert updater.can_self_update("deb")
+
+    # The binary copied into place by hand: dpkg does not list the package.
+    listed.unlink()
+    assert not updater.can_self_update("deb")
+
+
+def test_deb_does_not_self_update_without_pkexec_or_off_x86_64(tmp_path, monkeypatch):
+    deb_install(tmp_path, monkeypatch, pkexec=None)
+    assert not updater.can_self_update("deb")
+    deb_install(tmp_path, monkeypatch, machine="aarch64")
+    assert not updater.can_self_update("deb")
+
+
+def test_deb_download_dir_is_fresh_and_private(tmp_path, monkeypatch):
+    monkeypatch.setattr(updater.tempfile, "tempdir", str(tmp_path))
+    first = updater.deb_download_dir()
+    second = updater.deb_download_dir()
+    assert first != second
+    assert os.path.dirname(first) == str(tmp_path)
+    assert stat.S_IMODE(os.stat(first).st_mode) == 0o700
+
+
+def test_parse_control_fields_reads_dpkg_deb_output():
+    assert updater.parse_control_fields("Package: mycat\nVersion: 0.1.38\n") == {
+        "Package": "mycat",
+        "Version": "0.1.38",
+    }
+    # Continuation lines and anything that is not a field are skipped.
+    assert updater.parse_control_fields(" continued: x\nnoise\n") == {}
+    assert updater.parse_control_fields("") == {}
+
+
+FROZEN_ENV = {
+    "PATH": "/usr/bin",
+    "_MEIPASS2": "/tmp/_MEIabc",
+    "_PYI_APPLICATION_HOME_DIR": "/tmp/_MEIabc",
+    "LD_LIBRARY_PATH": "/tmp/_MEIabc",
+    "LD_LIBRARY_PATH_ORIG": "/opt/lib",
+}
+
+
+def assert_clean_env(env):
+    assert env["LD_LIBRARY_PATH"] == "/opt/lib"
+    assert not [key for key in env if key.startswith(("_PYI", "_MEIPASS")) or key == "LD_LIBRARY_PATH_ORIG"]
+
+
+def fake_dpkg(monkeypatch, fields="Package: mycat\nVersion: 0.1.39\n", deb_code=0, installed="0.1.38", newer=True):
+    """Replace subprocess.run with dpkg-deb, dpkg-query and dpkg answers;
+    return the list of (command, kwargs) it was called with."""
+    for key, value in FROZEN_ENV.items():
+        monkeypatch.setenv(key, value)
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        if command[0] == "dpkg-deb":
+            if deb_code:
+                return subprocess.CompletedProcess(command, deb_code, "", "dpkg-deb: error: not a Debian archive\n")
+            return subprocess.CompletedProcess(command, 0, fields, "")
+        if command[0] == "dpkg-query":
+            return subprocess.CompletedProcess(command, 0 if installed else 1, installed, "")
+        if command[:2] == ["dpkg", "--compare-versions"]:
+            return subprocess.CompletedProcess(command, 0 if newer else 1, "", "")
+        raise AssertionError(f"unexpected command {command}")
+
+    monkeypatch.setattr(updater.subprocess, "run", run)
+    return calls
+
+
+def test_check_deb_accepts_a_newer_mycat_and_runs_dpkg_clean(monkeypatch):
+    calls = fake_dpkg(monkeypatch)
+    assert updater.check_deb("/tmp/mycat-update-x/mycat-linux-amd64.deb") == "0.1.39"
+    commands = [command for command, kwargs in calls]
+    assert commands == [
+        ["dpkg-deb", "-f", "/tmp/mycat-update-x/mycat-linux-amd64.deb", "Package", "Version"],
+        ["dpkg-query", "-W", "-f=${Version}", "mycat"],
+        ["dpkg", "--compare-versions", "0.1.39", "gt", "0.1.38"],
+    ]
+    for command, kwargs in calls:
+        assert kwargs["stdin"] is subprocess.DEVNULL
+        assert kwargs["capture_output"] is True and kwargs["encoding"] == "utf-8"
+        assert kwargs["errors"] == "replace"
+        assert "shell" not in kwargs
+        assert_clean_env(kwargs["env"])
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"fields": "Package: mycat-evil\nVersion: 9.9.9\n"},
+        {"fields": "Package: mycat\n"},
+        {"deb_code": 2},
+        {"installed": ""},
+        {"newer": False},
+    ],
+)
+def test_check_deb_rejects_anything_but_a_newer_mycat(monkeypatch, options):
+    fake_dpkg(monkeypatch, **options)
+    with pytest.raises(updater.PackageRejected):
+        updater.check_deb("/tmp/mycat-update-x/mycat-linux-amd64.deb")
+
+
+def test_check_deb_rejects_when_dpkg_cannot_run(monkeypatch):
+    def missing(command, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory", command[0])
+
+    monkeypatch.setattr(updater.subprocess, "run", missing)
+    with pytest.raises(updater.PackageRejected):
+        updater.check_deb("/tmp/mycat-update-x/mycat-linux-amd64.deb")
+
+    def slow(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    monkeypatch.setattr(updater.subprocess, "run", slow)
+    with pytest.raises(updater.PackageRejected):
+        updater.check_deb("/tmp/mycat-update-x/mycat-linux-amd64.deb")
+
+
+def test_deb_install_command_uses_pkexec_apt_get_and_an_absolute_file(monkeypatch, tmp_path):
+    tools = {"pkexec": "/usr/bin/pkexec", "apt-get": "/usr/bin/apt-get", "dpkg": "/usr/bin/dpkg"}
+    monkeypatch.setattr(updater.shutil, "which", tools.get)
+    monkeypatch.chdir(tmp_path)
+    assert updater.deb_install_command("mycat-linux-amd64.deb") == [
+        "/usr/bin/pkexec",
+        "/usr/bin/apt-get",
+        "install",
+        "-y",
+        "--no-install-recommends",
+        str(tmp_path / "mycat-linux-amd64.deb"),
+    ]
+    del tools["apt-get"]
+    assert updater.deb_install_command("/tmp/x/mycat-linux-amd64.deb") == [
+        "/usr/bin/pkexec",
+        "/usr/bin/dpkg",
+        "-i",
+        "/tmp/x/mycat-linux-amd64.deb",
+    ]
+
+
+def test_install_deb_runs_pkexec_detached_without_stdin_and_clean(monkeypatch):
+    for key, value in FROZEN_ENV.items():
+        monkeypatch.setenv(key, value)
+    tools = {"pkexec": "/usr/bin/pkexec", "apt-get": "/usr/bin/apt-get"}
+    monkeypatch.setattr(updater.shutil, "which", tools.get)
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        return subprocess.CompletedProcess(command, 0, "Setting up mycat (0.1.39) ...\n", "")
+
+    monkeypatch.setattr(updater.subprocess, "run", run)
+    updater.install_deb("/tmp/mycat-update-x/mycat-linux-amd64.deb")
+    ((command, kwargs),) = calls
+    assert command == [
+        "/usr/bin/pkexec",
+        "/usr/bin/apt-get",
+        "install",
+        "-y",
+        "--no-install-recommends",
+        "/tmp/mycat-update-x/mycat-linux-amd64.deb",
+    ]
+    # No stdin and a new session: pkexec never asks in a terminal.
+    assert kwargs["stdin"] is subprocess.DEVNULL
+    assert kwargs["start_new_session"] is True
+    assert kwargs["capture_output"] is True and kwargs["encoding"] == "utf-8"
+    assert kwargs["errors"] == "replace"
+    # The password dialog waits for the user: no timeout.
+    assert kwargs.get("timeout") is None
+    assert "shell" not in kwargs
+    assert_clean_env(kwargs["env"])
+
+
+def deb_outcome(code, stdout="", stderr=""):
+    command = ["/usr/bin/pkexec", "/usr/bin/apt-get", "install", "-y", "--no-install-recommends", "/tmp/x.deb"]
+    return updater.deb_install_error(command, subprocess.CompletedProcess(command, code, stdout, stderr))
+
+
+def test_deb_install_exit_codes_map_to_reasons():
+    assert deb_outcome(0) is None
+    assert deb_outcome(126).reason == "cancelled"
+    no_agent = "Error executing command as another user: No authentication agent found.\n"
+    assert deb_outcome(127, stderr=no_agent).reason == "agent"
+    refused = "Error executing command as another user: Not authorized\n"
+    assert deb_outcome(127, stderr=refused).reason == "denied"
+    assert deb_outcome(127).reason == "denied"
+    stderr = "".join(f"line {number}\n" for number in range(40)) + "E: Unable to locate package\n"
+    failed = deb_outcome(100, stderr=stderr)
+    assert failed.reason == "output"
+    assert str(failed).endswith("E: Unable to locate package")
+    assert "line 26" in str(failed) and "line 25" not in str(failed)
+    silent = deb_outcome(1, stderr="\n")
+    assert silent.reason == "exit"
+    assert silent.details == {"tool": "apt-get", "code": 1}
+
+
+def test_install_deb_raises_the_mapped_failure(monkeypatch):
+    monkeypatch.setattr(updater.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        updater.subprocess, "run", lambda command, **kwargs: subprocess.CompletedProcess(command, 126, "", "")
+    )
+    with pytest.raises(updater.UpgradeFailed) as error:
+        updater.install_deb("/tmp/x.deb")
+    assert error.value.reason == "cancelled"
+
+    def missing(command, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory", command[0])
+
+    monkeypatch.setattr(updater.subprocess, "run", missing)
+    with pytest.raises(updater.UpgradeFailed) as error:
+        updater.install_deb("/tmp/x.deb")
+    assert error.value.reason == "output"
+
+
+def test_deb_relaunch_starts_the_package_binary_through_the_helper(monkeypatch):
+    for key, value in FROZEN_ENV.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setattr(updater.os, "getpid", lambda: 4242)
+    launched = []
+
+    class Recorder:
+        def __init__(self, args, **kwargs):
+            launched.append((args, kwargs))
+
+    monkeypatch.setattr(updater.subprocess, "Popen", Recorder)
+    updater.start_relaunch_helper(updater.DEB_BINARY)
+    ((args, kwargs),) = launched
+    assert args == ["/bin/sh", "-c", updater.RELAUNCH_HELPER_SCRIPT]
+    assert kwargs["start_new_session"] is True and kwargs["stdin"] is subprocess.DEVNULL
+    env = kwargs["env"]
+    assert env["RELAUNCH"] == "/usr/bin/mycat" and env["PID"] == "4242"
+    assert_clean_env(env)
+
+    def broken(args, **kwargs):
+        raise OSError("no /bin/sh")
+
+    monkeypatch.setattr(updater.subprocess, "Popen", broken)
+    with pytest.raises(updater.RelaunchFailed):
+        updater.start_relaunch_helper(updater.DEB_BINARY)
+
+
+def test_deb_update_messages_are_in_every_catalog():
+    # Shown by update_deb and on_deb_declined in main.py.
+    from mycat import i18n
+
+    texts = [
+        "Update cancelled.",
+        "No password dialog could be shown. Download the new .deb from the releases page.",
+        "The system did not allow the update. Download the new .deb from the releases page.",
+        "The downloaded file is not a newer myCat package, so it was not installed.",
+    ]
+    for code in ("en", "ru", "zh", "ko"):
+        for text in texts:
+            translated = i18n.CATALOGS[code][text]
+            assert translated
+            assert chr(0x2014) not in translated and chr(0xB7) not in translated
+            if code != "en":
+                assert translated != text

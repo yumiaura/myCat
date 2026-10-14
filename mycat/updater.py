@@ -357,11 +357,35 @@ def winget_entry_matches(winreg, uninstall, name: str, targets: set, folders: se
 
 def can_self_update(kind: str) -> bool:
     """Kinds that download + swap + relaunch on their own: the Windows exe, the
-    macOS .app and the AppImage (on x86_64, see ``appimage_updatable``).
-    deb/snap/flatpak/WinGet installs and checkouts are only *told* an update
-    exists (their package manager / a fresh download should apply it); PyPI
+    macOS .app and the AppImage (on x86_64, see ``appimage_updatable``), and
+    the .deb install when ``deb_updatable`` says so, installed through the
+    system password prompt. snap/flatpak/WinGet installs and checkouts are only
+    *told* an update exists (their package manager should apply it); PyPI
     installs run ``upgrade_command`` instead."""
+    if kind == "deb":
+        return deb_updatable()
     return kind in ("macos", "windows", "appimage")
+
+
+# What dpkg keeps for the installed mycat package (its file list) and where the
+# package puts the binary. The .deb is built only for amd64.
+DEB_PACKAGE = "mycat"
+DPKG_LIST = "/var/lib/dpkg/info/mycat.list"
+DEB_BINARY = "/usr/bin/mycat"
+
+
+def deb_updatable() -> bool:
+    """Whether this .deb install may install a new .deb through pkexec: dpkg
+    lists the mycat package, this process runs its /usr/bin/mycat (not a
+    frozen build copied there or elsewhere by hand), the machine is x86_64, the
+    only .deb the releases carry, and pkexec is there to ask for the password.
+    Only file and PATH checks, nothing is started."""
+    return (
+        os.path.isfile(DPKG_LIST)
+        and os.path.realpath(sys.executable) == DEB_BINARY
+        and platform.machine() == "x86_64"
+        and bool(shutil.which("pkexec"))
+    )
 
 
 def appimage_path() -> str:
@@ -828,10 +852,11 @@ def apply_windows(downloaded: str) -> None:
     logger.info("Windows update swapper launched for %s (log: %s)", exe, log)
 
 
-# The AppImage relaunch helper: it waits for the old process to exit, so its
-# single-instance lock is free, then starts the AppImage at the same path. The
-# PID and the path arrive in the environment (``appimage_relaunch_env``).
-APPIMAGE_RELAUNCH_SCRIPT = 'while kill -0 "$PID" 2>/dev/null; do sleep 0.2; done; exec "$APPIMAGE"'
+# The relaunch helper of the AppImage and the .deb install: it waits for the old
+# process to exit, so its single-instance lock is free, then starts the program
+# at the same path. The PID and the path arrive in the environment
+# (``relaunch_helper_env``).
+RELAUNCH_HELPER_SCRIPT = 'while kill -0 "$PID" 2>/dev/null; do sleep 0.2; done; exec "$RELAUNCH"'
 
 
 def is_appimage_file(path: str) -> bool:
@@ -846,12 +871,30 @@ def is_appimage_file(path: str) -> bool:
     return head[:4] == b"\x7fELF" and head[8:11] == b"AI\x02"
 
 
-def appimage_relaunch_env(appimage: str, pid: int, environ=None) -> dict:
+def relaunch_helper_env(target: str, pid: int, environ=None) -> dict:
     """The relaunch helper's environment: clean of the PyInstaller variables
-    (see clean_env), carrying the AppImage path and the PID it waits for."""
+    (see clean_env), carrying the program to start and the PID it waits for."""
     env = clean_env(environ)
-    env.update({"APPIMAGE": appimage, "PID": str(pid)})
+    env.update({"RELAUNCH": target, "PID": str(pid)})
     return env
+
+
+def start_relaunch_helper(target: str) -> None:
+    """Start the detached helper that runs ``target`` once this process has
+    exited. The caller must quit right afterwards. RelaunchFailed when the
+    helper cannot start: the new version is in place, only the restart is
+    missing, and the next start runs it."""
+    try:
+        subprocess.Popen(  # noqa: S603
+            ["/bin/sh", "-c", RELAUNCH_HELPER_SCRIPT],
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=relaunch_helper_env(target, os.getpid()),
+        )
+    except OSError as error:
+        raise RelaunchFailed(f"could not start the relaunch helper: {error}") from error
 
 
 def replace_appimage(downloaded: str, appimage: str) -> None:
@@ -888,19 +931,7 @@ def apply_appimage(downloaded: str) -> None:
             handle.write(SWAP_OK + "\n")
     except OSError as error:
         logger.warning("could not write %s: %s", result, error)
-    try:
-        subprocess.Popen(  # noqa: S603
-            ["/bin/sh", "-c", APPIMAGE_RELAUNCH_SCRIPT],
-            start_new_session=True,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            env=appimage_relaunch_env(appimage, os.getpid()),
-        )
-    except OSError as error:
-        # The new file is in place already; only the restart is missing, and
-        # the next start runs the new version.
-        raise RelaunchFailed(f"could not start the relaunch helper: {error}") from error
+    start_relaunch_helper(appimage)
     logger.info("AppImage replaced, relaunch helper started for %s", appimage)
 
 
@@ -1162,6 +1193,157 @@ def apply_package_windows(command: list, latest: str) -> None:
     logger.info("Windows package helper launched (log: %s)", log)
 
 
+class PackageRejected(Exception):
+    """The downloaded .deb is not a newer mycat package (or could not be read
+    as one), so it is not installed."""
+
+
+# How long the root-free checks of a downloaded .deb may take.
+DEB_CHECK_TIMEOUT = 60
+
+# pkexec's own exit codes: the user dismissed the password dialog, or no
+# authorization could be obtained (no polkit authentication agent runs in this
+# session, a polkit rule or an inactive session refused it, or the password
+# was not accepted).
+PKEXEC_DISMISSED = 126
+PKEXEC_NOT_AUTHORIZED = 127
+
+# What pkexec prints on exit 127 when it could not show a password dialog.
+PKEXEC_NO_AGENT_TEXT = "No authentication agent found"
+
+
+def deb_download_dir() -> str:
+    """A fresh private folder (mode 0700) for the .deb download, never a fixed
+    name in /tmp another local user could prepare before root reads the file.
+    The caller deletes it with ``shutil.rmtree`` in every case."""
+    return tempfile.mkdtemp(prefix="mycat-update-")
+
+
+def run_host_tool(command: list, timeout: float = DEB_CHECK_TIMEOUT) -> subprocess.CompletedProcess:
+    """Run a host tool (dpkg-deb, dpkg, dpkg-query) and capture its output,
+    with no stdin and the clean environment (see clean_env), so it never loads
+    the libraries bundled in a frozen build."""
+    return subprocess.run(  # noqa: S603 - a fixed tool command, no shell
+        command,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=clean_env(),
+        timeout=timeout,
+    )
+
+
+def parse_control_fields(text: str) -> dict:
+    """The "Field: value" lines ``dpkg-deb -f`` prints, as a dict."""
+    fields = {}
+    for line in (text or "").splitlines():
+        name, sep, value = line.partition(":")
+        if sep and name.strip() and not line[:1].isspace():
+            fields[name.strip()] = value.strip()
+    return fields
+
+
+def installed_deb_version() -> str:
+    """The version of the mycat package dpkg has installed, or "" when it
+    cannot be read."""
+    try:
+        completed = run_host_tool(["dpkg-query", "-W", "-f=${Version}", DEB_PACKAGE])
+    except (OSError, subprocess.SubprocessError) as error:
+        logger.warning("could not ask dpkg-query for the installed version: %s", error)
+        return ""
+    return completed.stdout.strip() if completed.returncode == 0 else ""
+
+
+def check_deb(path: str) -> str:
+    """Check the downloaded .deb at ``path`` without root: ``dpkg-deb -f``
+    must name the package mycat with a version that ``dpkg --compare-versions``
+    finds greater than the installed one. Return that version, or raise
+    PackageRejected."""
+    try:
+        completed = run_host_tool(["dpkg-deb", "-f", path, "Package", "Version"])
+        if completed.returncode != 0:
+            raise PackageRejected(f"dpkg-deb cannot read {os.path.basename(path)}: "
+                                  f"{output_tail(completed.stderr, 3)}")
+        fields = parse_control_fields(completed.stdout)
+        if fields.get("Package") != DEB_PACKAGE:
+            raise PackageRejected(f"{os.path.basename(path)} is the package {fields.get('Package')!r}, not mycat")
+        version = fields.get("Version", "")
+        installed = installed_deb_version()
+        if not version or not installed:
+            raise PackageRejected(f"no version to compare: new {version!r}, installed {installed!r}")
+        compared = run_host_tool(["dpkg", "--compare-versions", version, "gt", installed])
+    except (OSError, subprocess.SubprocessError) as error:
+        raise PackageRejected(f"could not check {os.path.basename(path)}: {error}") from error
+    if compared.returncode != 0:
+        raise PackageRejected(f"mycat {version} is not newer than the installed {installed}")
+    return version
+
+
+def deb_install_command(path: str) -> list:
+    """The command that installs the .deb at ``path`` as root: pkexec runs
+    apt-get, which also resolves a changed Depends line, or dpkg -i where
+    apt-get is missing. Every program and the file go by absolute path."""
+    pkexec = shutil.which("pkexec") or "/usr/bin/pkexec"
+    package = os.path.abspath(path)
+    apt_get = shutil.which("apt-get")
+    if apt_get:
+        return [pkexec, apt_get, "install", "-y", "--no-install-recommends", package]
+    return [pkexec, shutil.which("dpkg") or "/usr/bin/dpkg", "-i", package]
+
+
+def deb_install_error(command: list, completed: subprocess.CompletedProcess) -> UpgradeFailed | None:
+    """What went wrong with the finished install ``command``, or None when it
+    succeeded. The reason is ``cancelled`` (the password dialog was dismissed),
+    ``agent`` (no polkit agent runs to show the password dialog), ``denied``
+    (pkexec got no authorization for another reason: a polkit rule, an
+    inactive session or a password that was not accepted), else ``output``
+    with the last lines the tool printed, or ``exit`` with its code when it
+    printed nothing."""
+    code = completed.returncode
+    if code == 0:
+        return None
+    if code == PKEXEC_DISMISSED:
+        return UpgradeFailed("the password dialog was dismissed", "cancelled")
+    if code == PKEXEC_NOT_AUTHORIZED:
+        reason = "agent" if PKEXEC_NO_AGENT_TEXT in (completed.stderr or "") else "denied"
+        return UpgradeFailed(f"pkexec got no authorization: {output_tail(completed.stderr, 3)}", reason)
+    tail = output_tail(completed.stderr) or output_tail(completed.stdout)
+    if tail:
+        return UpgradeFailed(tail)
+    tool = tool_name(command[1:])
+    return UpgradeFailed(f"{tool} exited with code {code}", "exit", tool=tool, code=code)
+
+
+def install_deb(path: str) -> None:
+    """Install the checked .deb at ``path`` through pkexec and wait for it.
+
+    stdin is /dev/null and the tool runs in a new session without a terminal,
+    so pkexec never falls back to asking for the password in the terminal
+    myCat was started from. There is no timeout: the password dialog waits for
+    the user, and a process running as root could not be stopped from here
+    anyway. Raise UpgradeFailed (see ``deb_install_error``) unless it worked."""
+    command = deb_install_command(path)
+    try:
+        completed = subprocess.run(  # noqa: S603 - a fixed tool command, no shell
+            command,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=clean_env(),
+            start_new_session=True,
+        )
+    except OSError as error:
+        raise UpgradeFailed(str(error)) from error
+    error = deb_install_error(command, completed)
+    if error is not None:
+        raise error
+    logger.info("deb installed: %s", output_tail(completed.stdout, 3))
+
+
 __all__ = [
     "install_kind",
     "PACKAGE_KINDS",
@@ -1180,6 +1362,10 @@ __all__ = [
     "is_winget_package_path",
     "winget_registry_lists",
     "can_self_update",
+    "DEB_PACKAGE",
+    "DPKG_LIST",
+    "DEB_BINARY",
+    "deb_updatable",
     "appimage_path",
     "appimage_updatable",
     "update_hint",
@@ -1206,9 +1392,10 @@ __all__ = [
     "is_translocated",
     "macos_helper_script",
     "macos_helper_env",
-    "APPIMAGE_RELAUNCH_SCRIPT",
+    "RELAUNCH_HELPER_SCRIPT",
     "is_appimage_file",
-    "appimage_relaunch_env",
+    "relaunch_helper_env",
+    "start_relaunch_helper",
     "replace_appimage",
     "apply_and_relaunch",
     "UpgradeFailed",
@@ -1225,5 +1412,17 @@ __all__ = [
     "windows_package_env",
     "windowless_python",
     "apply_package_windows",
+    "PackageRejected",
+    "PKEXEC_DISMISSED",
+    "PKEXEC_NOT_AUTHORIZED",
+    "PKEXEC_NO_AGENT_TEXT",
+    "deb_download_dir",
+    "run_host_tool",
+    "parse_control_fields",
+    "installed_deb_version",
+    "check_deb",
+    "deb_install_command",
+    "deb_install_error",
+    "install_deb",
     "RELEASES_PAGE",
 ]

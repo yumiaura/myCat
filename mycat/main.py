@@ -524,6 +524,8 @@ class UpdateSignals(QtCore.QObject):
     progress = QtCore.Signal(int, int)    # bytes done, total (0 = unknown)
     applied = QtCore.Signal()             # new build swapped in + spawned
     failed = QtCore.Signal(str)           # error message
+    downloaded = QtCore.Signal(str)       # .deb downloaded and checked, ready to install
+    declined = QtCore.Signal(str)         # .deb not installed: "cancelled", "agent" or "denied"
 
 
 class BusyProgressDialog(QtWidgets.QProgressDialog):
@@ -1532,10 +1534,11 @@ class PixelCatWindow(QtWidgets.QWidget):
         ``asset`` (from updater.release_asset) and restarts, or runs the PyPI
         upgrade ``command`` (from updater.upgrade_command) and restarts. It is
         enabled only when an update is actually possible (Windows/macOS/AppImage
-        with a newer release whose build is listed with a sha256 digest, or a
-        pip/pipx/uv tool install with a safe command and, for pip, the version
-        on PyPI); it is greyed out on git/deb/WinGet installs and whenever
-        there's nothing to update."""
+        or a .deb install pkexec can update, with a newer release whose build is
+        listed with a sha256 digest, or a pip/pipx/uv tool install with a safe
+        command and, for pip, the version on PyPI); it is greyed out on
+        git/WinGet installs, other .deb installs and whenever there's nothing
+        to update."""
         box = QtWidgets.QMessageBox(self)
         box.setWindowTitle(title)
         box.setText(text)
@@ -1552,6 +1555,8 @@ class PixelCatWindow(QtWidgets.QWidget):
             QtGui.QDesktopServices.openUrl(QtCore.QUrl(updater.RELEASES_PAGE))
         elif clicked is update_button and command:
             self.install_update(command, latest)
+        elif clicked is update_button and asset is not None and kind == "deb":
+            self.update_deb(asset)
         elif clicked is update_button and asset is not None:
             self.download_update(kind, asset)
 
@@ -1610,7 +1615,8 @@ class PixelCatWindow(QtWidgets.QWidget):
                 )
             return
         if not updater.can_self_update(kind):
-            # git / deb / WinGet: tell them how, Update stays greyed out.
+            # git / WinGet, or a .deb install pkexec cannot update: tell them
+            # how, Update stays greyed out.
             hint = updater.update_hint(kind)
             if kind == "deb":
                 # The .deb hint is a sentence, translated here.
@@ -1671,9 +1677,14 @@ class PixelCatWindow(QtWidgets.QWidget):
             return
         # The Windows exe and the AppImage stage beside themselves, the macOS
         # helper swaps the .app within its folder: each needs that folder to be
-        # writable.
-        swap_target = updater.macos_app_path() if kind == "macos" else updater.staging_path(kind)
-        if not updater.staging_writable(swap_target):
+        # writable. The .deb goes to a fresh temp folder and apt installs it.
+        if kind == "deb":
+            swap_target = ""
+        elif kind == "macos":
+            swap_target = updater.macos_app_path()
+        else:
+            swap_target = updater.staging_path(kind)
+        if swap_target and not updater.staging_writable(swap_target):
             # myCat sits in a folder this user can't write to (Program Files,
             # a read-only share): say so now, before anything quits.
             self.update_box(
@@ -1685,7 +1696,8 @@ class PixelCatWindow(QtWidgets.QWidget):
                 can_update=False,
             )
             return
-        # Windows / macOS / AppImage with a newer, verifiable release: Update is enabled.
+        # Windows / macOS / AppImage / .deb with a newer, verifiable release:
+        # Update is enabled.
         self.update_box(
             "myCat",
             versions,
@@ -1824,6 +1836,139 @@ class PixelCatWindow(QtWidgets.QWidget):
         self.place_beside_cat(dialog)
         dialog.exec()
 
+    def update_deb(self, asset: dict) -> None:
+        """Download the .deb ``asset``, check it and install it with the system
+        password prompt, then restart.
+
+        The download runs under a progress dialog that can still be cancelled.
+        Once the file is verified (sha256, then dpkg-deb says it is a newer
+        mycat), the GUI thread decides whether to go on, so a Cancel clicked
+        meanwhile always wins; from then on the dialog is busy and can't be
+        closed while pkexec and apt-get run off the GUI thread. The private
+        temp folder goes in every case, before the restart."""
+        try:
+            folder = updater.deb_download_dir()
+        except OSError as exc:
+            self.on_update_failed(str(exc))
+            return
+        path = os.path.join(folder, asset["name"])
+        # Fresh signals: the check's ``failed`` slot would show a second box.
+        signals = UpdateSignals(self)
+        self.update_signals = signals
+        dialog = BusyProgressDialog(i18n.tr("Downloading update…"), self)
+        dialog.setWindowTitle(i18n.tr("Updating myCat"))
+        dialog.setWindowFlag(QtCore.Qt.WindowType.WindowCloseButtonHint, False)
+        dialog.setCancelButtonText(i18n.tr("Cancel"))
+        dialog.setRange(0, 100)
+        dialog.setMinimumDuration(0)
+        dialog.setAutoClose(False)
+        dialog.setAutoReset(False)
+        dialog.setValue(0)
+        # The download may be cancelled (Cancel or Escape); the install may not.
+        dialog.work_done = True
+        cancelled = threading.Event()
+        dialog.canceled.connect(cancelled.set)
+        dialog.rejected.connect(cancelled.set)
+
+        signals.progress.connect(
+            lambda done, total: dialog.setValue(int(done * 100 / total) if total else 0)
+        )
+        signals.applied.connect(lambda: (dialog.setLabelText(i18n.tr("Restarting…")), self.finish_update()))
+        signals.failed.connect(lambda message: self.on_install_failed(dialog, message))
+        signals.declined.connect(lambda reason: self.on_deb_declined(dialog, reason))
+
+        def download() -> None:
+            ready = False
+            try:
+
+                def progress(done: int, total: int) -> None:
+                    if cancelled.is_set():
+                        raise RuntimeError("cancelled")
+                    signals.progress.emit(done, total)
+
+                # The versioned URL and digest of exactly the release the dialog
+                # announced; download() deletes the file on a sha256 mismatch.
+                updater.download(asset["url"], path, progress, sha256=asset["sha256"])
+                if cancelled.is_set():
+                    return
+                updater.check_deb(path)
+                ready = True
+                signals.downloaded.emit(path)
+            except updater.DigestMismatch as exc:
+                logger.warning("Update download rejected: %s", exc)
+                if not cancelled.is_set():
+                    signals.failed.emit(i18n.tr("The downloaded file is damaged. Try again later."))
+            except updater.PackageRejected as exc:
+                logger.warning("Update package rejected: %s", exc)
+                if not cancelled.is_set():
+                    signals.failed.emit(
+                        i18n.tr("The downloaded file is not a newer myCat package, so it was not installed.")
+                    )
+            except Exception as exc:  # noqa: BLE001 - surfaced to the user
+                if not cancelled.is_set():
+                    signals.failed.emit(str(exc))
+            finally:
+                if not ready:
+                    shutil.rmtree(folder, ignore_errors=True)
+
+        def install() -> None:
+            try:
+                updater.install_deb(path)
+            except updater.UpgradeFailed as exc:
+                logger.warning("deb install failed: %s", exc)
+                if exc.reason in ("cancelled", "agent", "denied"):
+                    signals.declined.emit(exc.reason)
+                else:
+                    signals.failed.emit(self.upgrade_failure_text(exc))
+                return
+            finally:
+                # Before applied: finish_update() ends this process at once.
+                shutil.rmtree(folder, ignore_errors=True)
+            try:
+                updater.start_relaunch_helper(updater.DEB_BINARY)
+            except updater.RelaunchFailed as exc:
+                logger.warning("Update installed, restart failed: %s", exc)
+                signals.failed.emit(
+                    i18n.tr("The new version is installed, but myCat could not restart itself. "
+                            "Quit myCat and start it again.")
+                )
+                return
+            signals.applied.emit()
+
+        def start_install(downloaded: str) -> None:
+            # Runs on the GUI thread, like Cancel: a cancelled or closed dialog
+            # means no install.
+            if cancelled.is_set() or not dialog.isVisible():
+                shutil.rmtree(folder, ignore_errors=True)
+                return
+            dialog.work_done = False
+            dialog.setCancelButton(None)
+            dialog.setRange(0, 0)
+            dialog.setLabelText(i18n.tr("Installing update…"))
+            self.update_running = True
+            threading.Thread(target=install, name="mycat-update", daemon=True).start()
+
+        signals.downloaded.connect(start_install)
+        threading.Thread(target=download, name="mycat-update", daemon=True).start()
+        self.place_beside_cat(dialog)
+        dialog.exec()
+
+    def on_deb_declined(self, dialog: BusyProgressDialog, reason: str) -> None:
+        """pkexec did not install the .deb: the password dialog was dismissed
+        (``cancelled``, said quietly), no polkit agent could show it (``agent``)
+        or the system refused the authorization (``denied``), with the releases
+        page as the way out."""
+        self.update_running = False
+        dialog.finish_busy()
+        if reason == "cancelled":
+            QtWidgets.QMessageBox.information(self, "myCat", i18n.tr("Update cancelled."))
+            return
+        if reason == "agent":
+            message = i18n.tr("No password dialog could be shown. Download the new .deb from the releases page.")
+        else:
+            message = i18n.tr("The system did not allow the update. Download the new .deb from the releases page.")
+        self.on_update_failed(message, releases=True)
+
     def on_install_failed(self, dialog: BusyProgressDialog, message: str) -> None:
         """Close the busy dialog of a failed package upgrade, allow a new one
         and show why it failed."""
@@ -1858,11 +2003,20 @@ class PixelCatWindow(QtWidgets.QWidget):
         flush_activity_on_quit(self)
         os._exit(0)
 
-    def on_update_failed(self, message: str) -> None:
+    def on_update_failed(self, message: str, releases: bool = False) -> None:
+        """The failure box; with ``releases`` it also has a Releases button
+        that opens the releases page."""
         logger.warning("Update failed: %s", message)
-        QtWidgets.QMessageBox.warning(
-            self, i18n.tr("Update failed"), i18n.tr("Couldn't update: {message}").format(message=message)
-        )
+        text = i18n.tr("Couldn't update: {message}").format(message=message)
+        if not releases:
+            QtWidgets.QMessageBox.warning(self, i18n.tr("Update failed"), text)
+            return
+        box = QtWidgets.QMessageBox(QtWidgets.QMessageBox.Icon.Warning, i18n.tr("Update failed"), text, parent=self)
+        releases_button = box.addButton(i18n.tr("Releases"), QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        box.addButton(i18n.tr("Close"), QtWidgets.QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is releases_button:
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl(updater.RELEASES_PAGE))
 
     def on_char_installed(self, _char_id: str) -> None:
         self.available_images = char_catalog.scan_all()
