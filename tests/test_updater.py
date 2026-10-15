@@ -259,10 +259,91 @@ def test_install_kind_is_snap_inside_a_snap(monkeypatch):
     assert updater.install_kind() == "snap"
 
 
-def test_snap_is_told_to_refresh_not_self_updated():
+def test_snap_is_not_self_updated_and_gets_no_command():
+    # snapd refreshes the snap; `snap refresh mycat` fails while myCat runs.
     assert not updater.can_self_update("snap")
-    assert updater.update_hint("snap") == "snap refresh mycat"
+    assert updater.update_hint("snap") == ""
     assert updater.asset_name("snap") == ""
+
+
+def fake_snap(tmp_path, running, current):
+    """A /snap/mycat look-alike: revision folders and snapd's relative
+    ``current`` link; returns the environment of the running revision."""
+    root = tmp_path / "mycat"
+    for revision in {running, current}:
+        (root / revision).mkdir(parents=True)
+    (root / "current").symlink_to(current)
+    return {"SNAP": str(root / running), "SNAP_REVISION": running}
+
+
+def test_snap_newer_revision_installed_when_current_moved_on(tmp_path):
+    assert updater.snap_newer_revision_installed(fake_snap(tmp_path, "42", "43"))
+
+
+def test_snap_newer_revision_not_installed_on_the_same_revision(tmp_path):
+    environ = fake_snap(tmp_path, "42", "42")
+    assert not updater.snap_newer_revision_installed(environ)
+    # A trailing slash on SNAP still finds the link beside it.
+    environ["SNAP"] += "/"
+    assert not updater.snap_newer_revision_installed(environ)
+
+
+def test_snap_newer_revision_reads_an_absolute_link(tmp_path):
+    root = tmp_path / "mycat"
+    (root / "42").mkdir(parents=True)
+    (root / "current").symlink_to(root / "43")
+    assert updater.snap_newer_revision_installed({"SNAP": str(root / "42"), "SNAP_REVISION": "42"})
+
+
+def test_snap_older_or_local_revision_is_not_newer(tmp_path):
+    # `snap revert` moves current back to a lower revision.
+    assert not updater.snap_newer_revision_installed(fake_snap(tmp_path / "revert", "51", "50"))
+    # A local install ("x1") has no order against store revisions.
+    assert not updater.snap_newer_revision_installed(fake_snap(tmp_path / "local", "x1", "x2"))
+    assert not updater.snap_newer_revision_installed(fake_snap(tmp_path / "mixed", "42", "x1"))
+    # Numbers compare as numbers, not text.
+    assert updater.snap_newer_revision_installed(fake_snap(tmp_path / "wide", "9", "10"))
+
+
+def test_snap_newer_revision_unknown_is_false(tmp_path):
+    root = tmp_path / "mycat"
+    (root / "42").mkdir(parents=True)
+    environ = {"SNAP": str(root / "42"), "SNAP_REVISION": "42"}
+    # No link at all, then a plain folder in its place: readlink raises OSError.
+    assert not updater.snap_newer_revision_installed(environ)
+    (root / "current").mkdir()
+    assert not updater.snap_newer_revision_installed(environ)
+    # Outside a snap, or without SNAP_REVISION, nothing is known either.
+    assert not updater.snap_newer_revision_installed({})
+    assert not updater.snap_newer_revision_installed({"SNAP": str(root / "42")})
+
+
+def test_snap_newer_revision_reads_this_process_environment(tmp_path, monkeypatch):
+    for key, value in fake_snap(tmp_path, "7", "8").items():
+        monkeypatch.setenv(key, value)
+    assert updater.snap_newer_revision_installed()
+
+
+def test_snap_update_text_picks_installed_or_on_its_way():
+    assert updater.snap_update_text(True) == updater.SNAP_INSTALLED_TEXT
+    assert updater.snap_update_text(False) == updater.SNAP_AUTO_UPDATE_TEXT
+    assert "{latest}" in updater.SNAP_AUTO_UPDATE_TEXT
+    assert "snap refresh" not in updater.SNAP_AUTO_UPDATE_TEXT + updater.SNAP_INSTALLED_TEXT
+
+
+def test_snap_update_messages_are_in_every_catalog():
+    # Shown by on_update_checked and update_box in main.py ("Quit" is the tray's).
+    from mycat import i18n
+
+    texts = ["Quit", updater.SNAP_AUTO_UPDATE_TEXT, updater.SNAP_INSTALLED_TEXT]
+    for code in ("en", "ru", "zh", "ko"):
+        for text in texts:
+            translated = i18n.CATALOGS[code][text]
+            assert translated
+            assert chr(0x2014) not in translated and chr(0xB7) not in translated
+            assert ("{latest}" in translated) == ("{latest}" in text)
+            if code != "en":
+                assert translated != text
 
 
 def test_install_kind_is_flatpak_inside_a_flatpak(monkeypatch):

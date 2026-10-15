@@ -65,6 +65,8 @@
     "The downloaded file is not a newer myCat package, so it was not installed.": "다운로드한 파일이 더 새로운 myCat 패키지가 아니어서 설치하지 않았습니다.",
     "Move mycat.app to the Applications folder, then try again.": "mycat.app을 응용 프로그램 폴더로 옮긴 다음 다시 시도하세요.",
     "This copy of myCat cannot update itself. Download the new version from the releases page.": "이 myCat 사본은 스스로 업데이트할 수 없습니다. 릴리스 페이지에서 새 버전을 내려받으세요.",
+    "myCat updates itself through the Snap Store in the background. The new version {latest} will arrive automatically, there is nothing to do.": "myCat은 Snap Store를 통해 백그라운드에서 스스로 업데이트됩니다. 새 버전({latest})은 자동으로 설치되므로 따로 하실 일이 없습니다.",
+    "The new version is already installed. Quit myCat and open it again to use it.": "새 버전이 이미 설치되었습니다. 새 버전을 사용하려면 myCat을 종료한 뒤 다시 열어 주세요.",
     "Settings": "설정",
     "Animation Wait Time (s):": "애니메이션 대기 시간(초):",
     "Failed to save settings:\n{e}": "설정을 저장하지 못했습니다:\n{e}",

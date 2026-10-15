@@ -1527,12 +1527,16 @@ class PixelCatWindow(QtWidgets.QWidget):
         asset: dict | None = None,
         command: list | None = None,
         latest: str = "",
+        quit_to_update: bool = False,
     ) -> None:
         """The update dialog, always with three buttons: Releases, Update, Close.
 
         Releases always opens the GitHub releases page. Update downloads
         ``asset`` (from updater.release_asset) and restarts, or runs the PyPI
-        upgrade ``command`` (from updater.upgrade_command) and restarts. It is
+        upgrade ``command`` (from updater.upgrade_command) and restarts. With
+        ``quit_to_update`` (a snap whose new revision snapd already installed)
+        it is labelled Quit and only quits; opening myCat again runs that
+        revision. It is
         enabled only when an update is actually possible (Windows/macOS/AppImage
         or a .deb install pkexec can update, with a newer release whose build is
         listed with a sha256 digest, or a pip/pipx/uv tool install with a safe
@@ -1545,14 +1549,17 @@ class PixelCatWindow(QtWidgets.QWidget):
         box.setInformativeText(informative)
         box.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
         releases_button = box.addButton(i18n.tr("Releases"), QtWidgets.QMessageBox.ButtonRole.ActionRole)
-        update_button = box.addButton(i18n.tr("Update"), QtWidgets.QMessageBox.ButtonRole.ActionRole)
-        update_button.setEnabled(can_update and (asset is not None or bool(command)))
+        update_label = i18n.tr("Quit") if quit_to_update else i18n.tr("Update")
+        update_button = box.addButton(update_label, QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        update_button.setEnabled(can_update and (quit_to_update or asset is not None or bool(command)))
         box.addButton(i18n.tr("Close"), QtWidgets.QMessageBox.ButtonRole.RejectRole)
         self.place_beside_cat(box)
         box.exec()
         clicked = box.clickedButton()
         if clicked is releases_button:
             QtGui.QDesktopServices.openUrl(QtCore.QUrl(updater.RELEASES_PAGE))
+        elif clicked is update_button and quit_to_update:
+            QtWidgets.QApplication.quit()
         elif clicked is update_button and command:
             self.install_update(command, latest)
         elif clicked is update_button and asset is not None and kind == "deb":
@@ -1614,6 +1621,15 @@ class PixelCatWindow(QtWidgets.QWidget):
                     latest=latest,
                 )
             return
+        if kind == "snap":
+            # A strict snap cannot refresh itself and `snap refresh` fails while
+            # myCat runs: snapd brings the new revision. When it already sits
+            # underneath this one, Quit and open again; otherwise nothing to do.
+            # No automatic restart: the strict sandbox may not exec `snap run`.
+            installed = updater.snap_newer_revision_installed()
+            text = i18n.tr(updater.snap_update_text(installed)).format(latest=latest)
+            self.update_box("myCat", versions, text, kind, can_update=installed, quit_to_update=installed)
+            return
         if not updater.can_self_update(kind):
             # git / WinGet, or a .deb install pkexec cannot update: tell them
             # how, Update stays greyed out.
@@ -1622,7 +1638,7 @@ class PixelCatWindow(QtWidgets.QWidget):
                 # The .deb hint is a sentence, translated here.
                 text = i18n.tr("Update available. {instruction}").format(instruction=i18n.tr(hint))
             else:
-                # Flatpak, snap, WinGet, git and pip hints are commands, kept as typed.
+                # Flatpak, WinGet, git and pip hints are commands, kept as typed.
                 text = i18n.tr("Update available. Update with:\n\n    {hint}").format(hint=hint)
             self.update_box("myCat", versions, text, kind, can_update=False)
             return
