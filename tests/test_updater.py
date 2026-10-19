@@ -38,10 +38,10 @@ def test_install_kind_is_source_when_not_frozen():
 
 
 def test_can_self_update():
-    # Only Windows/macOS download + relaunch; the rest just get notified.
+    # Windows/macOS/AppImage download + relaunch; the rest just get notified.
     assert updater.can_self_update("macos")
     assert updater.can_self_update("windows")
-    assert not updater.can_self_update("appimage")
+    assert updater.can_self_update("appimage")
     assert not updater.can_self_update("deb")
     assert not updater.can_self_update("source")
     assert not updater.can_self_update("winget")
@@ -612,6 +612,20 @@ def test_swapper_env_carries_unicode_paths_and_drops_pyinstaller_vars():
     assert "_MEIPASS2" in environ  # the caller's dict is left alone
 
 
+def test_clean_env_restores_the_original_library_path():
+    environ = {"PATH": "/usr/bin", "LD_LIBRARY_PATH": "/tmp/_MEIabc:/opt/lib", "LD_LIBRARY_PATH_ORIG": "/opt/lib"}
+    env = updater.clean_env(environ)
+    assert env["LD_LIBRARY_PATH"] == "/opt/lib"
+    assert "LD_LIBRARY_PATH_ORIG" not in env
+    assert environ["LD_LIBRARY_PATH"] == "/tmp/_MEIabc:/opt/lib"  # the caller's dict is left alone
+
+
+def test_clean_env_drops_a_library_path_the_bootloader_set():
+    env = updater.clean_env({"PATH": "/usr/bin", "LD_LIBRARY_PATH": "/tmp/_MEIabc"})
+    assert "LD_LIBRARY_PATH" not in env
+    assert env["PATH"] == "/usr/bin"
+
+
 def test_apply_windows_launches_ascii_swapper_with_paths_in_env(tmp_path, monkeypatch):
     temp = tmp_path / "Temp Ольга"
     temp.mkdir()
@@ -849,8 +863,242 @@ def test_new_update_messages_are_in_every_catalog():
         "The new version could not replace the old one, so the old one was started again.",
         "Move mycat.app to the Applications folder, then try again.",
         "This copy of myCat cannot update itself. Download the new version from the releases page.",
+        "The new version could not replace the old one, so the old one was kept. "
+        "Download the new version from the releases page.",
     ]
     for code in ("en", "ru", "zh", "ko"):
         for text in texts:
             translated = i18n.CATALOGS[code][text]
             assert "\u2014" not in translated and "\u00b7" not in translated
+
+
+# The AppImage: staged beside itself, verified, renamed over the old file.
+APPIMAGE_HEAD = b"\x7fELF\x02\x01\x01\x00AI\x02" + b"\x00" * 5
+
+
+def fake_appimage(tmp_path, monkeypatch, mode=0o750):
+    folder = tmp_path / "My Apps Ольга"
+    folder.mkdir()
+    old = folder / "mycat.AppImage"
+    old.write_bytes(APPIMAGE_HEAD + b"old build")
+    old.chmod(mode)
+    monkeypatch.setenv("APPIMAGE", str(old))
+    monkeypatch.setattr(updater.tempfile, "gettempdir", lambda: str(tmp_path))
+    return old
+
+
+def test_appimage_stages_beside_itself_without_the_extension(tmp_path, monkeypatch):
+    old = fake_appimage(tmp_path, monkeypatch)
+    part = updater.staging_path("appimage")
+    assert part == str(old.parent / ".mycat-update.part")
+    assert not part.endswith(".AppImage")
+    assert updater.staging_writable(part)
+    assert sorted(path.name for path in old.parent.iterdir()) == ["mycat.AppImage"]
+
+
+@pytest.mark.parametrize(
+    ("machine", "appimage", "expected"),
+    [
+        ("x86_64", "/home/olya/Apps/mycat.AppImage", True),
+        ("aarch64", "/home/olya/Apps/mycat.AppImage", False),
+        ("x86_64", "", False),
+    ],
+)
+def test_appimage_updatable(monkeypatch, machine, appimage, expected):
+    monkeypatch.setattr(updater.platform, "machine", lambda: machine)
+    monkeypatch.setenv("APPIMAGE", appimage)
+    monkeypatch.setenv("APPDIR", "/tmp/.mount_mycatAb12")
+    monkeypatch.setattr(updater.sys, "executable", "/tmp/.mount_mycatAb12/usr/bin/mycat")
+    assert updater.appimage_updatable() is expected
+
+
+@pytest.mark.parametrize(
+    ("environ", "executable", "expected"),
+    [
+        (
+            {"APPIMAGE": "/home/olya/Apps/mycat.AppImage", "APPDIR": "/tmp/.mount_mycat1"},
+            "/tmp/.mount_mycat1/usr/bin/mycat",
+            True,
+        ),
+        # The .deb build started from a terminal that is another app's AppImage.
+        ({"APPIMAGE": "/home/olya/Apps/WezTerm.AppImage", "APPDIR": "/tmp/.mount_WezTe1"}, "/usr/bin/mycat", False),
+        # A mount whose name merely starts like APPDIR is not inside it.
+        (
+            {"APPIMAGE": "/home/olya/Apps/WezTerm.AppImage", "APPDIR": "/tmp/.mount_x"},
+            "/tmp/.mount_xy/usr/bin/mycat",
+            False,
+        ),
+        ({"APPIMAGE": "/home/olya/Apps/mycat.AppImage"}, "/tmp/.mount_mycat1/usr/bin/mycat", False),
+        ({"APPDIR": "/tmp/.mount_mycat1"}, "/tmp/.mount_mycat1/usr/bin/mycat", False),
+    ],
+)
+def test_runs_from_appimage(environ, executable, expected):
+    assert updater.runs_from_appimage(environ, executable) is expected
+
+
+def test_deb_started_from_another_appimage_is_not_an_appimage(monkeypatch):
+    # Another AppImage's runtime exports APPIMAGE and APPDIR to its children, so
+    # the .deb build started from it must neither count as an AppImage nor offer
+    # to put itself over that other app's file.
+    monkeypatch.setattr(updater.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(updater.sys, "platform", "linux")
+    monkeypatch.setattr(updater.sys, "executable", "/usr/bin/mycat")
+    monkeypatch.setattr(updater.platform, "machine", lambda: "x86_64")
+    monkeypatch.delenv("SNAP", raising=False)
+    monkeypatch.setenv("APPIMAGE", "/home/olya/Apps/WezTerm.AppImage")
+    monkeypatch.setenv("APPDIR", "/tmp/.mount_WezTe1")
+    assert updater.install_kind() == "deb"
+    assert not updater.appimage_updatable()
+
+
+def test_install_kind_is_appimage_inside_its_own_mount(monkeypatch):
+    monkeypatch.setattr(updater.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(updater.sys, "platform", "linux")
+    monkeypatch.setattr(updater.sys, "executable", "/tmp/.mount_mycat1/usr/bin/mycat")
+    monkeypatch.delenv("SNAP", raising=False)
+    monkeypatch.setenv("APPIMAGE", "/home/olya/Apps/mycat.AppImage")
+    monkeypatch.setenv("APPDIR", "/tmp/.mount_mycat1")
+    assert updater.install_kind() == "appimage"
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        (APPIMAGE_HEAD + b"payload", True),
+        (b"\x7fELF\x02\x01\x01\x00AI\x01" + b"\x00" * 5, False),  # type 1
+        (b"\x7fELF\x02\x01\x01\x00\x00\x00\x00", False),  # a plain ELF
+        (b"<html>captive portal</html>", False),
+        (b"\x7fELF", False),  # too short
+    ],
+)
+def test_is_appimage_file(tmp_path, content, expected):
+    path = tmp_path / ".mycat-update.part"
+    path.write_bytes(content)
+    assert updater.is_appimage_file(str(path)) is expected
+
+
+def test_is_appimage_file_is_false_for_a_missing_file(tmp_path):
+    assert not updater.is_appimage_file(str(tmp_path / "nothing"))
+
+
+def test_replace_appimage_renames_over_the_old_file_with_its_mode(tmp_path, monkeypatch):
+    old = fake_appimage(tmp_path, monkeypatch, mode=0o640)
+    part = old.parent / ".mycat-update.part"
+    part.write_bytes(APPIMAGE_HEAD + b"new build")
+    part.chmod(0o600)
+    new_inode = part.stat().st_ino
+    updater.replace_appimage(str(part), str(old))
+    assert old.read_bytes() == APPIMAGE_HEAD + b"new build"
+    assert old.stat().st_ino == new_inode
+    assert (old.stat().st_mode & 0o777) == 0o740  # the old mode, plus u+x
+    assert not part.exists()
+
+
+def test_replace_appimage_keeps_the_old_file_when_the_download_is_no_appimage(tmp_path, monkeypatch):
+    old = fake_appimage(tmp_path, monkeypatch)
+    part = old.parent / ".mycat-update.part"
+    part.write_bytes(b"<html>captive portal</html>")
+    with pytest.raises(updater.DigestMismatch):
+        updater.replace_appimage(str(part), str(old))
+    assert old.read_bytes() == APPIMAGE_HEAD + b"old build"
+    assert not part.exists()
+
+
+def test_replace_appimage_keeps_the_old_file_when_the_rename_fails(tmp_path, monkeypatch):
+    old = fake_appimage(tmp_path, monkeypatch)
+    part = old.parent / ".mycat-update.part"
+    part.write_bytes(APPIMAGE_HEAD + b"new build")
+
+    def refuse(source, target):
+        raise PermissionError(1, "Operation not permitted", target)
+
+    monkeypatch.setattr(updater.os, "replace", refuse)
+    with pytest.raises(updater.SwapFailed):
+        updater.replace_appimage(str(part), str(old))
+    assert old.read_bytes() == APPIMAGE_HEAD + b"old build"
+    assert not part.exists()
+
+
+def test_appimage_relaunch_script_waits_for_the_pid_and_has_no_paths():
+    script = updater.APPIMAGE_RELAUNCH_SCRIPT
+    assert script.isascii()
+    assert script.index('kill -0 "$PID"') < script.index('exec "$APPIMAGE"')
+
+
+def test_appimage_relaunch_env_is_clean_and_carries_path_and_pid():
+    environ = {
+        "PATH": "/usr/bin",
+        "_MEIPASS2": "x",
+        "_PYI_ARCHIVE_FILE": "y",
+        "LD_LIBRARY_PATH": "/tmp/_MEIabc:/opt/lib",
+        "LD_LIBRARY_PATH_ORIG": "/opt/lib",
+        "APPIMAGE": "stale",
+    }
+    env = updater.appimage_relaunch_env("/home/Ольга/Apps/mycat.AppImage", 4242, environ)
+    assert env["APPIMAGE"] == "/home/Ольга/Apps/mycat.AppImage"
+    assert env["PID"] == "4242"
+    assert env["PATH"] == "/usr/bin"
+    assert env["LD_LIBRARY_PATH"] == "/opt/lib"
+    assert not [key for key in env if key.startswith(("_PYI", "_MEIPASS")) or key == "LD_LIBRARY_PATH_ORIG"]
+
+
+def test_apply_appimage_replaces_the_file_and_starts_the_helper(tmp_path, monkeypatch):
+    old = fake_appimage(tmp_path, monkeypatch)
+    part = old.parent / ".mycat-update.part"
+    part.write_bytes(APPIMAGE_HEAD + b"new build")
+    monkeypatch.setattr(updater.os, "getpid", lambda: 31337)
+    monkeypatch.setenv("_MEIPASS2", "stale")
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/tmp/_MEIabc")
+    monkeypatch.delenv("LD_LIBRARY_PATH_ORIG", raising=False)
+    (tmp_path / "mycat-update.result").write_text("swap-failed", encoding="ascii")
+    launched = []
+
+    class Recorder:
+        def __init__(self, args, **kwargs):
+            launched.append((args, kwargs))
+
+    monkeypatch.setattr(updater.subprocess, "Popen", Recorder)
+    updater.apply_and_relaunch("appimage", str(part))
+
+    assert old.read_bytes() == APPIMAGE_HEAD + b"new build"
+    assert not part.exists()
+    ((args, kwargs),) = launched
+    assert args == ["/bin/sh", "-c", updater.APPIMAGE_RELAUNCH_SCRIPT]
+    assert kwargs["start_new_session"] is True
+    env = kwargs["env"]
+    assert env["APPIMAGE"] == str(old) and env["PID"] == "31337"
+    assert "_MEIPASS2" not in env and "LD_LIBRARY_PATH" not in env
+    # The stale result is replaced by this update's outcome, read once later.
+    assert updater.take_update_result() == updater.SWAP_OK
+
+
+def test_apply_appimage_reports_a_failed_restart_after_the_swap(tmp_path, monkeypatch):
+    old = fake_appimage(tmp_path, monkeypatch)
+    part = old.parent / ".mycat-update.part"
+    part.write_bytes(APPIMAGE_HEAD + b"new build")
+
+    def refuse(*args, **kwargs):
+        raise BlockingIOError(11, "Resource temporarily unavailable")
+
+    monkeypatch.setattr(updater.subprocess, "Popen", refuse)
+    with pytest.raises(updater.RelaunchFailed):
+        updater.apply_and_relaunch("appimage", str(part))
+    # The new version is in place and is what the next start runs.
+    assert old.read_bytes() == APPIMAGE_HEAD + b"new build"
+    assert updater.take_update_result() == updater.SWAP_OK
+
+
+def test_apply_appimage_starts_nothing_when_the_swap_fails(tmp_path, monkeypatch):
+    old = fake_appimage(tmp_path, monkeypatch)
+    part = old.parent / ".mycat-update.part"
+    part.write_bytes(b"not an appimage at all")
+    (tmp_path / "mycat-update.result").write_text("ok", encoding="ascii")
+    launched = []
+    monkeypatch.setattr(updater.subprocess, "Popen", lambda *args, **kwargs: launched.append(args))
+    with pytest.raises(updater.DigestMismatch):
+        updater.apply_and_relaunch("appimage", str(part))
+    assert launched == []
+    assert old.read_bytes() == APPIMAGE_HEAD + b"old build"
+    assert not part.exists()
+    # The failure is shown right away, so nothing is left to report at the next start.
+    assert updater.take_update_result() == ""

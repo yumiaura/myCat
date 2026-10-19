@@ -50,6 +50,8 @@
     "The downloaded file is damaged. Try again later.": "Скачанный файл повреждён. Попробуйте ещё раз позже.",
     "The folder with myCat is not writable, so it cannot update itself. Download the new version from the releases page.": "myCat не может обновиться сам: в его папку нельзя записывать. Скачайте новую версию на странице релизов.",
     "The new version could not replace the old one, so the old one was started again.": "Новая версия не смогла заменить старую, поэтому снова запущена прежняя.",
+    "The new version could not replace the old one, so the old one was kept. Download the new version from the releases page.": "Новая версия не смогла заменить старую, поэтому прежняя осталась на месте. Скачайте новую версию со страницы релизов.",
+    "The new version is installed, but myCat could not restart itself. Quit myCat and start it again.": "Новая версия установлена, но myCat не смог перезапуститься сам. Закройте myCat и запустите его снова.",
     "Move mycat.app to the Applications folder, then try again.": "Перенесите mycat.app в папку «Программы» и попробуйте снова.",
     "This copy of myCat cannot update itself. Download the new version from the releases page.": "Эта копия myCat не может обновиться сама. Скачайте новую версию со страницы релизов.",
     "Settings": "Настройки",

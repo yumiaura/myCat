@@ -78,9 +78,26 @@ def install_kind() -> str:
     # from the .deb (in /usr/bin).
     if os.environ.get("SNAP"):
         return "snap"
-    if os.environ.get("APPIMAGE"):
+    if runs_from_appimage():
         return "appimage"
     return "deb"
+
+
+def runs_from_appimage(environ=None, executable=None) -> bool:
+    """Whether this process runs from the AppImage that APPIMAGE names.
+
+    The AppImage runtime exports APPIMAGE and APPDIR (its mount) to every
+    process started from it, so the .deb build started from a terminal or
+    launcher that is itself an AppImage inherits another app's APPIMAGE. Only
+    an executable inside APPDIR (ours is $APPDIR/usr/bin/mycat) proves the
+    file is this app, so an update never replaces another app's AppImage."""
+    environ = os.environ if environ is None else environ
+    executable = sys.executable if executable is None else executable
+    appdir = environ.get("APPDIR", "")
+    if not environ.get("APPIMAGE") or not appdir or not executable:
+        return False
+    mount = os.path.realpath(appdir)
+    return os.path.realpath(executable).startswith(mount.rstrip(os.sep) + os.sep)
 
 
 def is_winget_package_path(exe: str) -> bool:
@@ -170,10 +187,24 @@ def winget_entry_matches(winreg, uninstall, name: str, targets: set, folders: se
 
 
 def can_self_update(kind: str) -> bool:
-    """Kinds that download + swap + relaunch on their own. Only the Windows exe
-    and macOS .app; pip/deb/AppImage/snap/flatpak/WinGet installs are only *told*
-    an update exists (their package manager / a fresh download should apply it)."""
-    return kind in ("macos", "windows")
+    """Kinds that download + swap + relaunch on their own: the Windows exe, the
+    macOS .app and the AppImage (on x86_64, see ``appimage_updatable``).
+    pip/deb/snap/flatpak/WinGet installs are only *told* an update exists
+    (their package manager / a fresh download should apply it)."""
+    return kind in ("macos", "windows", "appimage")
+
+
+def appimage_path() -> str:
+    """The running AppImage file, as the AppImage runtime exports it in
+    APPIMAGE (already resolved), or "" outside an AppImage."""
+    return os.environ.get("APPIMAGE", "")
+
+
+def appimage_updatable() -> bool:
+    """Whether this AppImage may replace itself: APPIMAGE names the file this
+    process runs from, and the machine is x86_64, the only AppImage the
+    releases carry."""
+    return runs_from_appimage() and platform.machine() == "x86_64"
 
 
 def update_hint(kind: str) -> str:
@@ -253,7 +284,18 @@ DOWNLOAD_ATTEMPTS = 3
 
 
 class DigestMismatch(Exception):
-    """The downloaded file's sha256 is not the one the release lists."""
+    """The downloaded file is not the one the release lists: its sha256 differs,
+    or a downloaded AppImage is not an AppImage at all."""
+
+
+class SwapFailed(Exception):
+    """The verified download could not take the old build's place, which is
+    left as it was."""
+
+
+class RelaunchFailed(Exception):
+    """The new build is in place, but it could not be started; it runs at the
+    next start."""
 
 
 def download(url: str, dest: str, progress=None, attempts: int = DOWNLOAD_ATTEMPTS, sha256: str = "") -> None:
@@ -313,9 +355,14 @@ def staging_path(kind: str) -> str:
     The Windows exe stages beside itself (``mycat.exe.new``), so the swapper's
     final move is a rename on the same volume, never a copy across drives that
     could leave a half-written exe, and a folder that is not writable shows up
-    before the app quits. The other kinds stage in the temp dir."""
+    before the app quits. The AppImage stages beside itself too, as a dot-named
+    file without the .AppImage extension, so the folder watchers of
+    AppImageLauncher or Gear Lever leave the half-downloaded file alone. The
+    other kinds stage in the temp dir."""
     if kind == "windows":
         return sys.executable + ".new"
+    if kind == "appimage":
+        return os.path.join(os.path.dirname(appimage_path()), ".mycat-update.part")
     return os.path.join(tempfile.gettempdir(), asset_name(kind))
 
 
@@ -379,6 +426,8 @@ def apply_and_relaunch(kind: str, downloaded: str) -> None:
         apply_macos(downloaded)
     elif kind == "windows":
         apply_windows(downloaded)
+    elif kind == "appimage":
+        apply_appimage(downloaded)
     else:
         raise ValueError(f"cannot self-update install kind {kind!r}")
 
@@ -391,13 +440,24 @@ def clean_env(environ=None) -> dict:
     think it is the already-extracted second stage, look for its DLLs in the old
     (now deleted) _MEI dir and die with "Failed to load Python DLL". This is why
     the first auto-relaunch failed but a manual launch (clean Explorer env)
-    always worked."""
+    always worked.
+
+    On Linux the bootloader also points LD_LIBRARY_PATH at its bundled
+    libraries, keeping the caller's value in LD_LIBRARY_PATH_ORIG; host tools
+    and a relaunched build must not load those, so the original value comes
+    back, or LD_LIBRARY_PATH goes when there was none."""
     source = os.environ if environ is None else environ
-    return {
+    env = {
         key: value
         for key, value in source.items()
         if not key.startswith("_PYI") and not key.startswith("_MEIPASS")
     }
+    original = env.pop("LD_LIBRARY_PATH_ORIG", None)
+    if original is None:
+        env.pop("LD_LIBRARY_PATH", None)
+    else:
+        env["LD_LIBRARY_PATH"] = original
+    return env
 
 
 def macos_app_path(executable: str | None = None) -> str:
@@ -590,16 +650,97 @@ def apply_windows(downloaded: str) -> None:
     logger.info("Windows update swapper launched for %s (log: %s)", exe, log)
 
 
+# The AppImage relaunch helper: it waits for the old process to exit, so its
+# single-instance lock is free, then starts the AppImage at the same path. The
+# PID and the path arrive in the environment (``appimage_relaunch_env``).
+APPIMAGE_RELAUNCH_SCRIPT = 'while kill -0 "$PID" 2>/dev/null; do sleep 0.2; done; exec "$APPIMAGE"'
+
+
+def is_appimage_file(path: str) -> bool:
+    """Whether ``path`` starts like a type-2 AppImage: the ELF magic, and the
+    AppImage magic "AI" plus type 2 at offset 8. A cheap sanity check after the
+    sha256, so a wrong file never takes the old one's place."""
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(11)
+    except OSError:
+        return False
+    return head[:4] == b"\x7fELF" and head[8:11] == b"AI\x02"
+
+
+def appimage_relaunch_env(appimage: str, pid: int, environ=None) -> dict:
+    """The relaunch helper's environment: clean of the PyInstaller variables
+    (see clean_env), carrying the AppImage path and the PID it waits for."""
+    env = clean_env(environ)
+    env.update({"APPIMAGE": appimage, "PID": str(pid)})
+    return env
+
+
+def replace_appimage(downloaded: str, appimage: str) -> None:
+    """Put the verified ``downloaded`` file in place of ``appimage``.
+
+    It takes the old file's mode (at least executable for the owner), then one
+    rename in the same folder swaps it in. The running app is not disturbed: it
+    keeps the old file open, so its mount stays until it exits. On any failure
+    the old file is untouched and ``downloaded`` is deleted."""
+    try:
+        if not is_appimage_file(downloaded):
+            raise DigestMismatch(f"{os.path.basename(downloaded)} is not an AppImage")
+        try:
+            mode = stat.S_IMODE(os.stat(appimage).st_mode) | stat.S_IXUSR
+            os.chmod(downloaded, mode)
+            os.replace(downloaded, appimage)
+        except OSError as error:
+            raise SwapFailed(f"could not replace {appimage}: {error}") from error
+    except Exception:
+        remove_file(downloaded)
+        raise
+
+
+def apply_appimage(downloaded: str) -> None:
+    appimage = appimage_path()
+    result = update_result_path()
+    # A result left from an earlier run must not be reported for this one.
+    remove_file(result)
+    replace_appimage(downloaded, appimage)
+    # Every failure before this point is shown right away, so only the success
+    # goes to the result file, and nothing is reported twice.
+    try:
+        with open(result, "w", encoding="ascii") as handle:
+            handle.write(SWAP_OK + "\n")
+    except OSError as error:
+        logger.warning("could not write %s: %s", result, error)
+    try:
+        subprocess.Popen(  # noqa: S603
+            ["/bin/sh", "-c", APPIMAGE_RELAUNCH_SCRIPT],
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=appimage_relaunch_env(appimage, os.getpid()),
+        )
+    except OSError as error:
+        # The new file is in place already; only the restart is missing, and
+        # the next start runs the new version.
+        raise RelaunchFailed(f"could not start the relaunch helper: {error}") from error
+    logger.info("AppImage replaced, relaunch helper started for %s", appimage)
+
+
 __all__ = [
     "install_kind",
+    "runs_from_appimage",
     "is_winget_package_path",
     "winget_registry_lists",
     "can_self_update",
+    "appimage_path",
+    "appimage_updatable",
     "update_hint",
     "asset_name",
     "parse_sha256_digest",
     "release_asset",
     "DigestMismatch",
+    "SwapFailed",
+    "RelaunchFailed",
     "download",
     "staging_path",
     "remove_file",
@@ -616,6 +757,10 @@ __all__ = [
     "is_translocated",
     "macos_helper_script",
     "macos_helper_env",
+    "APPIMAGE_RELAUNCH_SCRIPT",
+    "is_appimage_file",
+    "appimage_relaunch_env",
+    "replace_appimage",
     "apply_and_relaunch",
     "RELEASES_PAGE",
 ]
