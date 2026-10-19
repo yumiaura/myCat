@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## [0.1.38] - 2026-10-19
 
 ### Added
 - **Short contribution templates and dependency updates.** Bug reports ask for the version, installation method, OS, reproduction steps and results; pull requests use Summary and Test plan. Dependabot checks GitHub Actions weekly. EditorConfig records the existing Python, YAML and JSON formatting conventions (branch `codex/contribution-templates`).

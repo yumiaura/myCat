@@ -38,6 +38,7 @@
   <!-- Newest first. Every release adds its line here; tests/test_metainfo.py
        checks the newest one matches pyproject.toml. -->
   <releases>
+    <release version="0.1.38" date="2026-10-19"/>
     <release version="0.1.37" date="2026-10-01"/>
   </releases>
 </component>
