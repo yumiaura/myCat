@@ -159,7 +159,7 @@ jobs:
     needs: [build-windows, build-macos, build-macos-intel]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
 
