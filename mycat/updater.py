@@ -359,8 +359,9 @@ def can_self_update(kind: str) -> bool:
     """Kinds that download + swap + relaunch on their own: the Windows exe, the
     macOS .app and the AppImage (on x86_64, see ``appimage_updatable``), and
     the .deb install when ``deb_updatable`` says so, installed through the
-    system password prompt. snap/flatpak/WinGet installs and checkouts are only
-    *told* an update exists (their package manager should apply it); PyPI
+    system password prompt. flatpak/WinGet installs and checkouts are only
+    *told* an update exists (their package manager should apply it), a snap
+    is refreshed by snapd in the background (see snap_update_text); PyPI
     installs run ``upgrade_command`` instead."""
     if kind == "deb":
         return deb_updatable()
@@ -401,12 +402,56 @@ def appimage_updatable() -> bool:
     return runs_from_appimage() and platform.machine() == "x86_64"
 
 
+# What the snap's update dialog says (English catalogue keys, translated in
+# main.py). A strictly confined snap cannot start its own refresh, and
+# `snap refresh mycat` fails while myCat runs, so there is no command to give:
+# snapd refreshes it in the background.
+SNAP_AUTO_UPDATE_TEXT = (
+    "myCat updates itself through the Snap Store in the background. "
+    "The new version {latest} will arrive automatically, there is nothing to do."
+)
+# The new revision waits underneath the running one. myCat does not start it
+# itself: a strictly confined snap may not exec `snap run`, so a helper would
+# quit the cat and bring nothing back. Quit, then the user opens it again.
+SNAP_INSTALLED_TEXT = "The new version is already installed. Quit myCat and open it again to use it."
+
+
+def snap_newer_revision_installed(environ=None) -> bool:
+    """Whether snapd has already installed a newer revision underneath the
+    running one: the snap's ``current`` link (beside the mounted revision that
+    SNAP names) points at a store revision above SNAP_REVISION. Any doubt (not
+    in a snap, no link, an unreadable link, a local ``x1`` revision, a
+    ``snap revert`` to a lower one) is False, "not known"."""
+    source = os.environ if environ is None else environ
+    snap = source.get("SNAP", "").rstrip("/")
+    revision = source.get("SNAP_REVISION", "")
+    if not snap or not revision:
+        return False
+    try:
+        # snapd writes the link relative ("42"); its last part is the revision.
+        current = os.path.basename(os.readlink(os.path.join(os.path.dirname(snap), "current")).rstrip("/"))
+    except OSError:
+        return False
+    # Store revisions are plain numbers; a local install is "x1", "x2"...
+    if not current.isdigit() or not revision.isdigit():
+        return False
+    return int(current) > int(revision)
+
+
+def snap_update_text(installed: bool) -> str:
+    """The snap's update sentence (an English key with a {latest}
+    placeholder in the auto-update one): the new revision is already
+    installed and waits for the next start, or the Snap Store brings it."""
+    return SNAP_INSTALLED_TEXT if installed else SNAP_AUTO_UPDATE_TEXT
+
+
 def update_hint(kind: str) -> str:
-    """A one-line 'how to update' for the kinds that don't self-update."""
+    """A one-line 'how to update' for the kinds that don't self-update. The
+    snap has none (see SNAP_AUTO_UPDATE_TEXT)."""
     if kind == "flatpak":
         return f"flatpak update {FLATPAK_APP_ID}"
     if kind == "snap":
-        return "snap refresh mycat"
+        return ""
     if kind == "winget":
         return WINGET_UPGRADE
     if kind == "deb":
@@ -1368,6 +1413,10 @@ __all__ = [
     "deb_updatable",
     "appimage_path",
     "appimage_updatable",
+    "SNAP_AUTO_UPDATE_TEXT",
+    "SNAP_INSTALLED_TEXT",
+    "snap_newer_revision_installed",
+    "snap_update_text",
     "update_hint",
     "asset_name",
     "parse_sha256_digest",

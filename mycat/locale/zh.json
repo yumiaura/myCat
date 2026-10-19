@@ -65,6 +65,8 @@
     "The downloaded file is not a newer myCat package, so it was not installed.": "下载的文件不是更新版本的 myCat 软件包，因此未安装。",
     "Move mycat.app to the Applications folder, then try again.": "请将 mycat.app 移到“应用程序”文件夹，然后再试一次。",
     "This copy of myCat cannot update itself. Download the new version from the releases page.": "这个 myCat 副本无法自行更新。请从发布页面下载新版本。",
+    "myCat updates itself through the Snap Store in the background. The new version {latest} will arrive automatically, there is nothing to do.": "myCat 会通过 Snap Store 在后台自动更新。新版本 {latest} 会自动送达，无需任何操作。",
+    "The new version is already installed. Quit myCat and open it again to use it.": "新版本已经安装。请退出 myCat 并重新打开以使用新版本。",
     "Settings": "设置",
     "Animation Wait Time (s):": "动画等待时间（秒）：",
     "Failed to save settings:\n{e}": "保存设置失败：\n{e}",
