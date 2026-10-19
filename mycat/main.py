@@ -520,10 +520,36 @@ def harden_pixmap(pixmap: QtGui.QPixmap, threshold: int = 128) -> QtGui.QPixmap:
 class UpdateSignals(QtCore.QObject):
     """Marshals the self-update worker threads back onto the GUI thread."""
 
-    checked = QtCore.Signal(object)       # latest release JSON (dict), or None if the check couldn't reach GitHub
+    checked = QtCore.Signal(object)       # (latest release JSON or None if GitHub was unreachable, on PyPI)
     progress = QtCore.Signal(int, int)    # bytes done, total (0 = unknown)
     applied = QtCore.Signal()             # new build swapped in + spawned
     failed = QtCore.Signal(str)           # error message
+
+
+class BusyProgressDialog(QtWidgets.QProgressDialog):
+    """A busy progress dialog that Escape, Alt+F4 and the close button cannot
+    dismiss: it stays on screen until ``finish_busy()``, so the work it shows
+    (a package upgrade that must not be stopped halfway) can't vanish while it
+    still runs."""
+
+    def __init__(self, label: str, parent: QtWidgets.QWidget | None = None) -> None:
+        super().__init__(label, "", 0, 0, parent)
+        self.setCancelButton(None)
+        self.work_done = False
+
+    def finish_busy(self) -> None:
+        self.work_done = True
+        self.close()
+
+    def reject(self) -> None:
+        if self.work_done:
+            super().reject()
+
+    def closeEvent(self, event: QtGui.QCloseEvent) -> None:
+        if self.work_done:
+            super().closeEvent(event)
+        else:
+            event.ignore()
 
 
 class PixelCatWindow(QtWidgets.QWidget):
@@ -1456,11 +1482,15 @@ class PixelCatWindow(QtWidgets.QWidget):
 
     def open_update(self) -> None:
         """Check the latest release; for a frozen build, offer to self-update."""
+        if getattr(self, "update_running", False):
+            # A package upgrade is still running; a second one at the same
+            # time could break the install.
+            return
         kind = updater.install_kind()
         current = update_check.current_version()
         signals = UpdateSignals(self)
         self.update_signals = signals  # keep alive while the flow runs
-        signals.checked.connect(lambda release: self.on_update_checked(kind, current, release))
+        signals.checked.connect(lambda result: self.on_update_checked(kind, current, *result))
         signals.failed.connect(self.on_update_failed)
 
         def check() -> None:
@@ -1468,23 +1498,44 @@ class PixelCatWindow(QtWidgets.QWidget):
             # reached) and let on_update_checked decide up-to-date vs. newer vs.
             # check-failed, so a rate-limited/offline check never poses as "you're
             # up to date". The same JSON names the exact asset to download.
+            # pip, pipx and uv tool install from PyPI, which gets the version a
+            # moment after the GitHub tag (pip would fail on the pinned version,
+            # pipx and uv would find nothing newer): ask PyPI (without the
+            # GitHub token) whether it is there yet.
             try:
-                signals.checked.emit(update_check.latest_release(token=github_api.github_token()))
+                release = update_check.latest_release(token=github_api.github_token())
+                on_pypi = True
+                if kind in updater.PACKAGE_KINDS and release:
+                    latest = str(release.get("tag_name", "")).strip()
+                    if update_check.parse_version(latest) > update_check.parse_version(current):
+                        on_pypi = updater.pypi_has_version(latest)
+                signals.checked.emit((release, on_pypi))
             except Exception as exc:  # noqa: BLE001 - surfaced to the user
                 signals.failed.emit(str(exc))
 
         threading.Thread(target=check, name="mycat-update-check", daemon=True).start()
 
     def update_box(
-        self, title: str, text: str, informative: str, kind: str, can_update: bool, asset: dict | None = None
+        self,
+        title: str,
+        text: str,
+        informative: str,
+        kind: str,
+        can_update: bool,
+        asset: dict | None = None,
+        command: list | None = None,
+        latest: str = "",
     ) -> None:
         """The update dialog, always with three buttons: Releases, Update, Close.
 
         Releases always opens the GitHub releases page. Update downloads
-        ``asset`` (from updater.release_asset) and restarts, and is enabled only
-        when a self-update is actually possible (Windows/macOS/AppImage with a
-        newer release whose build is listed with a sha256 digest); it is greyed
-        out on pip/git/deb/WinGet installs and whenever there's nothing to update."""
+        ``asset`` (from updater.release_asset) and restarts, or runs the PyPI
+        upgrade ``command`` (from updater.upgrade_command) and restarts. It is
+        enabled only when an update is actually possible (Windows/macOS/AppImage
+        with a newer release whose build is listed with a sha256 digest, or a
+        pip/pipx/uv tool install with a safe command and, for pip, the version
+        on PyPI); it is greyed out on git/deb/WinGet installs and whenever
+        there's nothing to update."""
         box = QtWidgets.QMessageBox(self)
         box.setWindowTitle(title)
         box.setText(text)
@@ -1492,17 +1543,19 @@ class PixelCatWindow(QtWidgets.QWidget):
         box.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
         releases_button = box.addButton(i18n.tr("Releases"), QtWidgets.QMessageBox.ButtonRole.ActionRole)
         update_button = box.addButton(i18n.tr("Update"), QtWidgets.QMessageBox.ButtonRole.ActionRole)
-        update_button.setEnabled(can_update and asset is not None)
+        update_button.setEnabled(can_update and (asset is not None or bool(command)))
         box.addButton(i18n.tr("Close"), QtWidgets.QMessageBox.ButtonRole.RejectRole)
         self.place_beside_cat(box)
         box.exec()
         clicked = box.clickedButton()
         if clicked is releases_button:
             QtGui.QDesktopServices.openUrl(QtCore.QUrl(updater.RELEASES_PAGE))
+        elif clicked is update_button and command:
+            self.install_update(command, latest)
         elif clicked is update_button and asset is not None:
             self.download_update(kind, asset)
 
-    def on_update_checked(self, kind: str, current: str, release: dict | None) -> None:
+    def on_update_checked(self, kind: str, current: str, release: dict | None, on_pypi: bool = True) -> None:
         # One dialog everywhere (Releases, Update, Close). Update is live only
         # in the last case: a reachable, newer release on a self-updating build
         # whose exact asset is listed with a sha256 digest.
@@ -1529,8 +1582,35 @@ class PixelCatWindow(QtWidgets.QWidget):
                 can_update=False,
             )
             return
+        if kind in updater.PACKAGE_KINDS:
+            command = updater.upgrade_command(kind, latest)
+            if not command:
+                # No safe way from here (a PEP 668 system Python, a site-packages
+                # this user can't write, no pipx/uv/pip): show the command.
+                text = i18n.tr("Update available. Update with:\n\n    {hint}").format(hint=updater.update_hint(kind))
+                self.update_box("myCat", versions, text, kind, can_update=False)
+            elif not on_pypi:
+                # The GitHub tag is out, PyPI doesn't serve that version yet.
+                self.update_box(
+                    "myCat",
+                    versions,
+                    i18n.tr("Version {latest} is not on PyPI yet. Try again later.").format(latest=latest),
+                    kind,
+                    can_update=False,
+                )
+            else:
+                self.update_box(
+                    "myCat",
+                    versions,
+                    i18n.tr("Update available. Click Update to install it and restart."),
+                    kind,
+                    can_update=True,
+                    command=command,
+                    latest=latest,
+                )
+            return
         if not updater.can_self_update(kind):
-            # pip / git / deb / WinGet: tell them how, Update stays greyed out.
+            # git / deb / WinGet: tell them how, Update stays greyed out.
             hint = updater.update_hint(kind)
             if kind == "deb":
                 # The .deb hint is a sentence, translated here.
@@ -1616,7 +1696,9 @@ class PixelCatWindow(QtWidgets.QWidget):
         )
 
     def download_update(self, kind: str, asset: dict) -> None:
-        signals = self.update_signals
+        # Fresh signals: the check's ``failed`` slot would show a second box.
+        signals = UpdateSignals(self)
+        self.update_signals = signals
         dialog = QtWidgets.QProgressDialog(i18n.tr("Downloading update…"), i18n.tr("Cancel"), 0, 100, self)
         dialog.setWindowTitle(i18n.tr("Updating myCat"))
         dialog.setMinimumDuration(0)
@@ -1688,6 +1770,82 @@ class PixelCatWindow(QtWidgets.QWidget):
         threading.Thread(target=worker, name="mycat-update", daemon=True).start()
         self.place_beside_cat(dialog)
         dialog.exec()
+
+    def install_update(self, command: list, latest: str) -> None:
+        """Upgrade a pip/pipx/uv tool install with ``command`` to ``latest`` and restart.
+
+        On Windows pip cannot replace the DLLs and .pyd files this process has
+        loaded, so a helper runs the command after the app has quit and starts
+        it again; the next start reports a failure. Elsewhere the command runs
+        here, off the GUI thread, under a busy progress dialog that can't be
+        closed (stopping pip halfway can break the install), then a helper
+        starts the new version once this process has exited."""
+        if sys.platform.startswith("win"):
+            try:
+                updater.apply_package_windows(command, latest)
+            except (OSError, ValueError) as exc:
+                self.on_update_failed(str(exc))
+                return
+            self.finish_update()
+            return
+        # Fresh signals: the check's ``failed`` slot would show a second box.
+        signals = UpdateSignals(self)
+        self.update_signals = signals
+        dialog = BusyProgressDialog(i18n.tr("Installing update…"), self)
+        dialog.setWindowTitle(i18n.tr("Updating myCat"))
+        dialog.setWindowFlag(QtCore.Qt.WindowType.WindowCloseButtonHint, False)
+        dialog.setMinimumDuration(0)
+        dialog.setAutoClose(False)
+        dialog.setAutoReset(False)
+        signals.applied.connect(lambda: (dialog.setLabelText(i18n.tr("Restarting…")), self.finish_update()))
+        signals.failed.connect(lambda message: self.on_install_failed(dialog, message))
+
+        def worker() -> None:
+            try:
+                updater.run_package_upgrade(command)
+                updater.check_upgraded(command, latest)
+            except updater.UpgradeFailed as exc:
+                logger.warning("Package upgrade failed: %s", exc)
+                signals.failed.emit(self.upgrade_failure_text(exc))
+                return
+            try:
+                updater.relaunch_after_exit()
+            except updater.RelaunchFailed as exc:
+                logger.warning("Update installed, restart failed: %s", exc)
+                signals.failed.emit(
+                    i18n.tr("The new version is installed, but myCat could not restart itself. "
+                            "Quit myCat and start it again.")
+                )
+                return
+            signals.applied.emit()
+
+        self.update_running = True
+        threading.Thread(target=worker, name="mycat-update", daemon=True).start()
+        self.place_beside_cat(dialog)
+        dialog.exec()
+
+    def on_install_failed(self, dialog: BusyProgressDialog, message: str) -> None:
+        """Close the busy dialog of a failed package upgrade, allow a new one
+        and show why it failed."""
+        self.update_running = False
+        dialog.finish_busy()
+        self.on_update_failed(message)
+
+    def upgrade_failure_text(self, error: updater.UpgradeFailed) -> str:
+        """What the failure box says for ``error``: the tool's own output as
+        it is, or a translated sentence for what myCat itself noticed."""
+        details = error.details
+        if error.reason == "timeout":
+            return i18n.tr("{tool} did not finish in {seconds} seconds.").format(
+                tool=details["tool"], seconds=details["seconds"]
+            )
+        if error.reason == "exit":
+            return i18n.tr("{tool} failed with exit code {code}.").format(tool=details["tool"], code=details["code"])
+        if error.reason == "stale":
+            return i18n.tr("{tool} finished, but version {latest} is not installed yet. Try again later.").format(
+                tool=details["tool"], latest=details["latest"]
+            )
+        return str(error)
 
     def finish_update(self) -> None:
         """New build spawned — this process MUST die now so the swapper can see the
@@ -2513,7 +2671,11 @@ def main() -> None:
         install_kind = updater.install_kind()
         if install_kind in ("windows", "appimage"):
             updater.remove_file(updater.staging_path(install_kind))
-        if install_kind in ("windows", "macos", "appimage"):
+        if install_kind in ("windows", "macos", "appimage") or (
+            sys.platform.startswith("win") and install_kind in updater.PACKAGE_KINDS
+        ):
+            # A pip/pipx/uv tool install on Windows is upgraded by a helper
+            # after the app quits, which leaves its outcome the same way.
             update_result = updater.take_update_result()
 
     # Setup signal handlers for graceful shutdown
@@ -2595,6 +2757,13 @@ def main() -> None:
             # The swapper could not replace the exe (or the helper the .app) and
             # relaunched the old one.
             reason = i18n.tr("The new version could not replace the old one, so the old one was started again.")
+            QtCore.QTimer.singleShot(
+                1000, lambda: QtWidgets.QMessageBox.warning(window, i18n.tr("Update failed"), reason)
+            )
+        elif update_result == updater.UPGRADE_FAILED:
+            # The Windows package helper's pip, pipx or uv failed; it started
+            # the version that was there.
+            reason = i18n.tr("The new version could not be installed, so the old one was started again.")
             QtCore.QTimer.singleShot(
                 1000, lambda: QtWidgets.QMessageBox.warning(window, i18n.tr("Update failed"), reason)
             )
