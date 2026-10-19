@@ -48,6 +48,8 @@
     "Update failed": "Update failed",
     "Couldn't update: {message}": "Couldn't update: {message}",
     "The downloaded file is damaged. Try again later.": "The downloaded file is damaged. Try again later.",
+    "The folder with myCat is not writable, so it cannot update itself. Download the new version from the releases page.": "The folder with myCat is not writable, so it cannot update itself. Download the new version from the releases page.",
+    "The new version could not replace the old one, so the old one was started again.": "The new version could not replace the old one, so the old one was started again.",
     "Settings": "Settings",
     "Animation Wait Time (s):": "Animation Wait Time (s):",
     "Failed to save settings:\n{e}": "Failed to save settings:\n{e}",

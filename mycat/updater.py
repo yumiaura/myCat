@@ -308,8 +308,67 @@ def download(url: str, dest: str, progress=None, attempts: int = DOWNLOAD_ATTEMP
 
 
 def staging_path(kind: str) -> str:
-    """Where to download the new build before swapping it in (temp dir)."""
+    """Where to download the new build before swapping it in.
+
+    The Windows exe stages beside itself (``mycat.exe.new``), so the swapper's
+    final move is a rename on the same volume, never a copy across drives that
+    could leave a half-written exe, and a folder that is not writable shows up
+    before the app quits. The other kinds stage in the temp dir."""
+    if kind == "windows":
+        return sys.executable + ".new"
     return os.path.join(tempfile.gettempdir(), asset_name(kind))
+
+
+def remove_file(path: str) -> None:
+    """Delete ``path`` if it is there: a staged download left by a cancelled or
+    interrupted update, or a stale swapper result."""
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        logger.warning("could not delete %s: %s", path, error)
+
+
+def staging_writable(path: str) -> bool:
+    """Whether the folder of the staged download ``path`` takes new files,
+    tested by really creating a dot-named probe beside it and deleting it again.
+    The probe never touches ``path`` itself, so a check that runs while a
+    download is writing there cannot truncate it. ``os.access`` is no answer on
+    Windows: it ignores ACLs and says yes for a folder under Program Files."""
+    probe = os.path.join(os.path.dirname(path), ".mycat-write-test")
+    remove_file(probe)  # a probe left by a crash would make "xb" fail
+    try:
+        with open(probe, "xb"):
+            pass
+    except OSError as error:
+        logger.warning("cannot stage the update next to %s: %s", path, error)
+        return False
+    remove_file(probe)
+    return True
+
+
+# What the Windows swapper writes to the result file, read once on the next start.
+SWAP_OK = "ok"
+SWAP_FAILED = "swap-failed"
+
+
+def update_result_path() -> str:
+    """The file the Windows swapper leaves its outcome in."""
+    return os.path.join(tempfile.gettempdir(), "mycat-update.result")
+
+
+def take_update_result() -> str:
+    """Read the swapper's outcome once and delete the file: ``SWAP_OK``,
+    ``SWAP_FAILED``, or "" when no update ran since the last start."""
+    path = update_result_path()
+    try:
+        with open(path, encoding="ascii", errors="replace") as handle:
+            result = handle.read().strip()
+    except OSError:
+        return ""
+    remove_file(path)
+    return result
 
 
 def apply_and_relaunch(kind: str, downloaded: str) -> None:
@@ -346,72 +405,110 @@ def apply_macos(zip_path: str) -> None:
     logger.info("macOS update helper launched for %s", app)
 
 
+def clean_env(environ=None) -> dict:
+    """``environ`` (default: this process's) without the PyInstaller onefile
+    bootloader's private variables, for every process a frozen build starts.
+
+    A child of the frozen app inherits them, and a relaunched exe would then
+    think it is the already-extracted second stage, look for its DLLs in the old
+    (now deleted) _MEI dir and die with "Failed to load Python DLL". This is why
+    the first auto-relaunch failed but a manual launch (clean Explorer env)
+    always worked."""
+    source = os.environ if environ is None else environ
+    return {
+        key: value
+        for key, value in source.items()
+        if not key.startswith("_PYI") and not key.startswith("_MEIPASS")
+    }
+
+
+def windows_swapper_script() -> str:
+    """The Windows swapper batch file: plain ASCII, with no path in it.
+
+    cmd.exe reads a .bat in the console's OEM code page (866, 936, 949...), so a
+    path written into the file breaks as soon as it has a Cyrillic, Chinese or
+    Korean letter: the move fails and nothing relaunches. The paths and the PID
+    arrive instead in the environment (``windows_swapper_env``), which Windows
+    passes as Unicode, and are only referenced as %NEW%, %EXE%, %LOG%, %PID% and
+    %RESULT%. An expanded %VAR% is not parsed again, so "&" or "%" in a path is
+    harmless inside the quotes, and there is no delayed expansion to eat a "!".
+    The retry counter needs none either: no line that reads %TRIES% sits in a
+    parenthesised block with the ``set`` that changes it.
+
+    It waits for the app's PID to exit and release the exe, then KEEPS RETRYING
+    the overwrite: a onefile build stays locked for a moment after the app PID
+    is gone, so a single `move` right away fails and nothing relaunches. Delays
+    use `ping`, not `timeout`: the swapper's hidden console has no interactive
+    stdin, and `timeout` errors out ("input redirection is not supported")
+    without one, which was breaking the wait/retry loops entirely. The outcome
+    goes to the result file for the next start to report, and the exe (new, or
+    the old one when the swap failed) is always relaunched."""
+    lines = [
+        "@echo off",
+        'echo swapper started %DATE% %TIME% > "%LOG%"',
+        ":wait",
+        'tasklist /FI "PID eq %PID%" 2>nul | find "%PID%" >nul',
+        "if not errorlevel 1 ( ping -n 2 127.0.0.1 >nul & goto wait )",
+        'echo app exited >> "%LOG%"',
+        "set /a TRIES=0",
+        ":swap",
+        'move /Y "%NEW%" "%EXE%" >nul 2>>"%LOG%"',
+        "if not errorlevel 1 goto swapped",
+        "set /a TRIES+=1",
+        'echo move attempt %TRIES% failed >> "%LOG%"',
+        "if %TRIES% LSS 30 ( ping -n 2 127.0.0.1 >nul & goto swap )",
+        'echo gave up swapping after %TRIES% tries >> "%LOG%"',
+        f'echo {SWAP_FAILED}> "%RESULT%"',
+        "goto launch",
+        ":swapped",
+        f'echo {SWAP_OK}> "%RESULT%"',
+        ":launch",
+        # Clear the PyInstaller onefile variables again before relaunching
+        # (see clean_env), belt-and-suspenders with the swapper's clean env.
+        'set "_MEIPASS2="',
+        'set "_PYI_ARCHIVE_FILE="',
+        'set "_PYI_APPLICATION_HOME_DIR="',
+        'set "_PYI_PARENT_PROCESS_LEVEL="',
+        'set "_PYI_SPLASH_IPC="',
+        'echo launching >> "%LOG%"',
+        'start "" "%EXE%"',
+        'echo done >> "%LOG%"',
+        'del "%~f0"',
+    ]
+    return "".join(line + "\r\n" for line in lines)
+
+
+def windows_swapper_env(downloaded: str, exe: str, log: str, pid: int, result: str, environ=None) -> dict:
+    """The swapper's environment: clean of PyInstaller variables, carrying the
+    paths and the PID the script refers to (as Unicode, untouched)."""
+    env = clean_env(environ)
+    env.update({"NEW": downloaded, "EXE": exe, "LOG": log, "PID": str(pid), "RESULT": result})
+    return env
+
+
 def apply_windows(downloaded: str) -> None:
     exe = sys.executable
-    pid = os.getpid()
-    log = os.path.join(tempfile.gettempdir(), "mycat-update.log")
-    script = os.path.join(tempfile.gettempdir(), "mycat-update.bat")
-    # Wait for this process (and its bootloader) to exit and release the exe, then
-    # KEEP RETRYING the overwrite: a onefile build stays locked for a moment after
-    # the app PID is gone, so a single `move` right away fails and nothing
-    # relaunches. Delays use `ping`, not `timeout`: the swapper's hidden console has
-    # no interactive stdin, and `timeout` errors out ("input redirection is not
-    # supported") without one — which was breaking the wait/retry loops entirely.
-    body = (
-        "@echo off\r\n"
-        "setlocal enabledelayedexpansion\r\n"
-        f'set "LOG={log}"\r\n'
-        f'set "NEW={downloaded}"\r\n'
-        f'set "EXE={exe}"\r\n'
-        'echo swapper started %DATE% %TIME% > "%LOG%"\r\n'
-        ":wait\r\n"
-        f'tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul\r\n'
-        "if not errorlevel 1 ( ping -n 2 127.0.0.1 >nul & goto wait )\r\n"
-        'echo app exited >> "%LOG%"\r\n'
-        "set /a TRIES=0\r\n"
-        ":swap\r\n"
-        'move /Y "%NEW%" "%EXE%" >nul 2>>"%LOG%"\r\n'
-        "if not errorlevel 1 goto launch\r\n"
-        "set /a TRIES+=1\r\n"
-        'echo move attempt !TRIES! failed >> "%LOG%"\r\n'
-        "if !TRIES! LSS 30 ( ping -n 2 127.0.0.1 >nul & goto swap )\r\n"
-        'echo gave up swapping after !TRIES! tries >> "%LOG%"\r\n'
-        ":launch\r\n"
-        # Clear the PyInstaller onefile bootloader's private env vars before
-        # relaunching. The swapper is a descendant of the old frozen process, so
-        # the new exe would otherwise inherit these and the bootloader would think
-        # it is the already-extracted second stage — looking for its DLLs in the
-        # old (now deleted) _MEI dir and dying with "Failed to load Python DLL".
-        # This is why the first auto-relaunch failed but a manual launch (clean
-        # Explorer env) always worked.
-        'set "_MEIPASS2="\r\n'
-        'set "_PYI_ARCHIVE_FILE="\r\n'
-        'set "_PYI_APPLICATION_HOME_DIR="\r\n'
-        'set "_PYI_PARENT_PROCESS_LEVEL="\r\n'
-        'set "_PYI_SPLASH_IPC="\r\n'
-        'echo launching "%EXE%" >> "%LOG%"\r\n'
-        'start "" "%EXE%"\r\n'
-        'echo done >> "%LOG%"\r\n'
-        'del "%~f0"\r\n'
-    )
-    with open(script, "w", encoding="utf-8") as handle:
-        handle.write(body)
+    temp = tempfile.gettempdir()
+    log = os.path.join(temp, "mycat-update.log")
+    script = os.path.join(temp, "mycat-update.bat")
+    result = update_result_path()
+    # A result left from an earlier run must not be reported for this one.
+    remove_file(result)
+    # newline="": the script already has CRLF line ends, text mode on Windows
+    # must not turn them into CR CR LF.
+    with open(script, "w", encoding="ascii", newline="") as handle:
+        handle.write(windows_swapper_script())
     # CREATE_NO_WINDOW: give the swapper a HIDDEN console. DETACHED_PROCESS (used
     # before) gives cmd no console at all, so every `ping`/`tasklist`/`find` it runs
-    # made Windows allocate a fresh console — a black window that flashed up and,
+    # made Windows allocate a fresh console, a black window that flashed up and,
     # when the swap stalled, sat there showing the wait loop. A hidden console the
     # child console tools reuse means nothing is ever visible. The swapper still
     # outlives this process (child processes aren't tied to the parent's lifetime).
-    # Also hand the swapper an environment with the PyInstaller onefile vars
-    # stripped, so the relaunched exe (our descendant) never inherits them and
-    # extracts fresh — belt-and-suspenders with the `set ""` lines in the batch.
-    clean_env = {
-        key: value
-        for key, value in os.environ.items()
-        if not key.startswith("_PYI") and not key.startswith("_MEIPASS")
-    }
     subprocess.Popen(  # noqa: S603
-        ["cmd", "/c", script], creationflags=CREATE_NO_WINDOW, close_fds=True, env=clean_env
+        ["cmd", "/c", script],
+        creationflags=CREATE_NO_WINDOW,
+        close_fds=True,
+        env=windows_swapper_env(downloaded, exe, log, os.getpid(), result),
     )
     logger.info("Windows update swapper launched for %s (log: %s)", exe, log)
 
@@ -428,6 +525,15 @@ __all__ = [
     "DigestMismatch",
     "download",
     "staging_path",
+    "remove_file",
+    "staging_writable",
+    "SWAP_OK",
+    "SWAP_FAILED",
+    "update_result_path",
+    "take_update_result",
+    "clean_env",
+    "windows_swapper_script",
+    "windows_swapper_env",
     "apply_and_relaunch",
     "RELEASES_PAGE",
 ]

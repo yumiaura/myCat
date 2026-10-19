@@ -1554,6 +1554,18 @@ class PixelCatWindow(QtWidgets.QWidget):
                 can_update=False,
             )
             return
+        if kind == "windows" and not updater.staging_writable(updater.staging_path(kind)):
+            # The exe sits in a folder this user can't write to (Program Files,
+            # a read-only share): say so now, before anything quits.
+            self.update_box(
+                "myCat",
+                versions,
+                i18n.tr("The folder with myCat is not writable, so it cannot update itself. "
+                        "Download the new version from the releases page."),
+                kind,
+                can_update=False,
+            )
+            return
         # Windows / macOS with a newer, verifiable release: Update is enabled.
         self.update_box(
             "myCat",
@@ -1581,9 +1593,11 @@ class PixelCatWindow(QtWidgets.QWidget):
         signals.applied.connect(lambda: (dialog.setLabelText(i18n.tr("Restarting…")), self.finish_update()))
         signals.failed.connect(lambda message: (dialog.close(), self.on_update_failed(message)))
 
+        dest = updater.staging_path(kind)
+
         def worker() -> None:
+            launched = False
             try:
-                dest = updater.staging_path(kind)
 
                 def progress(done: int, total: int) -> None:
                     if cancelled.is_set():
@@ -1595,6 +1609,7 @@ class PixelCatWindow(QtWidgets.QWidget):
                 updater.download(asset["url"], dest, progress, sha256=asset["sha256"])
                 if cancelled.is_set():
                     return
+                launched = True
                 updater.apply_and_relaunch(kind, dest)
                 signals.applied.emit()
             except updater.DigestMismatch as exc:
@@ -1604,6 +1619,12 @@ class PixelCatWindow(QtWidgets.QWidget):
             except Exception as exc:  # noqa: BLE001 - surfaced to the user
                 if not cancelled.is_set():
                     signals.failed.emit(str(exc))
+            finally:
+                if cancelled.is_set() and kind == "windows" and not launched:
+                    # A cancelled exe.new beside the exe goes now, from this
+                    # thread, which has closed it: Windows won't delete an open file.
+                    # Once the swapper is being started, the file is its own.
+                    updater.remove_file(dest)
 
         threading.Thread(target=worker, name="mycat-update", daemon=True).start()
         self.place_beside_cat(dialog)
@@ -2409,6 +2430,7 @@ def main() -> None:
     # its instances share, and the lock is a flock (see flatpak_instance_lock).
     instance_dir = flatpak_instance_dir()
     activation_name = str(instance_dir / "activation") if instance_dir else SINGLE_INSTANCE_NAME
+    update_result = ""
     if platform_name != "offscreen":
         if instance_dir is not None:
             lock_fd = flatpak_instance_lock(instance_dir)
@@ -2425,6 +2447,12 @@ def main() -> None:
         # Only the instance that holds the lock heals a login entry an older
         # version wrote with a command that no longer starts this install.
         autostart.refresh_entry()
+        # The Windows exe: drop a download an interrupted update left beside it,
+        # and pick up how the swapper did with the last update (read once).
+        # Only the lock holder, so a second launch can't touch a running update.
+        if updater.install_kind() == "windows":
+            updater.remove_file(updater.staging_path("windows"))
+            update_result = updater.take_update_result()
 
     # Setup signal handlers for graceful shutdown
     def signal_handler(signum, frame):
@@ -2501,6 +2529,12 @@ def main() -> None:
         # First-run nudge to start on login, 15 s after the cat is up: the cat
         # is the first thing a new user sees, not a dialog in front of it.
         QtCore.QTimer.singleShot(15000, lambda: offer_autostart_on_first_run(window))
+        if update_result == updater.SWAP_FAILED:
+            # The swapper could not replace the exe and relaunched the old one.
+            reason = i18n.tr("The new version could not replace the old one, so the old one was started again.")
+            QtCore.QTimer.singleShot(
+                1000, lambda: QtWidgets.QMessageBox.warning(window, i18n.tr("Update failed"), reason)
+            )
 
     try:
         sys.exit(app.exec())
