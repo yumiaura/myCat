@@ -1475,7 +1475,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         threading.Thread(target=check, name="mycat-update-check", daemon=True).start()
 
     def update_box(self, title: str, text: str, informative: str, kind: str, can_update: bool) -> None:
-        """The update dialog — always three buttons: Releases · Update · Close.
+        """The update dialog, always with three buttons: Releases, Update, Close.
 
         Releases always opens the GitHub releases page. Update downloads the new
         build and restarts, and is enabled only when a self-update is actually
@@ -1486,10 +1486,10 @@ class PixelCatWindow(QtWidgets.QWidget):
         box.setText(text)
         box.setInformativeText(informative)
         box.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
-        releases_button = box.addButton("Releases", QtWidgets.QMessageBox.ButtonRole.ActionRole)
-        update_button = box.addButton("Update", QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        releases_button = box.addButton(i18n.tr("Releases"), QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        update_button = box.addButton(i18n.tr("Update"), QtWidgets.QMessageBox.ButtonRole.ActionRole)
         update_button.setEnabled(can_update)
-        box.addButton(QtWidgets.QMessageBox.StandardButton.Close)
+        box.addButton(i18n.tr("Close"), QtWidgets.QMessageBox.ButtonRole.RejectRole)
         self.place_beside_cat(box)
         box.exec()
         clicked = box.clickedButton()
@@ -1499,53 +1499,54 @@ class PixelCatWindow(QtWidgets.QWidget):
             self.download_update(kind)
 
     def on_update_checked(self, kind: str, current: str, latest: str) -> None:
-        # One dialog everywhere (Releases · Update · Close). Update is live only
+        # One dialog everywhere (Releases, Update, Close). Update is live only
         # in the last case: a reachable, newer release on a self-updating build.
         if not latest:
             # The check couldn't reach GitHub (offline, or the API rate-limited
-            # this IP). Don't claim we're up to date — say the check failed.
+            # this IP). Don't claim we're up to date, say the check failed.
             self.update_box(
                 "myCat",
-                f"Current: {current}",
-                "Couldn't reach GitHub — try again in a bit.",
+                i18n.tr("Current: {current}").format(current=current),
+                i18n.tr("Couldn't reach GitHub, try again in a bit."),
                 kind,
                 can_update=False,
             )
             return
-        versions = f"Current: {current}\nLatest: {latest}"
+        versions = i18n.tr("Current: {current}\nLatest: {latest}").format(current=current, latest=latest)
         if update_check.parse_version(latest) <= update_check.parse_version(current):
-            # Up to date — nothing to update, so Update stays greyed out.
+            # Up to date: nothing to update, so Update stays greyed out.
             self.update_box(
                 "myCat",
                 versions,
-                "No update needed — you're on the latest version. 🐱",
+                i18n.tr("No update needed, you're on the latest version. 🐱"),
                 kind,
                 can_update=False,
             )
             return
         if not updater.can_self_update(kind):
             # pip / git / deb / AppImage: tell them how, Update stays greyed out.
-            self.update_box(
-                "myCat",
-                versions,
-                f"Update available. Update with:\n\n    {updater.update_hint(kind)}",
-                kind,
-                can_update=False,
-            )
+            hint = updater.update_hint(kind)
+            if kind in ("deb", "appimage"):
+                # The .deb and AppImage hints are sentences, translated here.
+                text = i18n.tr("Update available. {instruction}").format(instruction=i18n.tr(hint))
+            else:
+                # Flatpak, snap, git and pip hints are commands, kept as typed.
+                text = i18n.tr("Update available. Update with:\n\n    {hint}").format(hint=hint)
+            self.update_box("myCat", versions, text, kind, can_update=False)
             return
         # Windows / macOS with a newer release: Update is enabled.
         self.update_box(
             "myCat",
             versions,
-            "Update available — click Update to download and restart.",
+            i18n.tr("Update available. Click Update to download and restart."),
             kind,
             can_update=True,
         )
 
     def download_update(self, kind: str) -> None:
         signals = self.update_signals
-        dialog = QtWidgets.QProgressDialog("Downloading update…", "Cancel", 0, 100, self)
-        dialog.setWindowTitle("Updating myCat")
+        dialog = QtWidgets.QProgressDialog(i18n.tr("Downloading update…"), i18n.tr("Cancel"), 0, 100, self)
+        dialog.setWindowTitle(i18n.tr("Updating myCat"))
         dialog.setMinimumDuration(0)
         dialog.setAutoClose(False)
         dialog.setAutoReset(False)
@@ -1556,7 +1557,7 @@ class PixelCatWindow(QtWidgets.QWidget):
         signals.progress.connect(
             lambda done, total: dialog.setValue(int(done * 100 / total) if total else 0)
         )
-        signals.applied.connect(lambda: (dialog.setLabelText("Restarting…"), self.finish_update()))
+        signals.applied.connect(lambda: (dialog.setLabelText(i18n.tr("Restarting…")), self.finish_update()))
         signals.failed.connect(lambda message: (dialog.close(), self.on_update_failed(message)))
 
         def worker() -> None:
@@ -1594,7 +1595,9 @@ class PixelCatWindow(QtWidgets.QWidget):
 
     def on_update_failed(self, message: str) -> None:
         logger.warning("Update failed: %s", message)
-        QtWidgets.QMessageBox.warning(self, "Update failed", f"Couldn't update: {message}")
+        QtWidgets.QMessageBox.warning(
+            self, i18n.tr("Update failed"), i18n.tr("Couldn't update: {message}").format(message=message)
+        )
 
     def on_char_installed(self, _char_id: str) -> None:
         self.available_images = char_catalog.scan_all()
