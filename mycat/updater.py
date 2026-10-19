@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import ntpath
 import os
 import platform
 import re
@@ -37,12 +38,21 @@ CREATE_NO_WINDOW = 0x08000000
 # myCat's Flatpak app id, which flatpak exports as FLATPAK_ID inside it.
 FLATPAK_APP_ID = "io.github.yumiaura.myCat"
 
+# myCat's WinGet package id. A portable install lives in a folder named
+# "<id>_<source>" under ...\WinGet\Packages, and its uninstall entry is a key
+# with that same name; the source part differs between sources, so only the
+# "<id>_" prefix is matched.
+WINGET_PACKAGE_ID = "yumiaura.myCat"
+WINGET_UPGRADE = f"winget upgrade --id {WINGET_PACKAGE_ID} --exact"
+UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall"
+
 
 def install_kind() -> str:
     """How this instance was installed.
 
     One of ``source`` (running from a checkout or pip — nothing to swap),
-    ``flatpak``, ``snap``, ``appimage``, ``deb``, ``macos`` or ``windows``.
+    ``flatpak``, ``snap``, ``appimage``, ``deb``, ``macos``, ``winget`` (the
+    Windows exe installed by WinGet) or ``windows``.
     """
     # Flatpak runs the package from source inside its sandbox, so it is not
     # frozen. flatpak sets FLATPAK_ID for every app it runs, and processes
@@ -55,6 +65,13 @@ def install_kind() -> str:
     if sys.platform == "darwin":
         return "macos"
     if sys.platform.startswith("win"):
+        # WinGet checks the hash of the exe it installed, so a WinGet install
+        # must be left to `winget upgrade` rather than swapped in place. The
+        # registry may hold the path as launched (through a junction or a subst
+        # drive), so it is matched against both forms.
+        exe = os.path.realpath(sys.executable)
+        if is_winget_package_path(exe) or winget_registry_lists(exe, sys.executable):
+            return "winget"
         return "windows"
     # Frozen Linux: snapd sets SNAP to the mounted snap; an AppImage exports
     # APPIMAGE with the real .AppImage path; otherwise it's the binary installed
@@ -66,10 +83,96 @@ def install_kind() -> str:
     return "deb"
 
 
+def is_winget_package_path(exe: str) -> bool:
+    """Whether the Windows path ``exe`` sits in a WinGet portable package folder:
+    ``...\\WinGet\\Packages\\yumiaura.myCat_<source>\\...``, as under
+    ``%LOCALAPPDATA%\\Microsoft\\WinGet`` or ``%ProgramFiles%\\WinGet``. Pure
+    path logic (ntpath), so it is testable with Windows paths anywhere."""
+    drive, rest = ntpath.splitdrive(ntpath.normcase(exe))
+    folders = [part for part in rest.split("\\") if part][:-1]
+    prefix = WINGET_PACKAGE_ID.lower() + "_"
+    return any(
+        folders[index].startswith(prefix) and folders[index - 1] == "packages" and folders[index - 2] == "winget"
+        for index in range(2, len(folders))
+    )
+
+
+def winget_registry_lists(*exes: str) -> bool:
+    """Whether a WinGet portable uninstall entry for myCat (HKCU, then HKLM)
+    points at one of ``exes`` (the same exe, resolved or as launched), which
+    catches an install made with ``--location``. Read-only; any registry trouble
+    counts as no."""
+    try:
+        import winreg
+
+        hives = (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE)
+    except Exception:  # noqa: BLE001
+        return False
+    targets = set()
+    for exe in exes:
+        targets |= windows_path_forms(exe)
+    folders = {ntpath.dirname(target) for target in targets}
+    prefix = WINGET_PACKAGE_ID.lower() + "_"
+    for hive in hives:
+        try:
+            with winreg.OpenKey(hive, UNINSTALL_KEY, 0, winreg.KEY_READ) as uninstall:
+                index = 0
+                while True:
+                    try:
+                        name = winreg.EnumKey(uninstall, index)
+                    except OSError:
+                        break
+                    index += 1
+                    if name.lower().startswith(prefix) and winget_entry_matches(
+                        winreg, uninstall, name, targets, folders
+                    ):
+                        return True
+        except Exception:  # noqa: BLE001
+            logger.debug("WinGet uninstall entries unreadable in hive %s", hive, exc_info=True)
+    return False
+
+
+def windows_path_forms(path: str) -> set:
+    """``path`` as written and resolved through junctions, symlinks and subst
+    drives, both normalised and normcased for comparison. Empty for no path."""
+    if not path:
+        return set()
+    forms = {ntpath.normcase(ntpath.normpath(path))}
+    try:
+        forms.add(ntpath.normcase(ntpath.normpath(os.path.realpath(path))))
+    except (OSError, ValueError):
+        pass
+    return forms
+
+
+def winget_entry_matches(winreg, uninstall, name: str, targets: set, folders: set) -> bool:
+    """Whether the uninstall subkey ``name`` is myCat's WinGet portable entry for
+    one of the exe paths ``targets`` (in one of ``folders``), all already
+    normcased."""
+
+    def value(key, value_name: str) -> str:
+        try:
+            return str(winreg.QueryValueEx(key, value_name)[0])
+        except OSError:
+            return ""
+
+    try:
+        with winreg.OpenKey(uninstall, name, 0, winreg.KEY_READ) as entry:
+            if value(entry, "WinGetPackageIdentifier").lower() != WINGET_PACKAGE_ID.lower():
+                return False
+            if value(entry, "WinGetInstallerType").lower() != "portable":
+                return False
+            full_path = value(entry, "TargetFullPath")
+            location = value(entry, "InstallLocation")
+    except OSError:
+        return False
+    return bool(windows_path_forms(full_path) & targets or windows_path_forms(location) & folders)
+
+
 def can_self_update(kind: str) -> bool:
     """Kinds that download + swap + relaunch on their own. Only the Windows exe
-    and macOS .app; pip/deb/AppImage/snap/flatpak installs are only *told* an
-    update exists (their package manager / a fresh download should apply it)."""
+    and macOS .app; pip/deb/AppImage/snap/flatpak/WinGet installs are only *told*
+    an update exists (their package manager / a fresh download should apply it)."""
     return kind in ("macos", "windows")
 
 
@@ -79,6 +182,8 @@ def update_hint(kind: str) -> str:
         return f"flatpak update {FLATPAK_APP_ID}"
     if kind == "snap":
         return "snap refresh mycat"
+    if kind == "winget":
+        return WINGET_UPGRADE
     if kind == "deb":
         return "Download the new .deb from the releases page and install it."
     if kind == "appimage":
@@ -313,6 +418,8 @@ def apply_windows(downloaded: str) -> None:
 
 __all__ = [
     "install_kind",
+    "is_winget_package_path",
+    "winget_registry_lists",
     "can_self_update",
     "update_hint",
     "asset_name",
