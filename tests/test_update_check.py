@@ -55,3 +55,31 @@ def test_latest_release_tag_swallows_errors():
         raise OSError("no network")
 
     assert update_check.latest_release_tag(opener=boom) is None
+
+
+def test_latest_release_returns_the_json_with_assets():
+    body = (
+        '{"tag_name": "0.1.37", "assets": [{"name": "mycat-windows-x64.exe", "state": "uploaded",'
+        ' "digest": "sha256:995546da86b5e0d94b08713511b5b3551ecd249cf1b27baf234b18ac26e5abf4",'
+        ' "browser_download_url":'
+        ' "https://github.com/yumiaura/myCat/releases/download/0.1.37/mycat-windows-x64.exe"}]}'
+    )
+    release = update_check.latest_release(opener=opener_returning(body))
+    assert release["tag_name"] == "0.1.37"
+    assert release["assets"][0]["name"] == "mycat-windows-x64.exe"
+    assert update_check.latest_release_tag(opener=opener_returning(body)) == "0.1.37"
+
+
+def test_latest_release_none_without_a_tag():
+    assert update_check.latest_release(opener=opener_returning('{"message": "Not Found"}')) is None
+    assert update_check.latest_release(opener=opener_returning('{"tag_name": "  "}')) is None
+    assert update_check.latest_release(opener=opener_returning("[]")) is None
+    assert update_check.latest_release_tag(opener=opener_returning('{"message": "Not Found"}')) is None
+
+
+def test_latest_release_swallows_errors():
+    def boom(request, timeout=None):
+        raise OSError("no network")
+
+    assert update_check.latest_release(opener=boom) is None
+    assert update_check.latest_release(opener=opener_returning("not json")) is None

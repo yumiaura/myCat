@@ -3,8 +3,9 @@
 
 Downloads this platform's asset from the latest GitHub release, swaps it in, and
 relaunches. Source / pip installs are never modified — they only learn that a
-newer version exists (the caller shows a message and a link). Everything is
-fetched over HTTPS from the release's stable, version-less download URLs.
+newer version exists (the caller shows a message and a link). The asset is
+fetched over HTTPS from the versioned download URL listed in the release JSON
+the update check read, and its sha256 must match the digest GitHub lists there.
 
 The GUI flow (menu action, confirm dialog, progress, relaunch) lives in
 ``main.py``; this module is pure logic so it stays testable.
@@ -12,9 +13,11 @@ The GUI flow (menu action, confirm dialog, progress, relaunch) lives in
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import platform
+import re
 import stat
 import subprocess
 import sys
@@ -24,7 +27,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-RELEASE_DOWNLOAD = "https://github.com/yumiaura/myCat/releases/latest/download"
+RELEASE_DOWNLOAD = "https://github.com/yumiaura/myCat/releases/download/"
 RELEASES_PAGE = "https://github.com/yumiaura/myCat/releases/latest"
 
 # Windows CreateProcess flag: run the update swapper with a hidden console so no
@@ -99,9 +102,41 @@ def asset_name(kind: str) -> str:
     return ""
 
 
-def asset_url(kind: str) -> str:
-    name = asset_name(kind)
-    return f"{RELEASE_DOWNLOAD}/{name}" if name else ""
+SHA256_DIGEST_RE = re.compile(r"sha256:([0-9a-fA-F]{64})")
+
+
+def parse_sha256_digest(digest) -> str:
+    """The lowercase hex from a GitHub asset ``digest`` ("sha256:<64 hex>"), or
+    ``""`` when it is missing or anything else."""
+    match = SHA256_DIGEST_RE.fullmatch(digest.strip()) if isinstance(digest, str) else None
+    return match.group(1).lower() if match else ""
+
+
+def release_asset(release: dict | None, name: str) -> dict | None:
+    """The asset called exactly ``name`` in a GitHub release JSON, as
+    ``{"name", "url", "sha256"}``, or None.
+
+    The name must match exactly: the release also carries look-alikes (the
+    AppImage's ``.zsync`` and the legacy ``mycat-x86_64.AppImage``). An asset
+    still uploading, without a sha256 digest, or not served from this repo's
+    versioned download URL counts as missing, so nothing unverified is offered."""
+    if not release or not name:
+        return None
+    for asset in release.get("assets") or []:
+        if not isinstance(asset, dict) or asset.get("name") != name:
+            continue
+        url = asset.get("browser_download_url")
+        sha256 = parse_sha256_digest(asset.get("digest"))
+        if (
+            asset.get("state") == "uploaded"
+            and isinstance(url, str)
+            and url.startswith(RELEASE_DOWNLOAD)
+            and url.endswith(f"/{name}")
+            and sha256
+        ):
+            return {"name": name, "url": url, "sha256": sha256}
+        return None
+    return None
 
 
 def make_executable(path: str) -> None:
@@ -112,7 +147,11 @@ def make_executable(path: str) -> None:
 DOWNLOAD_ATTEMPTS = 3
 
 
-def download(url: str, dest: str, progress=None, attempts: int = DOWNLOAD_ATTEMPTS) -> None:
+class DigestMismatch(Exception):
+    """The downloaded file's sha256 is not the one the release lists."""
+
+
+def download(url: str, dest: str, progress=None, attempts: int = DOWNLOAD_ATTEMPTS, sha256: str = "") -> None:
     """Stream ``url`` to ``dest``; call ``progress(done, total)`` as it goes.
 
     The finished file is verified against ``Content-Length`` and a truncated or
@@ -122,6 +161,11 @@ def download(url: str, dest: str, progress=None, attempts: int = DOWNLOAD_ATTEMP
     the server sends no Content-Length (then we can't verify, and take what we
     got). ``progress`` may raise to cancel; that is not a network error, so it
     propagates immediately instead of being retried.
+
+    With ``sha256`` (lowercase hex) the complete file's hash, computed while it
+    streams, must match, or ``dest`` is deleted and DigestMismatch is raised. A
+    mismatch is not retried: the server sent the whole file, just not the one
+    the release lists.
     """
     request = urllib.request.Request(url, headers={"User-Agent": "mycat"})
     last_error: OSError | None = None
@@ -130,17 +174,27 @@ def download(url: str, dest: str, progress=None, attempts: int = DOWNLOAD_ATTEMP
             with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310 - official HTTPS release URL
                 total = int(response.headers.get("Content-Length") or 0)
                 done = 0
+                hasher = hashlib.sha256()
                 with open(dest, "wb") as out:
                     while True:
                         chunk = response.read(1 << 16)
                         if not chunk:
                             break
                         out.write(chunk)
+                        hasher.update(chunk)
                         done += len(chunk)
                         if progress is not None:
                             progress(done, total)
             if total and done != total:
                 raise OSError(f"incomplete download: got {done} of {total} bytes")
+            if sha256 and hasher.hexdigest() != sha256.lower():
+                # A failed cleanup (an AV scanner holding the file) must not
+                # turn the mismatch into a retried network error.
+                try:
+                    os.remove(dest)
+                except OSError as error:
+                    logger.warning("could not delete mismatched download %s: %s", dest, error)
+                raise DigestMismatch(f"sha256 of {os.path.basename(dest)} does not match the release")
             return
         except OSError as error:  # network / truncation — retry, then give up
             last_error = error
@@ -262,7 +316,9 @@ __all__ = [
     "can_self_update",
     "update_hint",
     "asset_name",
-    "asset_url",
+    "parse_sha256_digest",
+    "release_asset",
+    "DigestMismatch",
     "download",
     "staging_path",
     "apply_and_relaunch",

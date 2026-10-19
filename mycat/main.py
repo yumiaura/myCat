@@ -520,7 +520,7 @@ def harden_pixmap(pixmap: QtGui.QPixmap, threshold: int = 128) -> QtGui.QPixmap:
 class UpdateSignals(QtCore.QObject):
     """Marshals the self-update worker threads back onto the GUI thread."""
 
-    checked = QtCore.Signal(str)          # latest release tag, or "" if the check couldn't reach GitHub
+    checked = QtCore.Signal(object)       # latest release JSON (dict), or None if the check couldn't reach GitHub
     progress = QtCore.Signal(int, int)    # bytes done, total (0 = unknown)
     applied = QtCore.Signal()             # new build swapped in + spawned
     failed = QtCore.Signal(str)           # error message
@@ -1460,26 +1460,30 @@ class PixelCatWindow(QtWidgets.QWidget):
         current = update_check.current_version()
         signals = UpdateSignals(self)
         self.update_signals = signals  # keep alive while the flow runs
-        signals.checked.connect(lambda latest: self.on_update_checked(kind, current, latest))
+        signals.checked.connect(lambda release: self.on_update_checked(kind, current, release))
         signals.failed.connect(self.on_update_failed)
 
         def check() -> None:
-            # Emit the raw latest tag (or "" when GitHub couldn't be reached) and
-            # let on_update_checked decide up-to-date vs. newer vs. check-failed —
-            # so a rate-limited/offline check never poses as "you're up to date".
+            # Emit the latest release JSON (or None when GitHub couldn't be
+            # reached) and let on_update_checked decide up-to-date vs. newer vs.
+            # check-failed, so a rate-limited/offline check never poses as "you're
+            # up to date". The same JSON names the exact asset to download.
             try:
-                signals.checked.emit(update_check.latest_release_tag(token=github_api.github_token()) or "")
+                signals.checked.emit(update_check.latest_release(token=github_api.github_token()))
             except Exception as exc:  # noqa: BLE001 - surfaced to the user
                 signals.failed.emit(str(exc))
 
         threading.Thread(target=check, name="mycat-update-check", daemon=True).start()
 
-    def update_box(self, title: str, text: str, informative: str, kind: str, can_update: bool) -> None:
+    def update_box(
+        self, title: str, text: str, informative: str, kind: str, can_update: bool, asset: dict | None = None
+    ) -> None:
         """The update dialog, always with three buttons: Releases, Update, Close.
 
-        Releases always opens the GitHub releases page. Update downloads the new
-        build and restarts, and is enabled only when a self-update is actually
-        possible (Windows/macOS with a newer release); it is greyed out on
+        Releases always opens the GitHub releases page. Update downloads
+        ``asset`` (from updater.release_asset) and restarts, and is enabled only
+        when a self-update is actually possible (Windows/macOS with a newer
+        release whose build is listed with a sha256 digest); it is greyed out on
         pip/git/deb/AppImage installs and whenever there's nothing to update."""
         box = QtWidgets.QMessageBox(self)
         box.setWindowTitle(title)
@@ -1488,20 +1492,21 @@ class PixelCatWindow(QtWidgets.QWidget):
         box.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
         releases_button = box.addButton(i18n.tr("Releases"), QtWidgets.QMessageBox.ButtonRole.ActionRole)
         update_button = box.addButton(i18n.tr("Update"), QtWidgets.QMessageBox.ButtonRole.ActionRole)
-        update_button.setEnabled(can_update)
+        update_button.setEnabled(can_update and asset is not None)
         box.addButton(i18n.tr("Close"), QtWidgets.QMessageBox.ButtonRole.RejectRole)
         self.place_beside_cat(box)
         box.exec()
         clicked = box.clickedButton()
         if clicked is releases_button:
             QtGui.QDesktopServices.openUrl(QtCore.QUrl(updater.RELEASES_PAGE))
-        elif clicked is update_button:
-            self.download_update(kind)
+        elif clicked is update_button and asset is not None:
+            self.download_update(kind, asset)
 
-    def on_update_checked(self, kind: str, current: str, latest: str) -> None:
+    def on_update_checked(self, kind: str, current: str, release: dict | None) -> None:
         # One dialog everywhere (Releases, Update, Close). Update is live only
-        # in the last case: a reachable, newer release on a self-updating build.
-        if not latest:
+        # in the last case: a reachable, newer release on a self-updating build
+        # whose exact asset is listed with a sha256 digest.
+        if not release:
             # The check couldn't reach GitHub (offline, or the API rate-limited
             # this IP). Don't claim we're up to date, say the check failed.
             self.update_box(
@@ -1512,6 +1517,7 @@ class PixelCatWindow(QtWidgets.QWidget):
                 can_update=False,
             )
             return
+        latest = str(release["tag_name"]).strip()
         versions = i18n.tr("Current: {current}\nLatest: {latest}").format(current=current, latest=latest)
         if update_check.parse_version(latest) <= update_check.parse_version(current):
             # Up to date: nothing to update, so Update stays greyed out.
@@ -1534,16 +1540,31 @@ class PixelCatWindow(QtWidgets.QWidget):
                 text = i18n.tr("Update available. Update with:\n\n    {hint}").format(hint=hint)
             self.update_box("myCat", versions, text, kind, can_update=False)
             return
-        # Windows / macOS with a newer release: Update is enabled.
+        asset = updater.release_asset(release, updater.asset_name(kind))
+        if asset is None:
+            # The release lists no verifiable build for this system yet (its
+            # binaries are still uploading, or there is no sha256 digest):
+            # never download unverified, point at the releases page instead.
+            self.update_box(
+                "myCat",
+                versions,
+                i18n.tr("Update available, but the download for this system isn't ready yet. "
+                        "Try again in a bit or open Releases."),
+                kind,
+                can_update=False,
+            )
+            return
+        # Windows / macOS with a newer, verifiable release: Update is enabled.
         self.update_box(
             "myCat",
             versions,
             i18n.tr("Update available. Click Update to download and restart."),
             kind,
             can_update=True,
+            asset=asset,
         )
 
-    def download_update(self, kind: str) -> None:
+    def download_update(self, kind: str, asset: dict) -> None:
         signals = self.update_signals
         dialog = QtWidgets.QProgressDialog(i18n.tr("Downloading update…"), i18n.tr("Cancel"), 0, 100, self)
         dialog.setWindowTitle(i18n.tr("Updating myCat"))
@@ -1569,11 +1590,17 @@ class PixelCatWindow(QtWidgets.QWidget):
                         raise RuntimeError("cancelled")
                     signals.progress.emit(done, total)
 
-                updater.download(updater.asset_url(kind), dest, progress)
+                # The versioned URL and digest of exactly the release the dialog
+                # announced; download() deletes the file on a sha256 mismatch.
+                updater.download(asset["url"], dest, progress, sha256=asset["sha256"])
                 if cancelled.is_set():
                     return
                 updater.apply_and_relaunch(kind, dest)
                 signals.applied.emit()
+            except updater.DigestMismatch as exc:
+                logger.warning("Update download rejected: %s", exc)
+                if not cancelled.is_set():
+                    signals.failed.emit(i18n.tr("The downloaded file is damaged. Try again later."))
             except Exception as exc:  # noqa: BLE001 - surfaced to the user
                 if not cancelled.is_set():
                     signals.failed.emit(str(exc))

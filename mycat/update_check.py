@@ -58,10 +58,11 @@ def parse_version(text: str) -> tuple:
     return tuple(parts)
 
 
-def latest_release_tag(
+def latest_release(
     url: str = LATEST_RELEASE_URL, timeout: float = 6.0, opener=None, token: str = ""
-) -> str | None:
-    """Return the latest GitHub release tag, or None on any error.
+) -> dict | None:
+    """Return the latest GitHub release JSON (tag plus asset list), or None on any
+    error or when it carries no tag.
 
     ``token`` (a GitHub PAT) authenticates the request so it isn't subject to the
     anonymous 60 req/h per-IP rate limit; entry points resolve it via
@@ -71,11 +72,18 @@ def latest_release_tag(
     try:
         with open_fn(request, timeout=timeout) as response:
             data = json.loads(response.read().decode("utf-8"))
-        tag = (data.get("tag_name") or "").strip()
-        return tag or None
+        if not isinstance(data, dict) or not str(data.get("tag_name") or "").strip():
+            return None
+        return data
     except Exception as exc:  # network down, rate-limited, bad JSON — never fatal
         logger.debug("Update check failed: %s", exc)
         return None
+
+
+def latest_release_tag(**kwargs) -> str | None:
+    """Return the latest GitHub release tag, or None on any error."""
+    release = latest_release(**kwargs)
+    return str(release["tag_name"]).strip() if release else None
 
 
 def newer_release(current: str, **kwargs) -> str | None:
@@ -109,6 +117,7 @@ def check_in_background(current: str) -> None:
 __all__ = [
     "current_version",
     "parse_version",
+    "latest_release",
     "latest_release_tag",
     "newer_release",
     "check_in_background",
