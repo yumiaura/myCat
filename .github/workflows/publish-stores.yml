@@ -1,0 +1,107 @@
+name: Publish to Homebrew
+
+# Bump the cask in yumiaura/homebrew-tap to a release. release-binaries.yml
+# calls this after its binaries are attached, next to publish-winget.yml, so a
+# failure in one store never skips the other. Manual runs accept a release tag.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+    secrets:
+      # Optional here so that a missing secret reaches the clear error below
+      # instead of failing the whole release run before it starts.
+      HOMEBREW_TAP_TOKEN:
+        required: false
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published stable release tag, e.g. 0.1.38
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag }}
+      RELEASE: https://github.com/yumiaura/myCat/releases/download
+    steps:
+      - name: Check release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            # The cask builds its download URL from the version itself.
+            echo "::warning::Skipping $TAG: the cask takes plain X.Y.Z tags only."
+            exit 0
+          fi
+          if [[ ! "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Skipping non-stable tag: $TAG"
+            exit 0
+          fi
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,isPrerelease > release.json
+          if jq -e '.isDraft or .isPrerelease' release.json > /dev/null; then
+            echo "Skipping draft or prerelease: $TAG"
+            exit 0
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Check Homebrew credentials
+        if: steps.release.outputs.ready == 'true'
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "::error::Add the HOMEBREW_TAP_TOKEN repository secret (fine-grained token for yumiaura/homebrew-tap with Contents: read and write)."
+            exit 1
+          fi
+
+      - name: Update the Homebrew cask
+        if: steps.release.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api repos/yumiaura/homebrew-tap/contents/Casks/mycat.rb > current.json
+          SHA=$(jq -r .sha current.json)
+          jq -r .content current.json | base64 -d > mycat.rb
+          # Never move the cask back to an older release, e.g. when an old tag's
+          # run is re-run. The same version goes ahead, so binaries uploaded
+          # again by a re-run get their new checksums.
+          CURRENT=$(sed -nE 's/^  version "([^"]+)"$/\1/p' mycat.rb)
+          if [ "$(printf '%s\n' "$CURRENT" "$TAG" | sort -V | tail -n 1)" != "$TAG" ]; then
+            echo "The cask already has $CURRENT, newer than $TAG"
+            exit 0
+          fi
+          for arch in arm64 x64; do
+            curl -fsSL -o "mycat-macos-$arch.zip" "$RELEASE/$TAG/mycat-macos-$arch.zip"
+          done
+          ARM=$(sha256sum mycat-macos-arm64.zip | cut -d' ' -f1)
+          INTEL=$(sha256sum mycat-macos-x64.zip | cut -d' ' -f1)
+          sed -i -E \
+            -e "s/^  version \"[^\"]+\"/  version \"$TAG\"/" \
+            -e "s/^  sha256 arm:   \"[0-9a-f]+\"/  sha256 arm:   \"$ARM\"/" \
+            -e "s/^         intel: \"[0-9a-f]+\"/         intel: \"$INTEL\"/" \
+            mycat.rb
+          # Fail rather than publish a cask whose version or checksums were not
+          # rewritten, e.g. after its layout changed.
+          grep -qF "  version \"$TAG\"" mycat.rb
+          grep -qF "  sha256 arm:   \"$ARM\"" mycat.rb
+          grep -qF "         intel: \"$INTEL\"" mycat.rb
+          if gh api repos/yumiaura/homebrew-tap/contents/Casks/mycat.rb --jq .content | base64 -d | cmp -s - mycat.rb ; then
+            echo "The cask already has $TAG"
+            exit 0
+          fi
+          gh api -X PUT repos/yumiaura/homebrew-tap/contents/Casks/mycat.rb \
+            -f message="mycat $TAG" \
+            -f content="$(base64 -w0 mycat.rb)" \
+            -f sha="$SHA" --jq .commit.html_url

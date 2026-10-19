@@ -13,6 +13,13 @@ def test_desktop_exec_command_is_quoted():
     assert cmd.startswith('"') and cmd.endswith('"')
 
 
+def test_desktop_exec_command_matches_the_autostart_command():
+    # The menu entry and the login entry start the same install the same way.
+    from mycat import autostart
+
+    assert main.desktop_exec_command() == autostart.start_command()
+
+
 @pytest.mark.skipif(sys.platform != "linux", reason="menu entry is Linux-only")
 def test_install_desktop_entry_creates_files(tmp_path, monkeypatch):
     if Path("/usr/share/applications/mycat.desktop").exists():
