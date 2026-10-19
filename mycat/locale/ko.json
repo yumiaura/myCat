@@ -50,6 +50,8 @@
     "The downloaded file is damaged. Try again later.": "다운로드한 파일이 손상되었습니다. 나중에 다시 시도해 주세요.",
     "The folder with myCat is not writable, so it cannot update itself. Download the new version from the releases page.": "myCat이 있는 폴더에 쓸 수 없어 스스로 업데이트할 수 없습니다. 릴리스 페이지에서 새 버전을 다운로드하세요.",
     "The new version could not replace the old one, so the old one was started again.": "새 버전으로 이전 버전을 교체하지 못해 이전 버전을 다시 실행했습니다.",
+    "Move mycat.app to the Applications folder, then try again.": "mycat.app을 응용 프로그램 폴더로 옮긴 다음 다시 시도하세요.",
+    "This copy of myCat cannot update itself. Download the new version from the releases page.": "이 myCat 사본은 스스로 업데이트할 수 없습니다. 릴리스 페이지에서 새 버전을 내려받으세요.",
     "Settings": "설정",
     "Animation Wait Time (s):": "애니메이션 대기 시간(초):",
     "Failed to save settings:\n{e}": "설정을 저장하지 못했습니다:\n{e}",

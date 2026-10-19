@@ -348,13 +348,14 @@ def staging_writable(path: str) -> bool:
     return True
 
 
-# What the Windows swapper writes to the result file, read once on the next start.
+# What the Windows swapper and the macOS helper write to the result file, read
+# once on the next start.
 SWAP_OK = "ok"
 SWAP_FAILED = "swap-failed"
 
 
 def update_result_path() -> str:
-    """The file the Windows swapper leaves its outcome in."""
+    """The file the Windows swapper or the macOS helper leaves its outcome in."""
     return os.path.join(tempfile.gettempdir(), "mycat-update.result")
 
 
@@ -382,29 +383,6 @@ def apply_and_relaunch(kind: str, downloaded: str) -> None:
         raise ValueError(f"cannot self-update install kind {kind!r}")
 
 
-def apply_macos(zip_path: str) -> None:
-    # sys.executable is .../mycat.app/Contents/MacOS/mycat.
-    app = os.path.dirname(os.path.dirname(os.path.dirname(sys.executable)))
-    pid = os.getpid()
-    script = os.path.join(tempfile.gettempdir(), "mycat-update.sh")
-    body = (
-        "#!/bin/sh\n"
-        f"while kill -0 {pid} 2>/dev/null; do sleep 1; done\n"
-        'tmp="$(mktemp -d)"\n'
-        f'/usr/bin/ditto -x -k "{zip_path}" "$tmp"\n'
-        f'rm -rf "{app}"\n'
-        f'/usr/bin/ditto "$tmp/mycat.app" "{app}"\n'
-        f'/usr/bin/xattr -dr com.apple.quarantine "{app}" 2>/dev/null\n'
-        f'open "{app}"\n'
-        f'rm -rf "$tmp" "{zip_path}" "$0"\n'
-    )
-    with open(script, "w", encoding="utf-8") as handle:
-        handle.write(body)
-    make_executable(script)
-    subprocess.Popen(["/bin/sh", script], start_new_session=True)  # noqa: S603
-    logger.info("macOS update helper launched for %s", app)
-
-
 def clean_env(environ=None) -> dict:
     """``environ`` (default: this process's) without the PyInstaller onefile
     bootloader's private variables, for every process a frozen build starts.
@@ -420,6 +398,105 @@ def clean_env(environ=None) -> dict:
         for key, value in source.items()
         if not key.startswith("_PYI") and not key.startswith("_MEIPASS")
     }
+
+
+def macos_app_path(executable: str | None = None) -> str:
+    """The .app bundle around ``executable`` (default: this process's), which is
+    .../mycat.app/Contents/MacOS/mycat."""
+    executable = sys.executable if executable is None else executable
+    return os.path.dirname(os.path.dirname(os.path.dirname(executable)))
+
+
+def is_app_bundle(executable: str | None = None) -> bool:
+    """Whether ``executable`` is the binary of a .app bundle, i.e. exactly
+    <bundle>.app/Contents/MacOS/<binary>. Only then is ``macos_app_path`` a
+    bundle the helper may move aside and delete; a bare PyInstaller build run
+    from some folder would otherwise make that folder the "bundle"."""
+    executable = sys.executable if executable is None else executable
+    app = macos_app_path(executable)
+    if not app.endswith(".app"):
+        return False
+    return executable == os.path.join(app, "Contents", "MacOS", os.path.basename(executable))
+
+
+def is_translocated(executable: str | None = None) -> bool:
+    """Whether macOS runs this app from an App Translocation mount: a quarantined
+    app opened straight from Downloads is copied to a randomized read-only mount,
+    so there is nothing to replace until the user moves it to Applications."""
+    executable = sys.executable if executable is None else executable
+    return "/AppTranslocation/" in executable
+
+
+def macos_helper_script() -> str:
+    """The macOS update helper, with no path in it: the zip, the bundle, the PID
+    and the result file arrive in the environment (``macos_helper_env``) and are
+    only referenced, always quoted, as "$NEW", "$APP", "$PID" and "$RESULT".
+
+    It waits for the app's PID to exit, extracts the zip with ditto into a fresh
+    dot-named folder beside the bundle (so the final move is a rename on the
+    same volume) and checks the new mycat binary is there and executable. Only
+    then does it move the old bundle aside, still beside it, and the new one into
+    place; the old one is deleted after that has worked. Any failure leaves or
+    puts the old bundle back, and nothing is touched unless "$APP" is a .app
+    with a Contents/MacOS folder. The outcome goes to the result file for the
+    next start to report, and the app (new, or the old one) is always reopened."""
+    lines = [
+        "#!/bin/sh",
+        "set -u",
+        'while kill -0 "$PID" 2>/dev/null; do sleep 1; done',
+        f'outcome="{SWAP_FAILED}"',
+        'parent="$(dirname "$APP")"',
+        'old="$parent/.mycat-old.$$.app"',
+        'tmp=""',
+        # Defense in depth beside is_app_bundle: never move or delete anything
+        # that is not a .app bundle.
+        'case "$APP" in',
+        '    *.app) [ -d "$APP/Contents/MacOS" ] && tmp="$(mktemp -d "$parent/.mycat-update.XXXXXX")" || tmp="" ;;',
+        "esac",
+        'if [ -n "$tmp" ] && /usr/bin/ditto -x -k "$NEW" "$tmp" \\',
+        '    && [ -f "$tmp/mycat.app/Contents/MacOS/mycat" ] && [ -x "$tmp/mycat.app/Contents/MacOS/mycat" ]; then',
+        '    if mv "$APP" "$old"; then',
+        '        if mv "$tmp/mycat.app" "$APP"; then',
+        f'            outcome="{SWAP_OK}"',
+        '            rm -rf "$old"',
+        "        else",
+        '            rm -rf "$APP"',
+        '            mv "$old" "$APP"',
+        "        fi",
+        "    fi",
+        "fi",
+        'printf \'%s\\n\' "$outcome" > "$RESULT"',
+        '/usr/bin/xattr -dr com.apple.quarantine "$APP" 2>/dev/null',
+        '/usr/bin/open "$APP"',
+        'if [ -n "$tmp" ]; then rm -rf "$tmp"; fi',
+        'rm -f "$NEW" "$0"',
+    ]
+    return "".join(line + "\n" for line in lines)
+
+
+def macos_helper_env(zip_path: str, app: str, pid: int, result: str, environ=None) -> dict:
+    """The helper's environment: clean of PyInstaller variables, carrying the
+    paths and the PID the script refers to."""
+    env = clean_env(environ)
+    env.update({"NEW": zip_path, "APP": app, "PID": str(pid), "RESULT": result})
+    return env
+
+
+def apply_macos(zip_path: str) -> None:
+    app = macos_app_path()
+    script = os.path.join(tempfile.gettempdir(), "mycat-update.sh")
+    result = update_result_path()
+    # A result left from an earlier run must not be reported for this one.
+    remove_file(result)
+    with open(script, "w", encoding="utf-8") as handle:
+        handle.write(macos_helper_script())
+    make_executable(script)
+    subprocess.Popen(  # noqa: S603
+        ["/bin/sh", script],
+        start_new_session=True,
+        env=macos_helper_env(zip_path, app, os.getpid(), result),
+    )
+    logger.info("macOS update helper launched for %s", app)
 
 
 def windows_swapper_script() -> str:
@@ -534,6 +611,11 @@ __all__ = [
     "clean_env",
     "windows_swapper_script",
     "windows_swapper_env",
+    "macos_app_path",
+    "is_app_bundle",
+    "is_translocated",
+    "macos_helper_script",
+    "macos_helper_env",
     "apply_and_relaunch",
     "RELEASES_PAGE",
 ]

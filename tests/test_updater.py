@@ -649,6 +649,149 @@ def test_apply_windows_launches_ascii_swapper_with_paths_in_env(tmp_path, monkey
     assert not (temp / "mycat-update.result").exists()
 
 
+# The macOS helper: paths reach it through the environment, never the script.
+def test_macos_helper_script_has_no_paths_and_quotes_every_variable():
+    import re
+
+    script = updater.macos_helper_script()
+    assert script.startswith("#!/bin/sh\nset -u\n")
+    assert script.isascii()
+    for name in ("NEW", "APP", "PID", "RESULT"):
+        assert f'"${name}"' in script
+    # Every variable opens a double-quoted word ($$, the shell's own PID, only
+    # names the set-aside bundle inside one).
+    for match in re.finditer(r"\$(\w+)", script.replace("$$", "")):
+        assert script.replace("$$", "")[match.start() - 1] == '"', match.group()
+    assert 'rm -rf "$APP"\n' not in script.split('if mv "$APP" "$old"')[0]
+
+
+def test_macos_helper_script_swaps_only_after_a_checked_extract():
+    script = updater.macos_helper_script()
+    order = [
+        'while kill -0 "$PID"',
+        'case "$APP" in',
+        '*.app) [ -d "$APP/Contents/MacOS" ] && tmp="$(mktemp -d "$parent/.mycat-update.XXXXXX")"',
+        '/usr/bin/ditto -x -k "$NEW" "$tmp"',
+        '[ -x "$tmp/mycat.app/Contents/MacOS/mycat" ]',
+        'mv "$APP" "$old"',
+        'mv "$tmp/mycat.app" "$APP"',
+        f'outcome="{updater.SWAP_OK}"',
+        'rm -rf "$old"',
+        'mv "$old" "$APP"',
+        'printf \'%s\\n\' "$outcome" > "$RESULT"',
+        '/usr/bin/xattr -dr com.apple.quarantine "$APP"',
+        '/usr/bin/open "$APP"',
+        'rm -f "$NEW" "$0"',
+    ]
+    positions = [script.index(step) for step in order]
+    assert positions == sorted(positions)
+    # The old bundle is set aside beside the app under a dot name.
+    assert 'old="$parent/.mycat-old.$$.app"' in script
+    # Failure is the default outcome, so every path that does not reach the
+    # swap reports it, and the app is reopened once whatever happened.
+    assert script.index(f'outcome="{updater.SWAP_FAILED}"') < script.index("/usr/bin/ditto")
+    assert script.count("/usr/bin/open ") == 1
+    assert "\n/usr/bin/open" in script  # at the top level, not inside a branch
+
+
+def test_macos_helper_env_carries_paths_and_drops_pyinstaller_vars():
+    environ = {"PATH": "/usr/bin:/bin", "_MEIPASS2": "x", "_PYI_ARCHIVE_FILE": "y", "APP": "stale"}
+    app = "/Users/olya/" + UNICODE_DIR + "/mycat.app"
+    env = updater.macos_helper_env("/tmp/Ольга/mycat-macos.zip", app, 4242, "/tmp/r", environ)
+    assert env["NEW"] == "/tmp/Ольга/mycat-macos.zip"
+    assert env["APP"] == app
+    assert env["PID"] == "4242"
+    assert env["RESULT"] == "/tmp/r"
+    assert env["PATH"] == "/usr/bin:/bin"
+    assert not [key for key in env if key.startswith(("_PYI", "_MEIPASS"))]
+    assert "_MEIPASS2" in environ
+
+
+def test_macos_app_path_and_translocation(monkeypatch):
+    exe = "/Applications/mycat.app/Contents/MacOS/mycat"
+    assert updater.macos_app_path(exe) == "/Applications/mycat.app"
+    assert not updater.is_translocated(exe)
+    moved = "/private/var/folders/x/T/AppTranslocation/0A1B/d/mycat.app/Contents/MacOS/mycat"
+    assert updater.is_translocated(moved)
+    monkeypatch.setattr(updater.sys, "executable", moved)
+    assert updater.is_translocated()
+    assert updater.macos_app_path().endswith("/AppTranslocation/0A1B/d/mycat.app")
+
+
+@pytest.mark.parametrize(
+    ("executable", "expected"),
+    [
+        ("/Applications/mycat.app/Contents/MacOS/mycat", True),
+        ("/Users/olya/Apps/My Cat.app/Contents/MacOS/mycat", True),
+        # A bare PyInstaller build: three levels up is the user's Desktop.
+        ("/Users/olya/Desktop/dist/mycat/mycat", False),
+        ("/Users/olya/Desktop/mycat", False),
+        ("/Applications/mycat.app/Contents/Resources/mycat", False),
+        ("/Applications/mycat.app/MacOS/x/mycat", False),
+    ],
+)
+def test_is_app_bundle_requires_the_bundle_layout(monkeypatch, executable, expected):
+    assert updater.is_app_bundle(executable) is expected
+    monkeypatch.setattr(updater.sys, "executable", executable)
+    assert updater.is_app_bundle() is expected
+
+
+def test_macos_helper_script_touches_nothing_but_a_bundle():
+    # Defense in depth: without a .app with Contents/MacOS there is no temp
+    # folder, so the extract, both moves and the delete are all skipped.
+    script = updater.macos_helper_script()
+    guard = script.index('case "$APP" in')
+    assert script.index('tmp=""') < guard < script.index("mktemp")
+    assert script.index("esac") < script.index('if [ -n "$tmp" ] && /usr/bin/ditto')
+    assert script.count("mktemp") == 1
+
+
+def test_macos_gate_probes_the_folder_beside_the_bundle(tmp_path):
+    # main.py passes the bundle path to staging_writable: the probe lands in
+    # the bundle's folder and the bundle itself is never touched.
+    app = tmp_path / "mycat.app"
+    (app / "Contents" / "MacOS").mkdir(parents=True)
+    assert updater.staging_writable(str(app))
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["mycat.app"]
+
+
+def test_apply_macos_launches_helper_with_paths_in_env(tmp_path, monkeypatch):
+    temp = tmp_path / "Temp Ольга"
+    temp.mkdir()
+    exe = str(tmp_path / UNICODE_DIR / "mycat.app" / "Contents" / "MacOS" / "mycat")
+    monkeypatch.setattr(updater.tempfile, "gettempdir", lambda: str(temp))
+    monkeypatch.setattr(updater.sys, "executable", exe)
+    monkeypatch.setattr(updater.os, "getpid", lambda: 31337)
+    monkeypatch.setenv("_MEIPASS2", "stale")
+    (temp / "mycat-update.result").write_text("ok", encoding="ascii")
+    launched = []
+
+    class Recorder:
+        def __init__(self, args, **kwargs):
+            launched.append((args, kwargs))
+
+    monkeypatch.setattr(updater.subprocess, "Popen", Recorder)
+    zip_path = str(temp / "mycat-macos.zip")
+    updater.apply_and_relaunch("macos", zip_path)
+
+    ((args, kwargs),) = launched
+    script = temp / "mycat-update.sh"
+    assert args == ["/bin/sh", str(script)]
+    assert kwargs["start_new_session"] is True
+    raw = script.read_bytes()
+    assert raw.decode("utf-8") == updater.macos_helper_script()
+    for part in ("Ольга", "文件", "사용자", "31337"):
+        assert part.encode("utf-8") not in raw
+    env = kwargs["env"]
+    assert env["NEW"] == zip_path
+    assert env["APP"] == str(tmp_path / UNICODE_DIR / "mycat.app")
+    assert env["PID"] == "31337"
+    assert env["RESULT"] == str(temp / "mycat-update.result")
+    assert "_MEIPASS2" not in env
+    # A stale result from an earlier update is cleared before the helper runs.
+    assert not (temp / "mycat-update.result").exists()
+
+
 def test_staging_writable_creates_and_removes_the_probe(tmp_path):
     path = tmp_path / "mycat.exe.new"
     assert updater.staging_writable(str(path))
@@ -697,13 +840,15 @@ def test_take_update_result_reads_once(tmp_path, monkeypatch, written):
 
 
 def test_new_update_messages_are_in_every_catalog():
-    # Shown by the startup report and the not-writable check in main.py.
+    # Shown by the startup report and the bundle, not-writable and translocation checks in main.py.
     from mycat import i18n
 
     texts = [
         "The folder with myCat is not writable, so it cannot update itself. "
         "Download the new version from the releases page.",
         "The new version could not replace the old one, so the old one was started again.",
+        "Move mycat.app to the Applications folder, then try again.",
+        "This copy of myCat cannot update itself. Download the new version from the releases page.",
     ]
     for code in ("en", "ru", "zh", "ko"):
         for text in texts:
