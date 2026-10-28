@@ -2,6 +2,11 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Fixed
+- **CI runs the tests again.** The workflow installed the newest pytest, and with pytest 9.2.0 every test run under `--forked` exited with status 3, so all 500 tests failed in every pull request while the code was fine (pytest 9.1.1 had passed them on 2026-10-19). `ci.yml` now installs `pytest<9.2` until pytest-forked works with it (branch `fix/ci-pytest-pin`).
+
 ## [0.1.38] - 2026-10-19
 
 ### Added

@@ -26,7 +26,8 @@ jobs:
       - name: Install package + dev tools
         run: |
           python -m pip install --upgrade pip
-          pip install ruff pytest pytest-forked pytest-timeout
+          # With pytest 9.2.0 every test run under --forked exits with status 3.
+          pip install ruff "pytest<9.2" pytest-forked pytest-timeout
           # [calendar] pulls icalendar/recurring-ical-events so the calendar
           # tests actually run (they hard-require the parser libs).
           pip install .[calendar]
