@@ -12,6 +12,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import tempfile
 import urllib.error
 import urllib.parse
@@ -20,7 +21,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import config_store
+from . import char_catalog, config_store
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,25 @@ CATALOG_CACHE_TTL_SECONDS = 3600
 DEFAULT_CATALOG_TIMEOUT = 10.0
 DEFAULT_DOWNLOAD_TIMEOUT = 60.0
 MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024  # safety net
+
+VERSION_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,31}$")
+
+
+def is_valid_version(version: str) -> bool:
+    """Return True if version string is safe for filenames and lacks traversal."""
+    return bool(version and VERSION_PATTERN.match(version) and ".." not in version)
+
+
+def is_same_host(url: str, base_url: str) -> bool:
+    """Return True if url targets the same host and port as base_url.
+
+    Relative paths (e.g. '/api/v1/...') target base_url by definition.
+    """
+    target = urllib.parse.urlsplit(url)
+    if not target.netloc:
+        return True
+    base = urllib.parse.urlsplit(base_url)
+    return target.netloc.lower() == base.netloc.lower()
 
 
 @dataclass
@@ -52,16 +72,22 @@ class CharEntry:
 
     @classmethod
     def from_dict(cls, data: dict) -> CharEntry:
+        char_id = str(data["id"])
+        if not char_catalog.is_valid_char_id(char_id):
+            raise ValueError(f"Invalid char id: {char_id!r}")
+        version = str(data.get("version", "0.0.0"))
+        if not is_valid_version(version):
+            version = "0.0.0"
         return cls(
-            id=str(data["id"]),
-            name=str(data.get("name", data["id"])),
+            id=char_id,
+            name=str(data.get("name", char_id)),
             author=str(data.get("author", "")),
             description=str(data.get("description", "")),
             preview_url=str(data.get("preview_url", "")),
             download_url=str(data.get("download_url", "")),
             sha256=str(data.get("sha256", "")),
             size_bytes=int(data.get("size_bytes", 0)),
-            version=str(data.get("version", "0.0.0")),
+            version=version,
             tier=str(data.get("tier", "free")),
             released_at=str(data.get("released_at", "")),
             tags=list(data.get("tags", [])),
@@ -77,11 +103,16 @@ class Catalog:
 
     @classmethod
     def from_dict(cls, data: dict) -> Catalog:
+        chars = []
+        for s in data.get("characters", []):
+            try:
+                chars.append(CharEntry.from_dict(s))
+            except (ValueError, KeyError, TypeError) as exc:
+                logger.warning("Skipping invalid catalog entry: %s", exc)
         return cls(
             schema_version=int(data.get("schema_version", 1)),
             generated_at=str(data.get("generated_at", "")),
-            # Server wire key stays "characters"; our field is `chars`.
-            chars=[CharEntry.from_dict(s) for s in data.get("characters", [])],
+            chars=chars,
         )
 
 
@@ -210,7 +241,7 @@ class ShopClient:
 
     def fetch_preview(self, char: CharEntry) -> Path | None:
         """Download a char's preview into the cache, return local path or None on failure."""
-        if not char.preview_url:
+        if not char.preview_url or not char_catalog.is_valid_char_id(char.id):
             return None
         previews_dir = self.cache_dir / "previews"
         try:
@@ -219,7 +250,14 @@ class ShopClient:
             return None
         # Extension follows the URL suffix (.gif / .png).
         suffix = Path(urllib.parse.urlparse(char.preview_url).path).suffix.lower() or ".gif"
-        dest = previews_dir / f"{char.id}-{char.version}{suffix}"
+        version_str = char.version if is_valid_version(char.version) else "0.0.0"
+        dest = previews_dir / f"{char.id}-{version_str}{suffix}"
+        try:
+            if not dest.resolve().is_relative_to(previews_dir.resolve()):
+                logger.warning("Unsafe preview path for char %s", char.id)
+                return None
+        except (ValueError, OSError):
+            return None
         if dest.exists() and dest.stat().st_size > 0:
             return dest
         try:
@@ -251,17 +289,29 @@ class ShopClient:
         """Download `char` into `dest_dir/<id>.zip`, verifying SHA-256.
 
         - Follows the server's 302 redirect to the CDN (urllib does this transparently).
+        - Scopes auth_token: Authorization is only sent when the download URL targets the shop host.
         - Atomic: writes to a temp file in the same dir, then `os.replace`.
         - Raises ShopError on any failure; partial files are cleaned up.
         - `progress_cb(downloaded, total)` is invoked periodically (best-effort).
         """
+        if not char_catalog.is_valid_char_id(char.id):
+            raise ShopError(f"Refusing to download char with unsafe id: {char.id!r}")
+
         dest_dir.mkdir(parents=True, exist_ok=True)
         final_path = dest_dir / f"{char.id}.zip"
+        try:
+            if not final_path.resolve().is_relative_to(dest_dir.resolve()):
+                raise ShopError(f"Unsafe destination path for char: {char.id!r}")
+        except (ValueError, OSError) as exc:
+            raise ShopError(f"Invalid destination path for char {char.id}: {exc}") from exc
+
         url = self.resolve_download_url(char)
 
         headers = {"User-Agent": "mycat-client", "Accept": "application/zip, */*"}
-        if auth_token:
+        if auth_token and is_same_host(url, self.base_url):
             headers["Authorization"] = f"Bearer {auth_token}"
+        elif auth_token:
+            logger.debug("Omitting Authorization header for external download URL: %s", url)
 
         request = urllib.request.Request(url, headers=headers, method="GET")
         sha = hashlib.sha256()
@@ -361,5 +411,7 @@ __all__ = [
     "ShopError",
     "CharEntry",
     "default_cache_dir",
+    "is_same_host",
+    "is_valid_version",
     "resolve_base_url",
 ]
