@@ -32,7 +32,7 @@ jobs:
     # so the host must be 22.04. It is also the glibc the binary must target.
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6
         with:
