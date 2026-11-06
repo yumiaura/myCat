@@ -95,7 +95,7 @@ jobs:
 
       - name: Attach .deb to the GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: mycat-linux-amd64.deb
           fail_on_unmatched_files: true
