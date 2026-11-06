@@ -15,7 +15,7 @@ jobs:
     steps:
       - name: Auto-assign issue
         if: github.event_name == 'issues'
-        uses: pozil/auto-assign-issue@v1
+        uses: pozil/auto-assign-issue@v4
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           assignees: yumiaura
