@@ -57,23 +57,23 @@ class LLMController(QtCore.QObject):
             logger.debug("LLM chat is disabled, ignoring toggle")
             return
         if self.chat_dialog:
-            if self.chat_dialog.isVisible():
+            # A minimized window still reports isVisible() on macOS, and show()
+            # does not clear WindowMinimized. Treating that as "open" hides it,
+            # and the next show leaves it miniaturized with no Dock tile of its
+            # own (the dialog is parented to the cat), so it never returns.
+            if self.chat_dialog.isVisible() and not self.chat_dialog.isMinimized():
                 logger.debug("Hiding chat dialog")
                 self.chat_dialog.hide()
                 return
             logger.debug("Showing existing chat dialog")
-            self.chat_dialog.show()
-            self.position_dialog()
-            self.chat_dialog.raise_()
-            self.chat_dialog.activateWindow()
+            self.present_chat()
             return
 
         logger.debug("Creating new chat dialog")
         dialog = ChatDialog(self)
-        dialog.show()
         dialog.destroyed.connect(self.on_chat_destroyed)
         self.chat_dialog = dialog
-        self.position_dialog()
+        self.present_chat()
 
     def is_enabled(self) -> bool:
         return self.enabled
@@ -88,12 +88,24 @@ class LLMController(QtCore.QObject):
         logger.info("LLM chat %s", "enabled" if self.enabled else "disabled")
         return self.enabled
 
+    def present_chat(self) -> None:
+        """Show the dialog and clear a stuck minimized state."""
+        dialog = self.chat_dialog
+        if dialog is None:
+            return
+        dialog.showNormal()
+        self.position_dialog()
+        dialog.raise_()
+        dialog.activateWindow()
+
     def position_dialog(self) -> None:
-        if not self.chat_dialog:
+        dialog = self.chat_dialog
+        # Moving a miniaturized window repositions it while Cocoa still treats
+        # it as minimized, which is what strands the panel.
+        if dialog is None or not dialog.isVisible() or dialog.isMinimized():
             return
         screen_rect = QtGui.QGuiApplication.primaryScreen().availableGeometry()
         cat_rect = self.window.geometry()
-        dialog = self.chat_dialog
 
         dialog_width = dialog.width()
         dialog_height = dialog.height()
@@ -256,11 +268,18 @@ class ChatDialog(QtWidgets.QDialog):
 
     def resizeEvent(self, event: QtGui.QResizeEvent) -> None:
         super().resizeEvent(event)
-        if not getattr(self, "suspend_anchor", False):
+        if not self.isMinimized() and not getattr(self, "suspend_anchor", False):
             self.controller.position_dialog()
 
     def moveEvent(self, event: QtGui.QMoveEvent) -> None:
         super().moveEvent(event)
+        if not self.isMinimized() and not getattr(self, "suspend_anchor", False):
+            self.controller.position_dialog()
+
+    def changeEvent(self, event: QtCore.QEvent) -> None:
+        super().changeEvent(event)
+        if event.type() != QtCore.QEvent.Type.WindowStateChange or self.isMinimized():
+            return
         if not getattr(self, "suspend_anchor", False):
             self.controller.position_dialog()
 

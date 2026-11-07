@@ -8,6 +8,7 @@ All notable changes to this project are documented in this file.
 - **`mycat --version` and `mycat -v`.** They print the running version (for example `mycat 0.1.38`) and exit, and `mycat.__version__` now reports the same version as the startup log and the update check, also in a source checkout (PR #152).
 
 ### Fixed
+- **The chat window comes back after Minimize.** Minimizing the chat panel left it miniaturized. It has no Dock icon of its own because it belongs to the cat window, and the Chat menu treated a minimized window as already open and hid it. The following show never cleared the minimized state, so the panel could not be opened again. Chat now restores it with `showNormal()`, and a minimized panel is no longer moved back beside the cat (branch `fix/chat-window-minimize`).
 - **CI runs the tests again.** The workflow installed the newest pytest, and with pytest 9.2.0 every test run under `--forked` exited with status 3, so all 500 tests failed in every pull request while the code was fine (pytest 9.1.1 had passed them on 2026-10-19). `ci.yml` now installs `pytest<9.2` until pytest-forked works with it (branch `fix/ci-pytest-pin`).
 
 ## [0.1.38] - 2026-10-19
