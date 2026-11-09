@@ -89,7 +89,7 @@ jobs:
           DISPLAY=:99 xwininfo -root -tree | grep -i '"mycat"' || { cat mycat.log ; exit 1 ; }
           kill "$APP" || true
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mycat-snap
           path: ${{ env.SNAP_FILE }}

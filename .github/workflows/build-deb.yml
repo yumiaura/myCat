@@ -87,7 +87,7 @@ jobs:
           echo "::group::deb info";     dpkg-deb --info "mycat-linux-amd64.deb";     echo "::endgroup::"
           echo "::group::deb contents"; dpkg-deb --contents "mycat-linux-amd64.deb"; echo "::endgroup::"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mycat-deb
           path: mycat-linux-amd64.deb
