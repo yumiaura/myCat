@@ -3,7 +3,9 @@
 import io
 import urllib.error
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
+from mycat import calendar_ics
 from mycat.calendar_ics import (
     CalendarController,
     CalendarSettings,
@@ -172,4 +174,63 @@ def test_controller_disabled_never_fetches(qapp):
         start_timers=False,
     )
     controller.poll()
+    assert controller.fetching is False
+
+
+def test_controller_discards_fetch_from_previous_settings(qapp, monkeypatch):
+    class FakeSignal:
+        def connect(self, callback):
+            self.callback = callback
+
+        def emit(self, result):
+            self.callback(result)
+
+    class FakeWorker:
+        def __init__(self, url, etag):
+            self.url = url
+            self.emitter = SimpleNamespace(finished=FakeSignal())
+
+    class FakeThreadPool:
+        def __init__(self):
+            self.workers = []
+
+        def start(self, worker):
+            self.workers.append(worker)
+
+    pool = FakeThreadPool()
+
+    class FakeThreadPoolFactory:
+        @staticmethod
+        def globalInstance():
+            return pool
+
+    monkeypatch.setattr(calendar_ics, "FetchWorker", FakeWorker)
+    monkeypatch.setattr(calendar_ics.QtCore, "QThreadPool", FakeThreadPoolFactory)
+
+    controller = CalendarController(
+        None,
+        settings=CalendarSettings(enabled=True, url="https://old.example/calendar.ics"),
+        start_timers=False,
+    )
+    controller.poll()
+    old_worker = pool.workers[0]
+
+    controller.apply_settings(CalendarSettings(enabled=True, url="https://new.example/calendar.ics"))
+    new_worker = pool.workers[1]
+
+    old_worker.emitter.finished.emit(
+        {"status": 200, "events": [{"key": "old", "summary": "Old event"}], "etag": "old", "error": ""}
+    )
+    assert controller.events == []
+    assert controller.fetching is True
+
+    new_events = [
+        {
+            "key": "new",
+            "summary": "New event",
+            "start": datetime.now().astimezone() + timedelta(days=1),
+        }
+    ]
+    new_worker.emitter.finished.emit({"status": 200, "events": new_events, "etag": "new", "error": ""})
+    assert controller.events == new_events
     assert controller.fetching is False

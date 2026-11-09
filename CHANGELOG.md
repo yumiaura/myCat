@@ -8,6 +8,7 @@ All notable changes to this project are documented in this file.
 - **`mycat --version` and `mycat -v`.** They print the running version (for example `mycat 0.1.38`) and exit, and `mycat.__version__` now reports the same version as the startup log and the update check, also in a source checkout (PR #152).
 
 ### Fixed
+- **Calendar settings no longer accept a stale fetch.** Changing the calendar URL while its background request is in flight now prevents the old response from replacing events from the newly selected calendar.
 - **CI runs the tests again.** The workflow installed the newest pytest, and with pytest 9.2.0 every test run under `--forked` exited with status 3, so all 500 tests failed in every pull request while the code was fine (pytest 9.1.1 had passed them on 2026-10-19). `ci.yml` now installs `pytest<9.2` until pytest-forked works with it (branch `fix/ci-pytest-pin`).
 
 ## [0.1.38] - 2026-10-19
