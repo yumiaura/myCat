@@ -8,13 +8,19 @@ import urllib.request
 from typing import Any
 
 
-class OllamaBackend:
-    """Call the local Ollama HTTP API."""
+def auth_headers(api_key: str) -> dict:
+    """A Bearer header when a key is set, for an Ollama behind a gateway that wants one."""
+    return {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
-    def __init__(self, *, url: str, model: str, timeout: float) -> None:
+
+class OllamaBackend:
+    """Call an Ollama HTTP API: a local one, or one behind a gateway that wants a key."""
+
+    def __init__(self, *, url: str, model: str, timeout: float, api_key: str = "") -> None:
         self.chat_url = f"{url.rstrip('/')}/api/chat"
         self.model = model
         self.timeout = timeout
+        self.api_key = api_key
 
     def reply(self, user_text: str, system_prompt: str) -> str:
         payload: dict[str, Any] = {
@@ -29,7 +35,7 @@ class OllamaBackend:
         request = urllib.request.Request(
             self.chat_url,
             data=data,
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", **auth_headers(self.api_key)},
             method="POST",
         )
 
@@ -56,14 +62,14 @@ class OllamaBackend:
         return text
 
 
-def fetch_models(base_url: str, timeout: float = 10.0) -> list:
+def fetch_models(base_url: str, timeout: float = 10.0, api_key: str = "") -> list:
     """Return the model names installed on an Ollama server (GET /api/tags).
 
     Raises RuntimeError with a human-readable reason on any failure so the
     settings dialog can show what went wrong.
     """
     tags_url = f"{base_url.rstrip('/')}/api/tags"
-    request = urllib.request.Request(tags_url, method="GET")
+    request = urllib.request.Request(tags_url, headers=auth_headers(api_key), method="GET")
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             raw = response.read().decode("utf-8")
@@ -89,4 +95,4 @@ def fetch_models(base_url: str, timeout: float = 10.0) -> list:
     return names
 
 
-__all__ = ["OllamaBackend", "fetch_models"]
+__all__ = ["OllamaBackend", "auth_headers", "fetch_models"]

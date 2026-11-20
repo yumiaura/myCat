@@ -2,7 +2,8 @@
 
 A "vendor" is just an endpoint config. Two adapter *kinds* cover everything:
 
-- ``ollama``  — local Ollama API (``/api/chat`` + ``/api/tags``), no key.
+- ``ollama``: the Ollama API (``/api/chat`` + ``/api/tags``). A local server
+  needs no key; one behind a gateway gets a Bearer key from ``OLLAMA_API_KEY``.
 - ``openai``  — the OpenAI-compatible Chat Completions API
   (``/chat/completions`` + ``/models`` with a Bearer key). OpenAI, Grok,
   Groq, DeepSeek, OpenRouter and most other providers speak this, so a
@@ -59,7 +60,7 @@ def builtin_vendors() -> dict:
     """Fresh copies of the built-in presets (named by the provider)."""
     presets = [
         Vendor("ollama", KIND_OLLAMA, "http://localhost:11434",
-               label="Ollama (local)", model="llama3.1", builtin=True),
+               label="Ollama (local)", api_key_env="OLLAMA_API_KEY", model="llama3.1", builtin=True),
         Vendor("openai", KIND_OPENAI, "https://api.openai.com/v1",
                label="OpenAI", api_key_env="OPENAI_API_KEY", model="gpt-4o-mini", builtin=True),
         Vendor("grok", KIND_OPENAI, "https://api.x.ai/v1",

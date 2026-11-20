@@ -18,6 +18,16 @@ def test_builtin_presets_present():
     assert vendors["grok"].needs_key is True
 
 
+def test_ollama_key_comes_from_env_and_stays_optional(monkeypatch):
+    monkeypatch.setenv("OLLAMA_API_KEY", "gw-key")
+    ollama = llm_vendors.builtin_vendors()["ollama"]
+    assert ollama.api_key_env == "OLLAMA_API_KEY"
+    assert ollama.resolve_key() == "gw-key"
+    monkeypatch.delenv("OLLAMA_API_KEY")
+    assert ollama.resolve_key() == ""
+    assert ollama.needs_key is False
+
+
 def test_resolve_key_prefers_literal_then_env(monkeypatch):
     literal = llm_vendors.Vendor("x", llm_vendors.KIND_OPENAI, "http://x", api_key="lit", api_key_env="X_KEY")
     assert literal.resolve_key() == "lit"
