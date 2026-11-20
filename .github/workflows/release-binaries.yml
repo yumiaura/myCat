@@ -22,7 +22,7 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6
         with:
@@ -57,7 +57,7 @@ jobs:
     # macos-14 is Apple Silicon (arm64). The Intel (x64) build is build-macos-intel.
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6
         with:
@@ -108,7 +108,7 @@ jobs:
     # differ.
     runs-on: macos-15-intel
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v6
         with:
