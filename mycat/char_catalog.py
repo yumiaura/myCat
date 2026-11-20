@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,12 @@ INSTALLED_SCHEMA_VERSION = 1
 
 
 CHAR_MARKERS = ("config.json", "static.png")
+CHAR_ID_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
+
+
+def is_valid_char_id(char_id: str) -> bool:
+    """Return True if char_id is safe for use as a filename without path traversal."""
+    return bool(char_id and CHAR_ID_PATTERN.match(char_id))
 
 
 def bundled_chars_dir() -> Path:
@@ -86,6 +93,8 @@ def find_char(char_id: str) -> Path | None:
 
     User dir wins over bundled; within a dir an unpacked folder wins over a zip.
     """
+    if not is_valid_char_id(char_id):
+        return None
     for directory in (user_chars_dir(), bundled_chars_dir()):
         folder = directory / char_id
         if is_char_folder(folder):
@@ -112,6 +121,9 @@ def load_installed_metadata() -> dict:
 
 
 def record_installed(char_id: str, *, version: str, source: str, sha256: str, size_bytes: int) -> None:
+    if not is_valid_char_id(char_id):
+        logger.warning("Refusing to record installed metadata for invalid char id: %s", char_id)
+        return
     data = load_installed_metadata()
     data.setdefault("schema_version", INSTALLED_SCHEMA_VERSION)
     characters = [s for s in data.get("characters", []) if s.get("id") != char_id]
@@ -135,6 +147,8 @@ def record_installed(char_id: str, *, version: str, source: str, sha256: str, si
 
 def remove_installed(char_id: str) -> bool:
     """Remove a user-installed char (does NOT touch bundled). Returns True on success."""
+    if not is_valid_char_id(char_id):
+        return False
     user_zip = user_chars_dir() / f"{char_id}.zip"
     if not user_zip.exists():
         return False
@@ -153,6 +167,8 @@ def remove_installed(char_id: str) -> bool:
 
 
 def is_user_installed(char_id: str) -> bool:
+    if not is_valid_char_id(char_id):
+        return False
     return (user_chars_dir() / f"{char_id}.zip").exists()
 
 
@@ -178,5 +194,6 @@ __all__ = [
     "record_installed",
     "remove_installed",
     "is_user_installed",
+    "is_valid_char_id",
     "ai_generated_chars",
 ]
