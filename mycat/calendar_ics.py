@@ -230,6 +230,7 @@ class CalendarController(QtCore.QObject):
         self.events: list = []
         self.etag = ""
         self.fetching = False
+        self._fetch_generation = 0
         self.last_error = ""
 
         self.tick_timer = None
@@ -246,6 +247,8 @@ class CalendarController(QtCore.QObject):
             QtCore.QTimer.singleShot(5000, self.poll)
 
     def apply_settings(self, settings: CalendarSettings) -> None:
+        self._fetch_generation += 1
+        self.fetching = False
         self.settings = settings
         self.tracker = ReminderTracker(settings.remind_minutes)
         self.events = []
@@ -260,10 +263,13 @@ class CalendarController(QtCore.QObject):
             return
         self.fetching = True
         worker = FetchWorker(self.settings.url, self.etag)
-        worker.emitter.finished.connect(self.handle_fetch)
+        generation = self._fetch_generation
+        worker.emitter.finished.connect(lambda result: self.handle_fetch(result, generation))
         QtCore.QThreadPool.globalInstance().start(worker)
 
-    def handle_fetch(self, result: dict) -> None:
+    def handle_fetch(self, result: dict, generation: int | None = None) -> None:
+        if generation is not None and generation != self._fetch_generation:
+            return
         self.fetching = False
         if result.get("error"):
             self.last_error = str(result["error"])
