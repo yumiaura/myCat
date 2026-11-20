@@ -47,7 +47,7 @@ jobs:
           mv dist/mycat.exe "dist/mycat-windows-x64.exe"
           ls -la dist/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mycat-windows
           path: dist/mycat-windows-x64.exe
@@ -95,7 +95,7 @@ jobs:
           ditto -c -k --keepParent mycat.app "mycat-macos-arm64.zip"
           ls -la
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mycat-macos
           path: dist/mycat-macos-arm64.zip
@@ -146,7 +146,7 @@ jobs:
           ditto -c -k --keepParent mycat.app "mycat-macos-x64.zip"
           ls -la
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mycat-macos-intel
           path: dist/mycat-macos-x64.zip
