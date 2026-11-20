@@ -82,3 +82,36 @@ def test_reply_empty_raises(monkeypatch):
     backend = llm_ollama.OllamaBackend(url="http://host:11434", model="m", timeout=5)
     with pytest.raises(RuntimeError, match="did not contain any text"):
         backend.reply("hi", "system")
+
+
+def recording_opener(seen: dict, payload: bytes):
+    def opener(request, timeout=None):
+        seen["headers"] = {key.lower(): value for key, value in request.header_items()}
+        return FakeResponse(payload)
+
+    return opener
+
+
+def test_reply_sends_bearer_key_when_set(monkeypatch):
+    seen = {}
+    body = json.dumps({"message": {"content": "Hi"}}).encode()
+    monkeypatch.setattr(urllib.request, "urlopen", recording_opener(seen, body))
+    backend = llm_ollama.OllamaBackend(url="http://gw:11435", model="m", timeout=5, api_key="secret")
+    backend.reply("hi", "system")
+    assert seen["headers"]["authorization"] == "Bearer secret"
+
+
+def test_reply_sends_no_authorization_without_key(monkeypatch):
+    seen = {}
+    body = json.dumps({"message": {"content": "Hi"}}).encode()
+    monkeypatch.setattr(urllib.request, "urlopen", recording_opener(seen, body))
+    llm_ollama.OllamaBackend(url="http://host:11434", model="m", timeout=5).reply("hi", "system")
+    assert "authorization" not in seen["headers"]
+
+
+def test_fetch_models_sends_bearer_key_when_set(monkeypatch):
+    seen = {}
+    body = json.dumps({"models": [{"name": "qwen3:8b"}]}).encode()
+    monkeypatch.setattr(urllib.request, "urlopen", recording_opener(seen, body))
+    assert llm_ollama.fetch_models("http://gw:11435", 5, "secret") == ["qwen3:8b"]
+    assert seen["headers"]["authorization"] == "Bearer secret"

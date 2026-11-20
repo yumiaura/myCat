@@ -105,7 +105,7 @@ def create_backend_for_vendor(vendor: llm_vendors.Vendor, timeout: float) -> LLM
     if vendor.kind == llm_vendors.KIND_OLLAMA:
         from .llm_ollama import OllamaBackend
 
-        return OllamaBackend(url=vendor.base_url, model=vendor.model, timeout=timeout)
+        return OllamaBackend(url=vendor.base_url, model=vendor.model, timeout=timeout, api_key=vendor.resolve_key())
 
     if vendor.kind == llm_vendors.KIND_OPENAI:
         from .llm_openai_compat import OpenAICompatBackend

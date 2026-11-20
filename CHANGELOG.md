@@ -5,6 +5,7 @@ All notable changes to this project are documented in this file.
 ## Unreleased
 
 ### Added
+- **Ollama behind a gateway with a key.** The Ollama vendor sends `Authorization: Bearer` when a key is set, for chat, the settings dialog's model list and its Test button, so myCat can use an Ollama that admits callers by token only. The key comes from `OLLAMA_API_KEY` (in the environment or `.env`), or from an `api_key` line in the `[vendor:ollama]` section of `config.ini`, the same hybrid rule the cloud vendors follow. Without a key nothing changes for a local Ollama, and the settings dialog still shows no key field for it (branch `feat/ollama-api-key`).
 - **`mycat --version` and `mycat -v`.** They print the running version (for example `mycat 0.1.38`) and exit, and `mycat.__version__` now reports the same version as the startup log and the update check, also in a source checkout (PR #152).
 
 ### Fixed

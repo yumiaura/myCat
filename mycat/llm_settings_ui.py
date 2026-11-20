@@ -43,7 +43,7 @@ class ModelsWorker(QtCore.QRunnable):
     def run(self) -> None:
         try:
             if self.kind == llm_vendors.KIND_OLLAMA:
-                names = llm_ollama.fetch_models(self.base_url, self.timeout)
+                names = llm_ollama.fetch_models(self.base_url, self.timeout, self.api_key)
             else:
                 names = llm_openai_compat.fetch_models(self.base_url, self.api_key, self.timeout)
         except Exception as exc:  # noqa: BLE001 - surfaced verbatim
@@ -66,7 +66,9 @@ class TestWorker(QtCore.QRunnable):
 
     def run(self) -> None:
         if self.kind == llm_vendors.KIND_OLLAMA:
-            backend = llm_ollama.OllamaBackend(url=self.base_url, model=self.model, timeout=self.timeout)
+            backend = llm_ollama.OllamaBackend(
+                url=self.base_url, model=self.model, timeout=self.timeout, api_key=self.api_key
+            )
         else:
             backend = llm_openai_compat.OpenAICompatBackend(
                 base_url=self.base_url, api_key=self.api_key, model=self.model, timeout=self.timeout
